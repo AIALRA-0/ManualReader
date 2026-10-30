@@ -1,56 +1,32 @@
-/* 只替换阅读文字的显示方式，原件、问题原话和保存的 Markdown 保持原样。 */
-window.ReaderTerms = (() => {
-  let registryKey = '', registry, registryTerms, mode = localStorage.getItem('reader-term-display') || 'full';
-  const modes = [['full','中英全称'],['zh','中文全称'],['en','英文全称'],['abbr','优先缩写']];
-  const escape = value => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  function parts(term) {
-    const name = term.display_name || term.name || '', match = name.match(/^(.*?)\s*[（(]([^（）()]+)[）)]$/);
-    const prefix = (match?.[1] || name).trim(), head = prefix.match(/^([A-Za-z][A-Za-z0-9.+-]{1,14})\s+(.+)$/);
-    return {id:term.id, full:name, zh:head?.[2] || prefix, en:match?.[2]?.trim() || '', abbr:head?.[1] || term.abbreviation || '', term};
+/* 各阅读栏独立决定术语怎样显示，原始文字和保存的 Markdown 保持不变。 */
+window.ReaderTerms=(()=>{
+ const modes=[['original','原始模式'],['full','混合全称'],['bilingual','中英文全称'],['abbr-zh','缩写中文'],['abbr-en','缩写英文'],['zh','中文全称'],['en','英文全称']];
+ const frames=['original','translation','explanation','interaction','study'],titles={original:'原文',translation:'译文',explanation:'讲解',interaction:'问题与回答',study:'术语与练习'};
+ const key='reader-term-panels-v2';let configs={};try{configs=JSON.parse(localStorage.getItem(key)||'{}')}catch{}
+ let cached='',registry;const escape=s=>s.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),clean=s=>String(s||'').normalize('NFKC').replace(/\s+/g,'').toLocaleLowerCase();
+ function parts(term){const name=term.canonical_name||term.name||term.display_name||'',m=name.match(/^(.*?)\s*[（(]([^（）()]+)[）)]$/),prefix=(m?.[1]||name).trim(),head=prefix.match(/^([A-Za-z][A-Za-z0-9.+-]{1,20})\s*(?=[\u3400-\u9fff])(.+)$/);return {id:term.id,full:name,zh:(head?.[2]||prefix).trim(),en:m?.[2]?.trim()||term.english_name||'',abbr:head?.[1]||term.abbreviation||'',term};}
+ function frame(root){return root.closest?.('[data-pane]')?.dataset.pane||root.dataset.termFrame||'translation'}
+ function settings(id,root){const raw=root?.closest?.('[data-pane=original]')?.querySelector('#original-reading')?.textContent||root?.textContent||'',han=(raw.match(/[\u3400-\u9fff]/g)||[]).length,letters=(raw.match(/[A-Za-z]/g)||[]).length;return {mode:id==='original'?(han>letters*.5?'bilingual':'abbr-en'):'full',first:false,hover:true,...configs[id]}}
+ function label(row,mode,raw){if(mode==='original')return raw;if(mode==='zh')return row.zh;if(mode==='en')return row.en||raw;if(mode==='abbr-zh')return [row.abbr,row.zh].filter(Boolean).join(' ');if(mode==='abbr-en')return [row.abbr,row.en].filter(Boolean).join(' ')||raw;if(mode==='bilingual')return row.zh+'（'+row.en+'）';return [row.abbr,row.zh].filter(Boolean).join(' ')+'（'+row.en+'）'}
+ function index(terms){const signature=JSON.stringify(terms.map(t=>[t.id,t.name,t.canonical_name,t.english_name,t.aliases,t.source_names]));if(signature===cached&&registry)return registry;cached=signature;
+  const rows=terms.map(parts).filter(t=>t.en&&/[\u3400-\u9fff]/.test(t.zh)&&!/[\u3400-\u9fff]/.test(t.en)),owners=new Map(),aliases=new Map();
+  for(const row of rows){const names=[row.full,row.zh,row.en,row.abbr,...(row.term.aliases||[]),...(row.term.source_names||[])];if(row.en){names.push(row.zh+'（'+row.en+'）',row.zh+' ('+row.en+')');if(row.abbr)names.push(row.zh+'（'+row.en+'，'+row.abbr+'）',row.abbr+' '+row.en,row.abbr+' '+row.zh,row.abbr+' ('+row.en+')',row.en+' ('+row.abbr+')')}aliases.set(row.id,names.filter(n=>typeof n==='string'&&n.trim().length>=2&&!/[\r\n]/.test(n)).map(n=>n.trim()));for(const n of aliases.get(row.id)){const k=clean(n);owners.set(k,owners.has(k)&&owners.get(k)!==row.id?null:row.id)}}
+  const patterns=[],used=[];for(const row of rows){const exact=aliases.get(row.id).filter(n=>owners.get(clean(n))===row.id).sort((a,b)=>b.length-a.length).map(n=>escape(n).replace(/\s+/g,'\\s*'));if(!exact.length)continue;
+   const zh=escape(row.zh),en=escape(row.en).replace(/\s+/g,'\\s+'),abbr=row.abbr?escape(row.abbr)+'\\s*':'';
+   const canonical=(abbr?'(?:'+abbr+')?':'')+zh+'\\s*[（(]\\s*'+en+'\\s*[）)]';
+   if(owners.get(clean(row.zh))===row.id&&owners.get(clean(row.en))===row.id)exact.unshift(canonical+'(?:\\s*[（(]\\s*'+canonical+'\\s*[）)])?');
+   row.canonicalPattern=new RegExp(canonical,'i');patterns.push('('+exact.join('|')+')');used.push(row);
+  }registry={rows:used,pattern:patterns.length?new RegExp(patterns.join('|'),'gi'):null};return registry;
+ }
+ function render(root,terms,hooks={}){if(!root)return;const selection=getSelection();if(selection?.toString().trim()&&root.contains(selection.anchorNode))return;for(const a of [...root.querySelectorAll('a[data-reader-term]')])a.replaceWith(document.createTextNode(a.dataset.markdownRaw||a.textContent));root.normalize();if(!terms?.length)return;const table=index(terms);if(!table.pattern)return;const id=frame(root),config=settings(id,root),seen=new WeakMap();
+  const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement?.closest('a,code,pre,.katex,.reader-math,.reader-mermaid,.reader-selection-source,script,style,textarea,input,[data-no-term],.question-actions')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});const texts=[];while(walker.nextNode())texts.push(walker.currentNode);
+  for(const node of texts){const value=node.textContent;table.pattern.lastIndex=0;const matches=[...value.matchAll(table.pattern)].filter(m=>!(/[A-Za-z0-9_]$/.test(value.slice(0,m.index))&&/^[A-Za-z0-9_]/.test(m[0]))&&!(/[A-Za-z0-9_]$/.test(m[0])&&/^[A-Za-z0-9_]/.test(value.slice(m.index+m[0].length))));if(!matches.length)continue;const fragment=document.createDocumentFragment();let at=0;
+   for(const match of matches){const row=table.rows[match.slice(1).findIndex(v=>v!==undefined)];if(!row)continue;fragment.append(document.createTextNode(value.slice(at,match.index)));const block=node.parentElement.closest('.reading-segment,.reader-question-line,p,li,td,th,.passage')||root;let used=seen.get(block);if(!used)seen.set(block,used=new Set());const first=!used.has(row.id);used.add(row.id);const raw=match[0],duplicates=raw.toLocaleLowerCase().split(row.en.toLocaleLowerCase()).length>2&&raw.split(row.zh).length>2,visibleRaw=duplicates&&config.mode!=='original'?(raw.match(row.canonicalPattern)?.[0]||raw):raw,name=label(row,config.mode,visibleRaw),link=document.createElement('a');link.className='term-link';link.dataset.readerTerm='true';link.dataset.termId=row.id;link.dataset.markdownRaw=raw;link.href='#'+row.id;link.textContent=config.hover||config.first&&!first?visibleRaw:name;link.title=name;link.dataset.tooltip=name;link.setAttribute('aria-label',name);
+    link.onpointerenter=e=>{if(e.pointerType==='mouse'&&id!=='study')hooks.show?.(row.id)};link.onpointerleave=()=>hooks.release?.();link.onclick=e=>{e.preventDefault();e.stopPropagation();if(!getSelection()?.toString().trim())hooks.show?.(row.id,true)};fragment.append(link);at=match.index+raw.length;
+   }fragment.append(document.createTextNode(value.slice(at)));node.replaceWith(fragment);
   }
-  function index(terms) {
-    if(terms===registryTerms && registry)return registry;
-    registryTerms=terms;
-    const key = JSON.stringify(terms.map(t => [t.id,t.display_name,t.name,t.aliases,t.source_names]));
-    if (key === registryKey) return registry;
-    registryKey = key; const rows = new Map(), aliases = new Map();
-    for (const term of terms) {
-      const row = parts(term); rows.set(term.id,row);
-      const names = [row.full,row.zh,row.en,row.abbr,...(term.aliases||[]),...(term.source_names||[])];
-      if(row.en) { names.push(row.zh+'（'+row.en+'）',row.zh+' ('+row.en+')',row.zh+'('+row.en+')');
-        if(row.abbr)names.push(row.zh+'（'+row.en+'，'+row.abbr+'）',row.zh+'（'+row.en+', '+row.abbr+'）'); }
-      for(const raw of names) { const name = String(raw||'').trim(); if(name.length<2 || /[\r\n]/.test(name))continue;
-        const prior=aliases.get(name); aliases.set(name,aliases.has(name)&&prior!==row.id ? null : row.id); }
-    }
-    const names=[...aliases].filter(([,id])=>id).map(([name])=>name).sort((a,b)=>b.length-a.length);
-    const folded=new Map();for(const [name,id] of aliases){const key=name.toLocaleLowerCase();folded.set(key,folded.has(key)&&folded.get(key)!==id?null:id);}
-    registry={rows,aliases,folded,pattern:names.length?new RegExp(names.map(escape).join('|'),'gi'):null}; return registry;
-  }
-  function label(row) { return mode==='zh'?row.zh:mode==='en'?(row.en||row.zh):mode==='abbr'?(row.abbr||row.zh):row.full; }
-  function render(root,terms,hooks={}) {
-    if(!root || !terms?.length)return; const table=index(terms); if(!table.pattern)return;
-    for(const a of root.querySelectorAll('.term-link[data-term-id]')) {const row=table.rows.get(a.dataset.termId);if(row)a.textContent=label(row);}
-    const folded=table.folded;
-    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT,{acceptNode:n=>n.parentElement?.closest('a,code,pre,.katex,.reader-math,.reader-mermaid,script,style,textarea,input,summary .question-actions,[data-no-term]')?NodeFilter.FILTER_REJECT:NodeFilter.FILTER_ACCEPT});
-    const texts=[];while(walker.nextNode())texts.push(walker.currentNode);
-    for(const node of texts) {const value=node.textContent;table.pattern.lastIndex=0;
-      const matches=[...value.matchAll(table.pattern)].filter(m=>folded.get(m[0].toLocaleLowerCase()) && !(/[A-Za-z0-9_]$/.test(value.slice(0,m.index))&&/^[A-Za-z0-9_]/.test(m[0])) && !(/[A-Za-z0-9_]$/.test(m[0])&&/^[A-Za-z0-9_]/.test(value.slice(m.index+m[0].length))));
-      if(!matches.length)continue;const fragment=document.createDocumentFragment();let at=0;
-      for(const match of matches) {const row=table.rows.get(folded.get(match[0].toLocaleLowerCase()));fragment.append(document.createTextNode(value.slice(at,match.index)));
-        const a=document.createElement('a');a.className='term-link';a.href='#'+row.id;a.dataset.termId=row.id;a.dataset.markdownRaw=match[0];a.textContent=label(row);a.setAttribute('aria-label',row.full);
-        a.addEventListener('pointerenter',e=>{if(e.pointerType==='mouse')hooks.show?.(row.id)});a.addEventListener('pointerleave',()=>hooks.release?.());a.addEventListener('focus',()=>hooks.show?.(row.id));a.addEventListener('blur',()=>hooks.release?.());
-        a.onclick=e=>{e.preventDefault();e.stopPropagation();if(!getSelection()?.toString().trim())hooks.show?.(row.id,true)};
-        fragment.append(a);at=match.index+match[0].length; }
-      fragment.append(document.createTextNode(value.slice(at)));node.replaceWith(fragment);
-    }
-  }
-  function setMode(value) {if(!modes.some(([id])=>id===value))return;mode=value;localStorage.setItem('reader-term-display',mode);document.dispatchEvent(new CustomEvent('reader-term-display',{detail:{mode}}));}
-  function installControl(parent) {
-    if(!parent||document.getElementById('term-display-control'))return;
-    const button=ReaderUI.decorate(document.createElement('button'),'translation','术语显示方式');button.id='term-display-control';button.type='button';button.classList.add('icon-btn');
-    const menu=document.createElement('div');menu.className='reader-select-menu term-display-menu';menu.setAttribute('popover','auto');menu.setAttribute('role','menu');
-    for(const [id,name] of modes){const option=document.createElement('button');option.className='reader-select-option';option.type='button';option.textContent=name;option.dataset.mode=id;option.setAttribute('role','menuitemradio');option.onclick=()=>{setMode(id);menu.hidePopover()};menu.append(option);}
-    document.body.append(menu);button.onclick=()=>{for(const option of menu.children)option.setAttribute('aria-checked',String(option.dataset.mode===mode));menu.showPopover();const r=button.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(r.right-menu.offsetWidth,innerWidth-menu.offsetWidth-8))+'px';menu.style.top=(r.bottom+8)+'px'};parent.append(button);
-  }
-  return {render,parts,modes,setMode,installControl,get mode(){return mode}};
+ }
+ function setSettings(id,patch){if(!frames.includes(id))return;configs[id]={...configs[id],...patch};localStorage.setItem(key,JSON.stringify(configs));document.dispatchEvent(new CustomEvent('reader-term-display',{detail:{frame:id}}))}
+ function installControls(){document.getElementById('term-display-control')?.remove();for(const id of frames){const head=document.querySelector('[data-pane='+id+'] .pane-head');if(!head||head.querySelector('[data-term-settings]'))continue;const button=ReaderUI.decorate(document.createElement('button'),'tag',titles[id]+'的术语显示');button.type='button';button.className='icon-btn';button.dataset.termSettings=id;const menu=document.createElement('div');menu.className='reader-select-menu term-display-menu';menu.popover='auto';menu.setAttribute('role','dialog');menu.setAttribute('aria-label',titles[id]+'的术语显示');button.onclick=()=>{menu.replaceChildren();const config=settings(id,head);for(const [mode,title] of modes){const option=document.createElement('button');option.type='button';option.className='reader-select-option';option.textContent=title;option.setAttribute('role','menuitemradio');option.setAttribute('aria-checked',String(mode===config.mode));option.onclick=()=>{setSettings(id,{mode});menu.hidePopover()};menu.append(option)}for(const [field,title] of [['first','每段仅首次出现时应用'],['hover','悬停显示名称，保留原词']]){const label=document.createElement('label'),input=document.createElement('input');input.type='checkbox';input.checked=config[field];input.onchange=()=>setSettings(id,{[field]:input.checked});label.append(input,document.createTextNode(title));menu.append(label)}menu.showPopover();const r=button.getBoundingClientRect();menu.style.left=Math.max(8,Math.min(r.right-menu.offsetWidth,innerWidth-menu.offsetWidth-8))+'px';menu.style.top=Math.max(8,Math.min(r.bottom+8,innerHeight-menu.offsetHeight-8))+'px'};document.body.append(menu);head.append(button)}}
+ return {render,parts,modes,settings,setSettings,installControls,installControl:installControls,setMode:(mode,id='translation')=>setSettings(id,{mode})};
 })();

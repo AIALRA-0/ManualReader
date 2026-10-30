@@ -34,7 +34,7 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
       '公式中的多字母程序标识使用LaTeX的mathtt或text保留整个名称，并说明其含义；数学下标使用完整花括号。程序标识与数学下标要区分，不把程序名称擅自改成另一种变量，也不把多字母名称当成几个字母相乘',
       '图片已按 sources.media 中的编号顺序随输入附上；必须实际读图，对估计值和不确定标记保持原有含义',
       '用户明确追问命名由来、出处，或回答需要材料之外的专业事实，而原文没有提供依据时，必须使用可用的联网检索查证并引用真实权威资料；相关问题合并检索，复用同一份查证结果，不逐题重复搜索。查不到的具体由来如实说明，不用“材料未交代”代替检索，不猜测，不增加审稿或循环修复']
-    payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。实际生成文件必须保存到本组工作目录；通过generated_assets返回path、alt、question_ids，脚本上传后插入对应回答。没有实际生成成功时不要写虚构地址。空间形状或结构需要直观看时配图；简单词义不配图。')
+    payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。通过generated_assets返回实际工具产生的path、alt、question_ids；内置工具默认写入本次会话的generated_images目录，脚本会核对会话编号，复制到本组目录并上传，再插入对应回答，不要编造已保存路径。没有实际生成成功时不要写虚构地址。空间形状或结构需要直观看时配图；简单词义不配图。')
     payload['instructions'].append('新术语只提交名称、定义、直观解释和问题编号，不自行编造term_id；只有复用registered_terms中已有条目时才返回其真实term_id，新编号由脚本分配')
     if not payload.get('registered_terms'):
         payload['result_contract']={**payload['result_contract'],'terms':[{k:v for k,v in t.items() if k!='term_id'} for t in payload['result_contract']['terms']]}
@@ -44,11 +44,12 @@ def command(executable,folder,target,images):
     args=[executable,'exec','--ignore-user-config','--skip-git-repo-check','--json','--color','never','-m',MODEL,'-c','model_reasoning_effort="high"','-c','service_tier="default"','-c','web_search="live"','-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
     for flag in ('apps','plugins','multi_agent','shell_tool','browser_use','computer_use','workspace_dependencies','hooks','fast_mode'):
         args+=['--disable',flag]
+    args+=['--enable','image_generation']
     for image in images:args+=['-i',str(image)]
     return args+['-']
 
 
-def store_generated_assets(bridge,value,folder):
+def store_generated_assets(bridge,value,folder,session_id=None):
     """只上传本组实际生成的图片，不接受指向其他目录的文件名。"""
     import io,hashlib
     from PIL import Image
@@ -57,10 +58,16 @@ def store_generated_assets(bridge,value,folder):
     for item in assets[:1]:
         if not isinstance(item,dict) or not isinstance(item.get('path'),str) or not isinstance(item.get('question_ids'),list):
             issues.append('插图缺少实际文件或关联问题，正文已保留');continue
-        path=Path(item['path']);path=path if path.is_absolute() else folder/path
-        if not path.resolve().is_relative_to(folder.resolve()) or not path.is_file():
+        path=Path(item['path'].replace('\\\\','\\') if os.name=='nt' else item['path']);path=path if path.is_absolute() else folder/path
+        built_in=False
+        if session_id and path.is_file():
+            homes=[Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'generated_images',Path.home()/'.codex/generated_images']
+            built_in=any(path.resolve().is_relative_to(home.resolve()) and path.resolve().relative_to(home.resolve()).parts[0]==session_id for home in homes)
+        if (not path.resolve().is_relative_to(folder.resolve()) and not built_in) or not path.is_file():
             issues.append('插图文件不在本组输出目录，正文已保留');continue
         if path.stat().st_size>12*1024*1024:issues.append('插图超过12MB，正文已保留');continue
+        if built_in:
+            copied=folder/('generated-'+hashlib.sha256(path.read_bytes()).hexdigest()[:20]+path.suffix.lower());shutil.copy2(path,copied);path=copied;item['path']=copied.name
         try:
             with Image.open(path) as original:
                 if original.width*original.height>24_000_000:raise ValueError('插图像素过多')
@@ -159,7 +166,7 @@ def run_group(bridge,out,group,payload,reference,executable):
     if usage.get('model')!=MODEL or usage.get('effort')!='high' or usage.get('configured_service_tier')!='default':raise RuntimeError('实际运行配置与Terra high普通服务不一致，结果与日志已保留')
     usage.update(group_id=identity,type='usage',configured_service_tier='default',model=MODEL,effort='high',tool_usage=external_tool_usage(events.read_text('utf8').splitlines()))
     bridge.request('/api/runs/'+bridge.run_id+'/events',usage);save(out/('usage-'+identity+'.json'),usage)
-    value=result_json(target.read_text('utf8'),group);before_answers={a['question_id']:a.get('text','') for a in value['answers']};asset_issues=store_generated_assets(bridge,value,folder);changes=normalize_terms(value,payload);media_changes=ensure_visible_sources(value,payload);save(folder/'script-processing.json',{'generated_asset_issues':asset_issues,'media_changes':media_changes,'term_id_changes':changes,'answer_text_changed':any(a.get('text','')!=before_answers[a['question_id']] for a in value['answers']),'definitions_changed':False});save(out/('result-'+identity+'.json'),value)
+    value=result_json(target.read_text('utf8'),group);before_answers={a['question_id']:a.get('text','') for a in value['answers']};asset_issues=store_generated_assets(bridge,value,folder,session_id);changes=normalize_terms(value,payload);media_changes=ensure_visible_sources(value,payload);save(folder/'script-processing.json',{'generated_asset_issues':asset_issues,'media_changes':media_changes,'term_id_changes':changes,'answer_text_changed':any(a.get('text','')!=before_answers[a['question_id']] for a in value['answers']),'definitions_changed':False});save(out/('result-'+identity+'.json'),value)
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'output_ready'})
     receipt=bridge.request('/api/runs/'+bridge.run_id+'/groups/'+identity+'/result',value);save(out/('saved-'+identity+'.json'),receipt)
     if receipt.get('issues') or receipt.get('missing_question_ids'):raise RuntimeError('部分结果未保存，准确缺项已写入本组保存记录；不重跑已完成内容')

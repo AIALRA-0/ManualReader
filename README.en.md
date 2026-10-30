@@ -27,10 +27,12 @@ Read the source and translation, write questions below a passage, and manually a
 
 - Switch between source, translation, and explanation, or arrange them in columns and vertical splits
 - Keep questions anchored to passages, with nested follow-ups, personal notes, and exercise results
-- Reuse registered terms and display Chinese names, English names, abbreviations, or full bilingual names
+- Configure seven term-name modes independently in five panels; hover shows the full name by default without rewriting the source
 - Read original PDF pages and locations, with Markdown support for mathematics, tables, code, images, and Mermaid diagrams
 - Resize desktop columns or switch mobile tabs
-- Optionally run offline speech recognition on your own computer or server
+- Optionally run offline speech recognition with a visible recording timer and stop control
+- Autosave understanding notes and review mistakes in rounds; a correct review removes an item without changing the original attempt
+- Enlarge images, tables, formulas, and diagrams; writers can reuse source images, draw flowcharts, or generate an actual illustration when useful
 
 An Agent can also write chapter explanations for code projects or projects without an original document
 
@@ -57,6 +59,8 @@ sh ./Start-Reader.sh
 To load the actual model answer shown in the screenshots, run `python Demo/load_example.py --base http://127.0.0.1:8939`. Use the port printed by your launcher if it differs; this command only writes to the synthetic demonstration project
 
 See [deployment instructions](docs/deployment.md) for manual installation, custom ports, and data migration
+
+See [import behavior and limitations](docs/importing.md) for file formats, source locations, and translation responsibilities
 
 ## 3 Complete a reading session
 

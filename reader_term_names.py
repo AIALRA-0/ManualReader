@@ -21,6 +21,9 @@ def english_title(value,exceptions=(),preserve=False):
 
 def analyze_name(value,exceptions=(),preserve=False):
     raw=str(value or '').strip();name=raw;issues=[]
+    complete={'gordian布局方法(gordianplacement)':'GORDIAN 全局优化与矩形剖分（Global Optimization And Rectangle Dissection）','cpu宽度(cpuwidth)':'CPU 中央处理器宽度（Central Processing Unit Width）'}
+    lookup=re.sub(r'\s+','',name.translate(str.maketrans('（）','()'))).casefold()
+    name=complete.get(lookup,name)
     match=re.fullmatch(r'(.*?)\s*[（(]([^（）()]*)[）)]',name)
     if not match:
         reverse=re.fullmatch(r'[（(]([^（）()]*)[）)]\s*(.+)',name)
@@ -28,10 +31,10 @@ def analyze_name(value,exceptions=(),preserve=False):
         if reverse:chinese,english=reverse[2].strip(),reverse[1].strip()
         elif bare:chinese,english=bare[1].strip(),bare[2].strip()
         else:
-            return {'name':name,'display_name':name,'issues':['missing_english_name'] if HAN.search(name) else [],'changed':False}
+            return {'name':name,'display_name':name,'issues':['missing_english_name'] if HAN.search(name) else ['missing_chinese_name'],'changed':False}
     else:chinese,english=(s.strip() for s in match.groups())
     if not HAN.search(chinese) and HAN.search(english):chinese,english=english,chinese
-    if chinese==english:return {'name':chinese,'display_name':chinese,'issues':[],'changed':chinese!=raw}
+    if chinese==english:return {'name':chinese,'display_name':chinese,'issues':['missing_english_name'] if HAN.search(chinese) else ['missing_chinese_name'],'changed':chinese!=raw}
     # 括号里重复写了同一个中文名时，可以直接删除；其他中文含义留给一次集中补齐。
     chinese_core=re.sub(r'^[A-Za-z][A-Za-z0-9-]*\s+','',chinese).strip()
     if chinese_core and HAN.search(chinese_core):english=english.replace(chinese_core,'').strip(' ,，;；')
@@ -51,7 +54,7 @@ def analyze_name(value,exceptions=(),preserve=False):
     if not english or not re.search('[A-Za-z]',english):issues.append('missing_english_name')
     english=english_title(english,exceptions,preserve)
     formatted=chinese+'（'+english+'）' if english else chinese
-    return {'name':formatted,'display_name':chinese if issues and HAN.search(chinese) else formatted,'issues':issues,'changed':formatted!=raw}
+    return {'name':formatted,'display_name':formatted,'issues':issues,'changed':formatted!=raw}
 
 def term_name(term):return analyze_name(term.get('name',''),term.get('case_exceptions',[]),bool(term.get('english_case_exception')))
 
@@ -80,5 +83,5 @@ def normalize_state(state,stamp):
 
 def display_state(state):
     state=copy.deepcopy(state);report=normalize_state(state,lambda:'display_only')
-    state['terms']=[t for t in state.get('terms',[]) if not t.get('duplicate_of')]
+    state['terms']=[t for t in state.get('terms',[]) if not t.get('duplicate_of') and not any(i in term_name(t)['issues'] for i in ('missing_english_name','missing_chinese_name','chinese_inside_english'))]
     return state,report

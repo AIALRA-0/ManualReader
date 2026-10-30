@@ -15,6 +15,7 @@ from reader_coverage import coverage_payload,validate_source_mapping
 from reader_terms import revise_term
 from reader_content import lecture_material
 from reader_speech import proxy as speech_proxy
+from reader_practice import payload as practice_payload,change as practice_change,record_answer as practice_answer
 from reader_media import ensure_result_media
 from reader_questions import source_for,answer_body
 import reader_library
@@ -237,7 +238,7 @@ def agent_guide():
     guide['steps'].insert(0,'用户要求回答问题时，优先手动运行 reader_bridge.py daily --out <本轮空目录>；另开干净的Terra high普通服务主调度会话，程序预装材料、规则与原图，两个Terra high普通服务写作者并行；主调度最终汇报结束后结算整轮。开发、验收和部署在其他会话进行，单列统计。不要把读取五个大接口作为前置，也不由主对话重抄结果')
     guide['endpoints'].update(runs='GET /api/runs',start_run='POST /api/runs')
     guide['accounting_contract']={'script':'coordinator只表示本地脚本，不能称为完整主调度0 token','codex':'本地客户端读取启动它的Codex整轮日志，包含读取、启动、等待和最终汇报；后台脚本等待task_complete后补齐caller，不调用模型','parent_model_rule':'daily入口另开全新主调度，明确指定gpt-6.1-terra、high与service_tier=default，禁用fast_mode；它与两个写作者均核对实际日志，不继承当前长对话配置；开发对话另外统计，不冒充日常回答成本','complete':'complete_usage和complete_estimated_token_cost_usd只在主对话结束且已采集时返回，未采集留空；同轮开发和其他工作原样计入，不猜测分摊，重叠时间不相加'}
-    guide['media_contract']={'rule':'图、表和空间关系优先显示实际原图；显式要求看图时要读取并引用sources.media_items的真实地址，不只描述图名。简单定义不强行配图。流程可直接用Mermaid，新插图由当前Codex使用绘图工具生成后通过content/files写入，禁止引用不存在的文件。','files':'POST /api/content/files','outline':'复杂讲解可在同一次输出附teaching_outline，不另起规划或审稿调用'}
+    guide['media_contract']={'rule':'图、表和空间关系优先显示实际原图；显式要求看图时要读取并引用sources.media_items的真实地址，不只描述图名。简单定义不强行配图。流程可直接用Mermaid，新插图由当前Codex使用绘图工具生成后通过content/files写入，禁止引用不存在的文件。','files':'POST /api/content/files','generated_assets':'daily 写作者已启用 image_generation；实际生成后返回 path、alt 和 question_ids，客户端只接受本组目录或当前会话 generated_images 目录中的真实文件，去除元数据后上传；图像调用和耗时单列，工具未返回账单时不填费用','outline':'复杂讲解可在同一次输出附teaching_outline，不另起规划或审稿调用'}
     guide['quiz_contract']={'display_order':'显示位置到原options下标的映射；选择题作答提交原下标，不能提交显示位置，历史选择不因位置均衡而改变','quality_flags':'脚本只标记明显的长度线索，不据此阻塞生成或自动循环修复','revise_unanswered':'POST /api/quizzes/{quiz_id}/options，提交expected_options、options、correct_index；只允许调整未作答题的干扰项，原正确答案、编号和记录保留'}
     guide['client_files']={'reader_prompts.py':'GET /api/agent/reader_prompts.py','reader_media.py':'GET /api/agent/reader_media.py','reader_bridge.py':'GET /api/agent/reader_bridge.py','reader_worker.py':'GET /api/agent/reader_worker.py','reader_execute.py':'GET /api/agent/reader_execute.py','reader_term_names.py':'GET /api/agent/reader_term_names.py','rule':'建立连接或开始新一轮回答时，从当前项目接口下载 client_files 列出的全部当前客户端和规则模块放到同一目录；已有旧脚本也要替换，只更新程序文件，不覆盖任务输入、结果和记录；脚本下载不需要模型阅读其正文。使用已登录的本地Codex，访问令牌只传进程内存或环境变量，不写入任务文件'}
     return guide
@@ -258,7 +259,7 @@ class Handler(core.Handler):
             if path=='/':return self.file(STATIC/'index.html','text/html; charset=utf-8')
             if path in ('/settings','/statistics'):return self.file(STATIC/(path[1:]+'.html'),'text/html; charset=utf-8')
             if path=='/vendor/math-text.js':return self.file(STATIC/'math-text.js','text/javascript; charset=utf-8')
-            if path in ('/workspace-ui.js','/reader-terms.js','/reader-speech.js','/app.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
+            if path in ('/workspace-ui.js','/reader-terms.js','/reader-speech.js','/reader-practice.js','/reader-media-view.js','/app.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
             if path.startswith('/evidence/'):
                 if os.environ.get('MANUAL_READER_PUBLIC_ORIGIN'):return self.send_error(404)
                 folder=(ROOT/'evidence').resolve();target=(ROOT/path[1:]).resolve()
@@ -289,6 +290,7 @@ class Handler(core.Handler):
                 m=material()
                 if path in ('/api/agent/reader_bridge.py','/api/agent/reader_worker.py','/api/agent/reader_execute.py','/api/agent/reader_term_names.py','/api/agent/reader_prompts.py','/api/agent/reader_media.py'):return self.file(ROOT/path.split('/')[-1],'text/x-python; charset=utf-8')
                 if path=='/api/speech/status':return self.json(speech_proxy('/status'))
+                if path=='/api/practice-book':return self.json(practice_payload(core.read_state()))
                 if path=='/api/terms/audit':
                     state=core.read_state();report=normalize_state(state,lambda:'audit_only');return self.json(report)
                 if path=='/api/runs':return self.json({'runs':Runs(mpath().parent).list()})
@@ -347,7 +349,7 @@ class Handler(core.Handler):
         except (ValueError,KeyError,OSError) as error:return self.json({'error':str(error)},400)
     def do_POST(self):
         self.context();path=unquote(urlsplit(self.path).path)
-        custom=path in ('/api/speech/transcribe','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
+        custom=path=='/api/practice-book' or bool(re.fullmatch(r'/api/quizzes/[^/]+/answer',path)) or path in ('/api/speech/transcribe','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[12]/result)',path):custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
         if not self.safe_origin() or not self.authenticated():return self.json({'error':'连接码或提交来源不正确'},403)
@@ -357,6 +359,9 @@ class Handler(core.Handler):
             data=json.loads(self.rfile.read(length) or b'{}')
             if not isinstance(data,dict):raise ValueError('提交内容必须是对象')
             if path=='/api/speech/transcribe':return self.json(speech_proxy('/transcribe',data))
+            if path=='/api/practice-book':return self.json(core.mutate(lambda state:practice_change(state,data,core.stamp)))
+            quiz_answer=re.fullmatch(r'/api/quizzes/([^/]+)/answer',path)
+            if quiz_answer:return self.json(core.mutate(lambda state:practice_answer(state,quiz_answer[1],data.get('selected'),core.stamp)))
             if path=='/api/runs':
                 started=time.perf_counter();records=core.read_state();packet=compact_packet(material(),records,data.get('question_ids'),data.get('include_answered') is True);context=teaching_context(material(),workspace().read(),records)
                 row=Runs(mpath().parent).create(mid(),packet);manifest={**Runs.public(row),'groups':[{'id':key,'question_ids':group['question_ids'],'input_url':'/api/runs/'+row['id']+'/groups/'+key,'result_url':'/api/runs/'+row['id']+'/groups/'+key+'/result'} for key,group in row['groups'].items()],'reference_url':'/api/runs/'+row['id']+'/reference','translation_queue':context['translation_queue'],'current_task':context['current_task'],'prepare_seconds':round(time.perf_counter()-started,4),'instructions':['这次任务已经准备好，不必先再读 guide/content/learning/progress/work，也不打印整篇材料','一次把各组输入保存到本地文件，立即新建最多两位 Terra high 写作者，fork_turns=none；不要沿用旧写作者的长历史','各组自己按需查资料；完成后直接写 result JSON 文件，主对话不抄写正文，脚本逐组及时保存','只有用户勾选完成才进入下一节；这次写回不改用户位置、笔记或阅读进度']}

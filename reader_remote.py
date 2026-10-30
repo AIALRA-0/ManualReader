@@ -113,7 +113,7 @@ class RemoteMixin:
             if any(value is not None and value!=grant['material_id'] for value in requested):self.json({'error':'本连接只能访问配对时选择的项目'},403);return True
             if method=='POST' and mapped=='/api/read':self.json({'error':'阅读进度只由用户在页面上手动勾选，Agent API 无权修改'},403);return True
             self._grant_material=grant['material_id'];self._grant=grant
-            readable=mapped in ('/api/runs','/api/coverage','/api/learning','/api/content','/api/guide','/api/material','/api/index','/api/progress','/api/work','/api/translations','/api/statistics','/api/samples','/original','/original.pdf') or bool(re.fullmatch(r'/api/(?:passages|rounds)/[^/]+|/api/runs/run-[a-f0-9]{20}(?:/(?:groups/[12]|reference|caller))?',mapped)) or mapped.startswith(('/page/','/asset/','/content-files/'))
+            readable=mapped=='/api/practice-book' or mapped in ('/api/runs','/api/coverage','/api/learning','/api/content','/api/guide','/api/material','/api/index','/api/progress','/api/work','/api/translations','/api/statistics','/api/samples','/original','/original.pdf') or bool(re.fullmatch(r'/api/(?:passages|rounds)/[^/]+|/api/runs/run-[a-f0-9]{20}(?:/(?:groups/[12]|reference|caller))?',mapped)) or mapped.startswith(('/page/','/asset/','/content-files/'))
             if mapped in ('/api/agent/reader_bridge.py','/api/agent/reader_worker.py','/api/agent/reader_execute.py','/api/agent/reader_term_names.py','/api/agent/reader_prompts.py','/api/agent/reader_media.py'):readable=True
             if mapped=='/api/terms/audit':readable=True
             if not grant['material_id'] and mapped in ('/api/library','/api/library/tree'):readable=True

@@ -80,7 +80,13 @@ def runtime_usage(meta,coordinator=None):
     context=next((row['payload'] for row in selected if row.get('type')=='turn_context'),{})
     settings=[row['payload']['thread_settings'] for row in rows if row.get('payload',{}).get('type')=='thread_settings_applied']
     tier=(settings[-1].get('service_tier') if settings else None) or context.get('service_tier') or meta.get('configured_service_tier')
-    return {'usage':usage,'requests':counts,'source':'codex_session_log','session_id':identity,'model':context.get('model'),'effort':context.get('effort'),'configured_service_tier':tier,'model_started_at':selected[0]['timestamp'],'model_completed_at':done['timestamp']}
+    image_calls=[r for r in selected if r.get('payload',{}).get('type') in ('custom_tool_call','function_call') and 'image_gen' in str(r.get('payload',{}).get('input',''))]
+    image_tools=[]
+    for call in image_calls:
+        output=next((r for r in selected if r.get('payload',{}).get('call_id')==call['payload'].get('call_id') and r.get('payload',{}).get('type') in ('custom_tool_call_output','function_call_output')),None)
+        elapsed=round((datetime.datetime.fromisoformat(output['timestamp'].replace('Z','+00:00'))-datetime.datetime.fromisoformat(call['timestamp'].replace('Z','+00:00'))).total_seconds(),3) if output else None
+        image_tools.append({'type':'image_generation','seconds':elapsed,'billing_usd':None,'billing_status':'图像工具没有返回独立美元账单'})
+    return {'image_tools':image_tools,'usage':usage,'requests':counts,'source':'codex_session_log','session_id':identity,'model':context.get('model'),'effort':context.get('effort'),'configured_service_tier':tier,'model_started_at':selected[0]['timestamp'],'model_completed_at':done['timestamp']}
 
 if __name__=='__main__':
     parser=argparse.ArgumentParser();parser.add_argument('action',choices=['input','finish']);parser.add_argument('--out',required=True);parser.add_argument('--group',required=True,choices=['1','2']);args=parser.parse_args();folder=Path(args.out)
