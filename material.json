@@ -1,0 +1,61 @@
+{
+  "id": "demo-reader",
+  "title": "缓存怎样处理一次请求",
+  "source": "Synthetic demonstration",
+  "kind": "markdown",
+  "pages": {},
+  "passages": [
+    {
+      "id": "demo-p1",
+      "section_id": "demo-chapter",
+      "kind": "paragraph",
+      "file_id": "primary",
+      "en": "A cache keeps recently used results. A cache hit reuses a stored value; a cache miss requires loading it again.",
+      "zh": "缓存保存最近使用过的结果，缓存命中时直接复用已有值，缓存未命中时需要重新读取",
+      "refs": [],
+      "heading": false,
+      "precision": "sentence",
+      "sentences": [
+        {
+          "id": "demo-p1-s1",
+          "en": "A cache keeps recently used results. A cache hit reuses a stored value; a cache miss requires loading it again.",
+          "zh": "缓存保存最近使用过的结果，缓存命中时直接复用已有值，缓存未命中时需要重新读取",
+          "refs": [],
+          "precision": "sentence"
+        }
+      ]
+    },
+    {
+      "id": "demo-p2",
+      "section_id": "demo-chapter",
+      "kind": "paragraph",
+      "file_id": "primary",
+      "en": "The cache uses a dictionary to find nodes by key and a doubly linked list to record recent use. On a hit, get(key) moves the node to the front; on a miss it returns None. put(key,value) updates or creates a node. If capacity is exceeded, it removes the last node and deletes its key from the dictionary.",
+      "zh": "缓存用一个字典保存键到节点的对应，用双向链表记录最近使用顺序。get(key) 在命中时把节点移到链表头，未命中返回 None；put(key,value) 更新或创建节点，容量超限时移除尾节点，同时从字典删除。",
+      "refs": [],
+      "heading": false,
+      "precision": "sentence",
+      "sentences": [
+        {
+          "id": "demo-p2-s1",
+          "en": "The cache uses a dictionary to find nodes by key and a doubly linked list to record recent use. On a hit, get(key) moves the node to the front; on a miss it returns None. put(key,value) updates or creates a node. If capacity is exceeded, it removes the last node and deletes its key from the dictionary.",
+          "zh": "缓存用一个字典保存键到节点的对应，用双向链表记录最近使用顺序。get(key) 在命中时把节点移到链表头，未命中返回 None；put(key,value) 更新或创建节点，容量超限时移除尾节点，同时从字典删除。",
+          "refs": [],
+          "precision": "sentence"
+        }
+      ]
+    }
+  ],
+  "outline": [
+    {
+      "id": "demo-chapter",
+      "title": "0. 缓存怎样处理一次请求",
+      "level": 0,
+      "passage_id": "demo-p1",
+      "passage_ids": [
+        "demo-p1",
+        "demo-p2"
+      ]
+    }
+  ]
+}
