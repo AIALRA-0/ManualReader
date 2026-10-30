@@ -1,0 +1,247 @@
+.gitignore
+  s_1c46d58ed67333::t_6239f20bfef363 1-23
+.gitattributes
+  s_1c46d58ed67333::t_6239f20bfef363 1-14
+Demo/example-answer.json
+  s_1c46d58ed67333::t_ef26ff59f7c63a 1-41
+Demo/test_contracts.py
+  s_1c46d58ed67333::t_7e05b5257eb2ab 1-60
+README.en.md
+  s_1c46d58ed67333::t_3e46032959bcfe 1-124
+README.md
+  s_1c46d58ed67333::t_9655add08a9eda 1-128
+Start-Reader.cmd
+  s_1c46d58ed67333::t_2dccd35c414f7b 1-5
+Start-Reader.command
+  s_1c46d58ed67333::t_e7df8001869d98 1-5
+Start-Reader.ps1
+  s_1c46d58ed67333::t_9f4c476781ec62 1-10
+Start-Reader.sh
+  s_1c46d58ed67333::t_42f2b479cc9d10 1-10
+assemble_client.py
+  s_1c46d58ed67333::t_fce06e9cea6422 1-8
+bootstrap_reader.py
+  s_1c46d58ed67333::t_7af47fa166e132 1-35
+client-base.js
+  s_1c46d58ed67333::t_4d24653fdb825a 1-38
+client-interaction.js
+  s_1c46d58ed67333::t_a83fe33277f951 1-106
+client-tail.js
+  s_1c46d58ed67333::t_0c0136f81ec16a 1-137
+launch_reader.py
+  s_1c46d58ed67333::t_ce6c54959a3ba2 1-39
+material.json
+  s_1c46d58ed67333::t_ea51c3d2a2bf78 1-61
+reader_bridge.py
+  s_1c46d58ed67333::t_44a9c709c3a1c9 1-223
+reader_completion.py
+  s_1c46d58ed67333::t_43b74123d17e85 1-42
+reader_content.py
+  s_1c46d58ed67333::t_d2a4c355dad6e7 1-105
+reader_contract.py
+  s_1c46d58ed67333::t_c8a5606d173bb1 1-75
+reader_coverage.py
+  s_1c46d58ed67333::t_452f4e6681a46e 1-612
+reader_execute.py
+  s_1c46d58ed67333::t_6a7195676866ef 1-276
+reader_features.py
+  s_1c46d58ed67333::t_71fc2be97351a7 1-85
+reader_import.py
+  s_1c46d58ed67333::t_3d06ec61718a17 1-292
+reader_learning.py
+  s_1c46d58ed67333::t_c969c3e4d1ba34 1-154
+reader_library.py
+  s_1c46d58ed67333::t_b4f4e2605b3d16 1-90
+reader_media.py
+  s_1c46d58ed67333::t_17549aed256f0b 1-67
+reader_prompts.py
+  s_1c46d58ed67333::t_0dd6df4c17110c 1-24
+reader_questions.py
+  s_1c46d58ed67333::t_7aeb97a3ca0326 1-185
+reader_remote.py
+  s_1c46d58ed67333::t_f480b7e26c5af9 1-160
+reader_runs.py
+  s_1c46d58ed67333::t_5cfbe87971fb1b 1-112
+reader_server.py
+  s_1c46d58ed67333::t_7d776175b3a71e 1-670
+reader_speech.py
+  s_1c46d58ed67333::t_5b8ced211f9b55 1-105
+reader_teaching.py
+  s_1c46d58ed67333::t_e046dfbd2d0bb6 1-102
+reader_term_names.py
+  s_1c46d58ed67333::t_c52c902080b4a2 1-84
+reader_terms.py
+  s_1c46d58ed67333::t_c57c08e87f13b7 1-20
+reader_work.py
+  s_1c46d58ed67333::t_54a02112d73404 1-173
+reader_worker.py
+  s_1c46d58ed67333::t_37d55ad50db78e 1-95
+reader_workspace.py
+  s_1c46d58ed67333::t_0166ba13e9343b 1-190
+requirements-voice.txt
+  s_1c46d58ed67333::t_47cdee7982d55c 1-2
+requirements.txt
+  s_1c46d58ed67333::t_28e4e6eecd00e4 1-6
+server.py
+  s_1c46d58ed67333::t_4ec2618e8e12a2 1-227
+source_parser.py
+  s_1c46d58ed67333::t_6a10cb64c8d973 1-485
+static-next/app.css
+  s_1c46d58ed67333::t_7982ce8ca95f81 1-390
+static-next/app.js
+  s_1c46d58ed67333::t_b6063023872aed 1-281
+static-next/index.html
+  s_1c46d58ed67333::t_8c84af3e112779 1-35
+static-next/library-ui.js
+  s_1c46d58ed67333::t_d928f244336686 1-48
+static-next/markdown-vendor.LICENSE.txt
+  s_1c46d58ed67333::t_a859042af64899 1-702
+static-next/markdown-vendor.js
+  s_1c46d58ed67333::t_79cf01c6ce463c 1-38
+static-next/math-text.js
+  s_1c46d58ed67333::t_70165daccce43d 1-144
+static-next/reader-markdown.js
+  s_1c46d58ed67333::t_ec2ea85af99386 1-35
+static-next/reader-speech.js
+  s_1c46d58ed67333::t_84f85366fb0812 1-34
+static-next/reader-terms.js
+  s_1c46d58ed67333::t_0d45eb486b7141 1-56
+static-next/reader-ui.js
+  s_1c46d58ed67333::t_b0b0fa7d524237 1-120
+static-next/remote-ui.js
+  s_1c46d58ed67333::t_9e640527ed054e 1-19
+static-next/settings.html
+  s_1c46d58ed67333::t_4c5e23b6da4906 1-2
+static-next/settings.js
+  s_1c46d58ed67333::t_304f20fe6e4764 1-19
+static-next/statistics.html
+  s_1c46d58ed67333::t_9ba0860553c11a 1-3
+static-next/statistics.js
+  s_1c46d58ed67333::t_914f23208ed1fd 1-48
+static-next/workspace-ui.js
+  s_1c46d58ed67333::t_9e578ceb07a379 1-84
+static/app.css
+  s_1c46d58ed67333::t_9aab5729b65c7f 1-390
+static/app.js
+  s_1c46d58ed67333::t_8c7114aca81c47 1-281
+static/index.html
+  s_1c46d58ed67333::t_78519c951b71df 1-35
+static/library-ui.js
+  s_1c46d58ed67333::t_550958aefaf084 1-48
+static/markdown-vendor.LICENSE.txt
+  s_1c46d58ed67333::t_88cf3d8fe9efdf 1-702
+static/markdown-vendor.js
+  s_1c46d58ed67333::t_632b5e67df3cd3 1-38
+static/math-text.js
+  s_1c46d58ed67333::t_5dfa454eae4e97 1-144
+static/reader-markdown.js
+  s_1c46d58ed67333::t_cdff6d5f0aa0a2 1-35
+static/reader-speech.js
+  s_1c46d58ed67333::t_81989ecf90f96c 1-34
+static/reader-terms.js
+  s_1c46d58ed67333::t_bb8aa70b6853ab 1-56
+static/reader-ui.js
+  s_1c46d58ed67333::t_2c2d92e5ddbf78 1-120
+static/remote-ui.js
+  s_1c46d58ed67333::t_6aacd43273341b 1-19
+static/settings.html
+  s_1c46d58ed67333::t_91538936d1d8cd 1-2
+static/settings.js
+  s_1c46d58ed67333::t_30425255e0b0cf 1-19
+static/statistics.html
+  s_1c46d58ed67333::t_ffe8b5f2115eb0 1-3
+static/statistics.js
+  s_1c46d58ed67333::t_a3e1650c2c40c6 1-48
+static/workspace-ui.js
+  s_1c46d58ed67333::t_ed9d5b187dc12b 1-84
+vendor/math-text.js
+  s_1c46d58ed67333::t_7734a43cd76f3c 1-111
+vendor/media-renderer.css
+  s_1c46d58ed67333::t_8287366b24ae2a 1-36
+vendor/media-renderer.js
+  s_1c46d58ed67333::t_b77e7967123b7b 1-128
+vendor/media-vendor/LICENSE-mermaid.txt
+  s_1c46d58ed67333::t_7e338eabe3d062 1-21
+vendor/media-vendor/katex/LICENSE
+  s_1c46d58ed67333::t_ad59f69f831f4d 1-21
+vendor/media-vendor/katex/dist/README.md
+  s_1c46d58ed67333::t_a6f045e5ab12db 1-125
+vendor/media-vendor/katex/dist/contrib/auto-render.js
+  s_1c46d58ed67333::t_3c85207a19fa1d 1-338
+vendor/media-vendor/katex/dist/contrib/auto-render.min.js
+  s_1c46d58ed67333::t_dd2074dd946784 1
+vendor/media-vendor/katex/dist/contrib/auto-render.mjs
+  s_1c46d58ed67333::t_1ec04851e4ba76 1-244
+vendor/media-vendor/katex/dist/contrib/copy-tex.js
+  s_1c46d58ed67333::t_c2c8ec6e4cba44 1-127
+vendor/media-vendor/katex/dist/contrib/copy-tex.min.js
+  s_1c46d58ed67333::t_df9a7ee0f9ff9b 1
+vendor/media-vendor/katex/dist/contrib/copy-tex.mjs
+  s_1c46d58ed67333::t_a36da4cb403535 1-105
+vendor/media-vendor/katex/dist/contrib/mathtex-script-type.js
+  s_1c46d58ed67333::t_fb0b6296fed575 1-109
+vendor/media-vendor/katex/dist/contrib/mathtex-script-type.min.js
+  s_1c46d58ed67333::t_cb5971e8d048a2 1
+vendor/media-vendor/katex/dist/contrib/mathtex-script-type.mjs
+  s_1c46d58ed67333::t_5ad4eb7c50df15 1-24
+vendor/media-vendor/katex/dist/contrib/mhchem.js
+  s_1c46d58ed67333::t_a6bb1aabd45c6a 1-3213
+vendor/media-vendor/katex/dist/contrib/mhchem.min.js
+  s_1c46d58ed67333::t_b0d8dea5dd464f 1
+vendor/media-vendor/katex/dist/contrib/mhchem.mjs
+  s_1c46d58ed67333::t_7c116fc1300747 1-3109
+vendor/media-vendor/katex/dist/contrib/render-a11y-string.js
+  s_1c46d58ed67333::t_f1ce0a784e1e27 1-887
+vendor/media-vendor/katex/dist/contrib/render-a11y-string.min.js
+  s_1c46d58ed67333::t_f0581fa7a5225b 1
+vendor/media-vendor/katex/dist/contrib/render-a11y-string.mjs
+  s_1c46d58ed67333::t_d43a56e9d7b7a6 1-800
+vendor/media-vendor/katex/dist/katex.css
+  s_1c46d58ed67333::t_2c86fc1fba6b0b 1-1210
+vendor/media-vendor/katex/dist/katex.js
+  s_1c46d58ed67333::t_3e4c8f7a17e265 1-19092
+vendor/media-vendor/katex/dist/katex.min.css
+  s_1c46d58ed67333::t_c51764f311a9a3 1
+vendor/media-vendor/katex/dist/katex.min.js
+  s_1c46d58ed67333::t_afacc6fdce8d58 1
+vendor/media-vendor/katex/dist/katex.mjs
+  s_1c46d58ed67333::t_32d81bbaa216e9 1-18549
+vendor/media-vendor/katex/package-info.json
+  s_1c46d58ed67333::t_f52bad57b54965 1-6
+vendor/media-vendor/mermaid.min.js
+  s_1c46d58ed67333::t_e1a0b47d899c9b 1-2029
+vendor/reader-polish.css
+  s_1c46d58ed67333::t_ed8e55418e3292 1-208
+vendor/reader-search.js
+  s_1c46d58ed67333::t_3c4851a83b5b7b 1-61
+vendor/reader-text.js
+  s_1c46d58ed67333::t_7072dc4ddef186 1-178
+vendor/reader.css
+  s_1c46d58ed67333::t_66bfb0c755ae1c 1-8
+vendor/reading-icons.js
+  s_1c46d58ed67333::t_4e48803ba2d47d 1-29
+vendor/reading-ui.css
+  s_1c46d58ed67333::t_0ccb28da718b23 1-289
+vendor/reading-ui.js
+  s_1c46d58ed67333::t_2e88d68cd79c99 1-275
+vendor/source-locator.js
+  s_1c46d58ed67333::t_83fd69687be8d0 1-625
+vendor/source-split.js
+  s_1c46d58ed67333::t_2060baec73aed7 1-67
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "19c090320736a68bcdf0dc03227c1acab91d0ffe",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
