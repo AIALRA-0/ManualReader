@@ -17,7 +17,7 @@ def learning_nodes(material,stored=None):
     return nodes
 
 
-def validate_outline(data,material):
+def validate_outline(data,material,excluded=None,defer_unassigned=False):
     rows=data.get('nodes')
     if not isinstance(rows,list) or len(rows)>1000 or any(not isinstance(r,dict) for r in rows):raise ValueError('请按顺序提交学习章节列表')
     known={};counts={};clean=[];active=[];titles=set();passages={p['id']:p for p in material['passages']}
@@ -57,7 +57,7 @@ def validate_outline(data,material):
         item['depends_on']=list(dict.fromkeys(dependencies))
         known[identity]=item;clean.append(item)
     from reader_responsibility import complete_outline
-    return complete_outline(material,clean)[0]
+    return complete_outline(material,clean,excluded,defer_unassigned)[0]
 
 
 def effective_links(node,nodes,material):
@@ -77,7 +77,9 @@ def _static_learning(material,stored):
     state={}
     nodes=learning_nodes(material,stored.get('learning_outline'));passages=material['passages']
     from reader_responsibility import complete_outline
-    nodes,coverage_plan=complete_outline(material,nodes)
+    from reader_learning_scope import excluded_sources
+    excluded,_=excluded_sources(material,stored)
+    nodes,coverage_plan=complete_outline(material,nodes,excluded,stored.get('planning_mode')=='chapterwise')
     for node in nodes:
         body=[p for p in passages if p.get('explanation_id') in node.get('explanation_ids',[]) or (p.get('file_id')=='primary' and p.get('section_id') in node.get('legacy_section_ids',[]))]
         node['status']='ready' if any(not p.get('heading') and (p.get('zh') or p.get('en') or '').strip() for p in body) else 'planned'

@@ -10,12 +10,9 @@
 
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/workspace-dark.png">
-  <img src="docs/assets/readme/workspace-light.png" alt="完整阅读工作区同时显示讲解目录、英文原文、中文译文、连续讲解、带追问的问答和选择题反馈" width="1400">
-</picture>
+<img src="docs/assets/readme/user-real-hardware.png" alt="真实硬件访谈的六栏阅读页面，展示原文、译文、讲解、用户问题和选择题" width="1600">
 
-图 1 实际运行的六区阅读工作台，使用自撰查价文章和固定合成问答；原文、译文和讲解正在高亮同一步，右侧显示追问与练习反馈
+图 1 用户提供的实际硬件阅读页面；已裁去浏览器与网站地址，保留六栏真实内容与学习状态；下方分区截图另由官网只读连接取得
 
 </div>
 
@@ -59,13 +56,13 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 ### 3.1 目录怎样告诉你正在学什么
 
-学习目录独立于原文件目录；换一份原件查资料时，当前学习路线仍然保留；你自己勾选当前展示内容已读，章节进度才会改变
+学习目录独立于原文件目录；换一份原件查资料时，当前学习路线仍然保留；你自己勾选当前展示内容已读，章节进度才会改变；目录顶部一个按钮可切换单项进度或内外双环
 
 <div align="center">
 
-<img src="docs/assets/readme/learning-outline.png" alt="四章合成学习目录，当前选中缓存命中与未命中章节，其他章节仍可直接进入" width="300">
+<img src="docs/assets/readme/actual-directory.png" alt="实际访谈的学习目录、当前章节与手动进度" width="300">
 
-图 2 目录同时保留学习顺序、当前章节和阅读进度；图中的演示尚未勾选已读
+图 2 真实项目的学习路线与已有进度；显示方式还可切换为外圈阅读、内圈练习的双环
 
 </div>
 
@@ -75,9 +72,9 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 <div align="center">
 
-<img src="docs/assets/readme/source-translation-explanation.png" alt="原文说明缓存命中后读取副本，译文保持相同含义，讲解解释省去哪一步，三栏对应部分都用灰色标出" width="1200">
+<img src="docs/assets/readme/actual-linked-reading.png" alt="真实访谈的英文原文、中文翻译与关联讲解分成三栏，所选内容用灰色标出" width="1200">
 
-图 3 同一句“命中后返回缓存值”在原文、译文和讲解中的对应；讲解继续解释这次省掉了什么动作
+图 3 对着实际材料阅读，翻译忠实对应原文，额外讲解保留独立位置
 
 </div>
 
@@ -87,7 +84,7 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 <div align="center">
 
-<img src="docs/assets/readme/nested-questions.png" alt="缓存命中的问题保留原句与完整回答，后续关于有效副本的追问缩进显示在它下面" width="620">
+<img src="docs/assets/readme/actual-questions.png" alt="真实阅读中保存的问题保留原句、完整回答和多轮追问" width="620">
 
 图 4 同一条问题的来源、回答和追问保留在一起；展开过的回答变绿，未展开的追问仍为黄色
 
@@ -95,17 +92,17 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 ### 3.4 术语与练习怎样帮助复盘
 
-术语保留定义和直观解释；各栏可以分别选择中英文全称、缩写等七种名称方式，也可以保留原词、悬停查看全称；练习围绕已讲清的内容核对判断，选错时说明错在哪里，错题本保留历史作答
+术语保留定义和直观解释；各栏可以分别选择中英文全称、缩写等七种名称方式，也可以保留原词、悬停查看全称；练习围绕已讲清的内容核对判断，选错时说明错在哪里，错题本保留历史作答；自动核对默认关闭，开启后选中选项直接判定
 
 <div align="center">
 
-<img src="docs/assets/readme/term-explanation.png" alt="术语展示独立定义和具体直观解释" width="440">
+<img src="docs/assets/readme/actual-terms.png" alt="术语展示独立定义和具体直观解释" width="440">
 
-图 5.1 术语的定义与直观解释沿用同一个查价案例
+图 5.1 实际阅读时累积的术语，展开查看定义和直观解释
 
-<img src="docs/assets/readme/exercise-feedback.png" alt="选择题显示选项、核对按钮、答对表情与解释" width="440">
+<img src="docs/assets/readme/actual-practice.png" alt="选择题显示选项、核对按钮、答对表情与解释" width="440">
 
-图 5.2 选择题核对刚读过的判断，并解释所选答案
+图 5.2 当前章节的实际练习；可自行开启自动核对，选中选项后直接判定
 
 </div>
 
@@ -117,9 +114,9 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 <div align="center">
 
-<img src="docs/assets/readme/walkthrough-mobile.png" alt="手机宽度下阅读同一条问答，底部标签可以切换其他栏目" width="360">
+<img src="docs/assets/readme/actual-phone-reading.png" alt="手机宽度下阅读同一条问答，底部标签可以切换其他栏目" width="360">
 
-图 6 同一合成项目在 393 像素宽度下的实际界面，使用浏览器视口模拟
+图 6 同一真实项目在 390 像素宽度下的实际界面，使用浏览器视口模拟
 
 </div>
 
@@ -149,10 +146,10 @@ flowchart TD
 
 当前运行路径复用已经算出的章节信息，恢复阅读位置时减少重复重建译文；章节统计先累计总数和已读数，再取得各章范围的计数，避免每章重新扫描全部段落；发行包移除了启动器不再使用的旧界面副本和拼接脚本
 
-三十六项合成单元测试已通过，浏览器也实际走过删答改题、按原编号写回及加载失败恢复，桌面和手机布局分别检查；结果、条件及复现方法见[测试记录](docs/validation.md)和[性能记录](docs/performance.md)
+确定性测试和实际浏览器检查覆盖删答改题、跨章节写回、服务重启、阅读完成、双环进度和自动核对；大项目使用 2271 个片段的 EXAM2 与累积数十条追问的访谈项目，测试副本保留全部内容规模；结果、条件及复现方法见[测试记录](docs/validation.md)和[性能记录](docs/performance.md)
 
 ## 7 数据和许可怎样处理
 
-公开仓库只包含程序、必要依赖、合成材料和截图，不包含个人阅读资料、数据库、配对凭据、录音或模型权重；升级前备份数据，更新程序时保留已有阅读目录
+公开仓库包含程序、必要依赖、合成示例和经审核的实际使用截图；截图不带网站地址、连接信息或笔记；项目资料、数据库、配对凭据、录音和模型权重不随代码导出；升级前备份数据，更新程序时保留已有阅读目录
 
 本地默认绑定回环地址；对外部署需要 HTTPS、登录保护和项目授权；项目源码尚未另行指定许可证，依赖的许可与来源见[第三方说明](THIRD_PARTY_NOTICES.md)

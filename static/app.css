@@ -471,3 +471,23 @@ html[data-theme=dark]{--answer-unread:#ffd447;--answer-seen:#52e09a}
 .reader-startup{background:radial-gradient(ellipse at center,color-mix(in srgb,var(--boot-text) 5%,var(--boot-bg)),var(--boot-bg));backdrop-filter:blur(4px)}
 html[data-reader-state=loading] .reader-startup::before{content:'';width:32px;height:32px;border:2px solid color-mix(in srgb,var(--boot-text) 20%,transparent);border-top-color:var(--boot-text);border-radius:50%;animation:reader-loading-turn .9s linear infinite}
 @media(prefers-reduced-motion:reduce){.reading-area[aria-busy=true]::before,html[data-reader-state=loading] .reader-startup::before{animation:reader-loading-show .16s ease forwards}.reading-area>.reading-column{transition:none}}
+
+/* 双环共用同一块窄区域；外圈显示阅读，内圈显示练习。 */
+.outline-dual-progress{display:inline-flex;align-items:center;gap:4px;flex:none;min-width:54px;margin-left:4px}
+.outline-dual-progress svg{width:28px;height:28px;flex:none;transform:rotate(-90deg)}
+.outline-dual-progress circle{fill:none;stroke-width:2.5;stroke-linecap:round}
+.outline-dual-progress .progress-track{stroke:var(--line,#444);opacity:.6}
+.outline-dual-progress .progress-value.reading{stroke:var(--text,#ddd)}
+.outline-dual-progress .progress-value.practice{stroke:#7d9db9}
+.dual-progress-values{display:grid;gap:1px;font-size:10px;line-height:1.2;font-variant-numeric:tabular-nums}
+.dual-progress-values .practice-value{color:#7d9db9}
+#practice-auto-check[aria-pressed=true]{background:var(--selected);color:var(--text)}
+#mark-read.is-saving{opacity:.7;animation:reader-save-pulse .8s ease-in-out infinite alternate}
+@keyframes reader-save-pulse{to{opacity:.35}}
+@media(prefers-reduced-motion:reduce){#mark-read.is-saving{animation:none}}
+
+.reader-progress-menu{position:fixed;z-index:1600;min-width:196px;padding:6px;background:var(--surface);border:1px solid var(--line);border-radius:8px;box-shadow:0 5px 20px #0003}
+.reader-progress-menu[hidden]{display:none}
+.progress-menu-option{display:flex;width:100%;padding:9px 12px;border:0;border-radius:5px;background:none;color:var(--text);text-align:left;gap:8px;align-items:center}
+.progress-menu-option:hover,.progress-menu-option[aria-checked=true]{background:var(--selected)}
+.progress-menu-option[aria-checked=true]::after{content:'✓';margin-left:auto}

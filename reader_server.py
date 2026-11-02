@@ -26,6 +26,8 @@ from reader_remote import RemoteMixin,public_base
 from reader_learning import learning_payload,validate_outline
 from reader_term_names import analyze_name,term_name,term_key,normalize_state,display_state
 from reader_teaching import TEACHING_RULES,teaching_context,lesson_task,append_assets,wait_for_user,translation_queue
+from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
+from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
 from reader_reading import save_layout as save_reading_layout
 from reader_quality import answer_parts,public_rules,project_audit,QA_PART_CONTRACT,LESSON_PART_CONTRACT
 from reader_translation import packets as translation_packets,save_groups as save_translation_groups,save_visuals as save_visual_translations
@@ -159,11 +161,11 @@ def sample_records(scope,with_revisions=False):
 
 def progress_payload(progress=None):
     raw=core.read_state() if progress is None else progress
-    m=material();stored=workspace().read()
+    m=material();stored=workspace().read_snapshot()
     # 正常阅读只传当前内容；完整历史继续保存在数据库，按需单独读取。
-    progress={**raw,'rounds':[{**r,'questions':[{**{k:v for k,v in q.items()if k not in ('answer_history','answer_parts_history')},'answer_revision':answer_revision(q)}for q in r['questions']]}for r in raw['rounds']],
+    progress={**{k:v for k,v in raw.items()if k not in ('lesson_tasks','learning_selection_events')},'rounds':[{**r,'questions':[{**{k:v for k,v in q.items()if k not in ('answer_history','answer_parts_history')},'answer_revision':answer_revision(q)}for q in r['questions']]}for r in raw['rounds']],
               'terms':[{k:v for k,v in t.items()if k not in ('definition_history','name_history')}for t in raw.get('terms',[])]}
-    progress,_=display_state(progress)
+    progress,_=display_state(progress,copy_all=False)
     from reader_contract import quiz_display_orders,quiz_quality_flags
     orders=quiz_display_orders(progress.get('quizzes',[]))
     for quiz in progress.get('quizzes',[]):quiz.update(display_order=orders.get(quiz['id'],list(range(len(quiz['options'])))),quality_flags=quiz_quality_flags(quiz))
@@ -174,10 +176,25 @@ def progress_payload(progress=None):
     completion=completion_payload(m,stored,progress,plan=learning)
     learning['coverage_plan']={k:v for k,v in learning.get('coverage_plan',{}).items()if k not in ('source_owners','shared_references')}
     learning['nodes']=[{k:v for k,v in node.items()if k not in ('source_links','owned_source_ids')}for node in learning['nodes']]
-    return {**progress,'learning':learning,'material_revision':material_revision(),
+    return {**progress,'learning':learning,'material_revision':material_revision(),'material_revision_token':str(material_revision()),
             'completion':completion,
             'settings_revision':SETTINGS.stat().st_mtime_ns if SETTINGS.exists() else 0,
-            'reading_progress':reading_progress(m,progress)}
+            'reading_progress':reading_progress(reading_material(m,stored),progress)}
+
+def navigation_progress(state,base_revision):
+    """已确认正文与问答未改变时，只传这次导航或手动完成产生的变化。"""
+    m=material();stored=workspace().read_snapshot();plan=learning_payload(m,stored,state)
+    return {'partial':True,'base_revision':base_revision,'revision':state['revision'],'focus':state['focus'],
+            'learning_node_id':state.get('learning_node_id'),'learning_selection_revision':state.get('learning_selection_revision',0),
+            'learning':{**{k:v for k,v in plan.items()if k in ('selected_id','scope_active','context')},'node_progress':[{k:n[k]for k in ('id','reading_progress','own_reading_progress')}for n in plan['nodes']]},
+            'completion':completion_payload(m,stored,state,plan=plan),'reading_progress':reading_progress(reading_material(m,stored),state),
+            'read_passages':state.get('read_passages',{}),'manual_completions':state.get('manual_completions',{}),
+            'teaching_state':state.get('teaching_state',{}),'history_length':len(state.get('history',[])),
+            'forward_history_length':len(state.get('forward_history',[])),'material_revision':material_revision(),'material_revision_token':str(material_revision()),
+            'settings_revision':SETTINGS.stat().st_mtime_ns if SETTINGS.exists()else 0}
+
+def can_patch_navigation(data,records):
+    return data.get('known_revision')==records['revision'] and str(data.get('known_material_revision'))==str(material_revision())
 
 def statistics_payload(scope,include_records=False):
     entries=library() if scope=='all' else [{'id':mid(),'title':material()['title']}]
@@ -247,6 +264,9 @@ def agent_guide():
     guide['steps']=[s for s in guide['steps'] if not s.startswith('回答或讲解写回时保留用户当前阅读位置；引导换章')]
     guide['endpoints']['teaching_result']='POST /api/teaching/result'
     guide['endpoints']['lesson_task']='GET /api/work?mode=lesson'
+    guide['endpoints']['learning_exclusions']='GET /api/learning/exclusions；POST /api/learning/exclusions'
+    guide['learning_scope']={'exclude':{'passage_ids':['原始单元编号'],'reason':'为何不是本次学习内容','action':'exclude 或 restore','expected_revision':'可选，来自 GET 返回的 revision'},'rule':'排除只影响学习目录与学习覆盖率；原网页、原编号、翻译、问答、笔记和已读记录都保留。原内容改变时原排除不再自动生效，需重新核对','planning':'新项目按章规划：一次只新增一个首层大章，可以同时规划这个大章下的必要子节；未规划的原文留在原文目录与 deferred 清单，不冒充漏失或已学。已有完整目录沿用原编号，不重建；讲解正文仍一次只写回当前任务章节','next_chapter':'新增下一大章和进入下一节都以用户手动完成为条件；不要靠多次调用接口提前铺开所有大章'}
+    guide['lesson_writeback']={'prepare':'先读取 /api/work?mode=lesson，保存返回的 lesson_task_id；它把本次稿件绑定到已开始的章节，不绑定网页此刻显示的位置','submit':'POST /api/teaching/result 同时传 lesson_task_id 和 learning_node_id；写作期间用户切换页面也可保存原任务，不改变用户当前章节','recover':'409 lesson_selection_changed 表示章节状态变化，不是授权失效；保留已有稿件，不重新生成、不要求重新配对。已准备任务可直接重交；旧稿没有任务编号时先回到目标章取得任务后提交原稿','navigation':'/api/learning/select 可传 expected_selection_revision，旧页面不能覆盖已经发生的新切章；章节切换仍须遵守用户手动完成规则'}
     guide['learning_contract']['select_request']={'node_id':'下一章节编号'}
     guide['learning_contract']['advance_rule']='只有 progress.completion.can_advance 为 true 时 Agent 才能换章；这个值只由用户手动完成按钮产生，聊天指令和 Agent 提交不能代替'
     guide['endpoints'].update(coverage='GET /api/coverage',import_source='POST /api/content/import',question_sync='POST /api/questions/sync')
@@ -286,6 +306,8 @@ def agent_guide():
     return guide
 
 class Handler(core.Handler):
+    def lesson_actor(self):
+        return 'agent:'+str(self._grant['id']) if getattr(self,'_remote_machine',False) else 'reader'
     def context(self):
         self._request_started=time.perf_counter();CONTEXT.material_id=self.headers.get('X-Reader-Material') or parse_qs(urlsplit(self.path).query).get('material',[DEFAULT])[0]
     def json(self,data,status=200):
@@ -365,6 +387,9 @@ class Handler(core.Handler):
                 if path=='/api/learning':
                     state=core.read_state();stored=workspace().read();plan=learning_payload(m,stored,state)
                     return self.json({**plan,'completion':completion_payload(m,stored,state,plan=plan)})
+                if path=='/api/learning/exclusions':
+                    stored=workspace().read();active,outdated=excluded_sources(m,stored)
+                    return self.json({'revision':stored['revision'],'exclusions':list(active.values()),'outdated_source_ids':outdated})
                 if path=='/api/coverage':return self.json(coverage_payload(m,workspace().read(),core.read_state()))
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
                 if path=='/api/library':return self.json(library())
@@ -386,7 +411,16 @@ class Handler(core.Handler):
                 if path=='/api/work':
                     query=parse_qs(urlsplit(self.path).query)
                     records=core.read_state();stored=workspace().read()
-                    if query.get('mode')==['lesson']:return self.json(lesson_task(m,stored,records,query.get('node_id',[None])[0]))
+                    if query.get('mode')==['lesson']:
+                        with core.LOCK:
+                            records=core.read_state();target_id=query.get('node_id',[None])[0];scope=records
+                            if target_id and target_id!=learning_payload(m,stored,records)['selected_id']:
+                                resolve_task(records,target_id,self.lesson_actor(),learning_payload(m,stored,records)['selected_id'])
+                                scope={**records,'learning_node_id':target_id}
+                            packet=lesson_task(m,stored,scope,target_id)
+                            task=core.mutate(lambda state:task_for(state,packet['learning_node']['id'],self.lesson_actor(),core.stamp))
+                            packet['lesson_task_id']=task['id'];packet['result_contract']['lesson_task_id']=task['id']
+                        return self.json(packet)
                     packet=work_packet(m,records,query.get('round',[None])[0],query.get('include_answered')==['true'])
                     context=teaching_context(m,stored,records);packet['instructions']+=context.pop('instructions');packet.update(context);packet['question_pool']={**question_pool_status(records,query.get('round',[None])[0]),'selected':len(packet['questions'])}
                     return self.json(packet)
@@ -413,11 +447,13 @@ class Handler(core.Handler):
                     override=mpath().parent/'reading-layout-overrides.json'
                     return self.json({'material_id':mid(),**material()['reading_view'],'override_revision':json.loads(override.read_text('utf8')).get('revision',0) if override.exists() else 0})
             return super().do_GET()
+        except LessonConflict as error:return self.json({'error':str(error),'code':error.code,'retry_with_existing_draft':True,'reauthorization_required':False},409)
         except (ValueError,KeyError,OSError) as error:return self.json({'error':str(error)},400)
     def do_POST(self):
         self.context();path=unquote(urlsplit(self.path).path)
         custom=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/answer',path)) or path in ('/api/speech/transcribe','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',path):custom=True
+        if path=='/api/learning/exclusions':custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
         if not self.safe_origin() or not self.authenticated():return self.json({'error':'连接码或提交来源不正确'},403)
         try:
@@ -463,15 +499,16 @@ class Handler(core.Handler):
                     except (ValueError,KeyError,StopIteration,TypeError) as error:issues.append({'question_id':answer.get('question_id'),'message':str(error)})
                 if set(group['question_ids'])<=set(saved):store.update(run['id'],{'group_id':group['id'],'type':'group_saved'})
                 return self.json({'saved':saved,'issues':issues,'missing_question_ids':list(set(group['question_ids'])-set(saved)),'run':Runs.public(store.get(run['id']))})
-            if (path.startswith(('/api/content/','/api/learning/')) or path in ('/api/question-batches','/api/draft-batches','/api/translations','/api/focus')) and data.get('material_id') is not None and data['material_id']!=mid():raise ValueError('请求体的 material_id 与当前材料不一致，请核对 X-Reader-Material')
+            if (path.startswith(('/api/content/','/api/learning/')) or path in ('/api/teaching/result','/api/question-batches','/api/draft-batches','/api/translations','/api/focus')) and data.get('material_id') is not None and data['material_id']!=mid():raise ValueError('请求体的 material_id 与当前材料不一致，请核对 X-Reader-Material')
             if path=='/api/teaching/result':
                 with core.LOCK:
                     records=core.read_state();node_id=data.get('learning_node_id');plan=learning_payload(material(),workspace().read(),records)
-                    if node_id not in {n['id'] for n in plan['nodes']} or node_id!=plan['selected_id']:return self.json({'error':'本次只能写回当前学习章节'},403)
+                    if node_id not in {n['id'] for n in plan['nodes']}:raise ValueError('目标学习章节不属于当前项目，请核对 learning_node_id')
                     request_id=core.text(data.get('request_id'),'任务提交编号',80);prior=records.get('teaching_results',{}).get(request_id)
                     if prior:
                         if prior['learning_node_id']!=node_id:raise ValueError('这个提交编号已经用于其他章节')
                         return self.json(prior)
+                    task=resolve_task(records,node_id,self.lesson_actor(),plan['selected_id'],data.get('lesson_task_id'))
                     explanation=data.get('explanation')
                     if not isinstance(explanation,dict):raise ValueError('请同时提交本节讲解、术语和练习')
                     for batch in data.get('translations',[]):
@@ -479,13 +516,16 @@ class Handler(core.Handler):
                         extra=workspace().translations({**batch,'complete':False})
                         if extra is None:
                             updated=apply_translations(copy.deepcopy(raw_material()),batch.get('translations'),False);target=mpath();versions=target.parent/'versions';versions.mkdir(exist_ok=True);(versions/(str(target.stat().st_mtime_ns)+'.json')).write_bytes(target.read_bytes());temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps(updated,ensure_ascii=False,indent=2),'utf8');temporary.replace(target)
-                    remaining=translation_queue(material(),learning_payload(material(),workspace().read(),records)['context'])['current_source_ids']
+                    target_node=next(n for n in learning_payload(material(),workspace().read(),records)['nodes']if n['id']==node_id)
+                    target_ids=set(target_node['passage_ids'])|set(target_node.get('source_range',{}).get('passage_ids',[]))|{l['passage_id']for l in target_node['effective_source_links']}
+                    remaining=translation_queue(material(),{'passage_ids':target_ids})['current_source_ids']
                     if remaining:return self.json({'error':'本章关联的原文还有译文缺项，请只补齐这些原文编号后重交已有讲解，不要重新生成讲解','code':'chapter_translation_incomplete','missing_source_ids':remaining,'explanation_preserved_on_client':True},409)
                     payload={**explanation,'learning_node_id':node_id};used={q['passage_id'] for r in records['rounds'] for q in r['questions']}|set(records.get('read_passages',{}))
                     result=workspace().explain(payload,material(),used)
                     def finish_lesson(state):
                         assets=append_assets(state,data,node_id,result['id'],result['passage_ids'],core.stamp)
-                        wait_for_user(state,node_id,core.stamp,request_id)
+                        if state.get('learning_node_id')==node_id:wait_for_user(state,node_id,core.stamp,request_id)
+                        if task:state['lesson_tasks'][task['id']].update(status='saved',request_id=request_id,saved_at=core.stamp())
                         receipt={'request_id':request_id,'learning_node_id':node_id,'explanation':{k:result[k] for k in ('id','version','passage_ids','learning_node_ids')},**assets,'next_action':'handle_current_section'}
                         state.setdefault('teaching_results',{})[request_id]=receipt;return receipt
                     return self.json(core.mutate(finish_lesson))
@@ -493,21 +533,38 @@ class Handler(core.Handler):
                 with core.LOCK:return self.json(workspace().normalize_files(data))
             if path=='/api/learning/outline':
                 with core.LOCK:
-                    store=workspace();value=store.read();value['learning_outline']=validate_outline(data,material());store.write(value,data.get('expected_revision'))
+                    store=workspace();value=store.read();document=material();records=core.read_state();plan=learning_payload(document,value,records)
+                    mode=data.get('planning_mode',value.get('planning_mode')or('chapterwise'if getattr(self,'_remote_machine',False)and not value.get('learning_outline')else'complete'))
+                    if mode not in('chapterwise','complete'):raise ValueError('规划模式只能是 chapterwise 或 complete')
+                    excluded,_=excluded_sources(document,value);nodes=validate_outline(data,document,excluded,mode=='chapterwise')
+                    if getattr(self,'_remote_machine',False)or mode=='chapterwise':chapterwise_outline_guard(value,nodes,{n['id']for n in plan['nodes']},completion_payload(document,value,records)['can_advance'])
+                    value['learning_outline']=nodes;value['planning_mode']=mode;store.write(value,data.get('expected_revision'))
                 return self.json(learning_payload(material(),workspace().read(),core.read_state()))
+            if path=='/api/learning/exclusions':
+                with core.LOCK:
+                    store=workspace();value=store.read();before=copy.deepcopy(value.get('learning_exclusions',[]));rows=update_exclusions(material(),value,data)
+                    if rows!=before:store.write(value,data.get('expected_revision'))
+                    plan=learning_payload(material(),store.read(),core.read_state())
+                    return self.json({'excluded_count':len(excluded_sources(material(),store.read())[0]),'learning':plan,'original_retained':True,'user_records_changed':False})
             if path=='/api/learning/select':
-                plan=learning_payload(material(),workspace().read(),core.read_state());node=next((n for n in plan['nodes'] if n['id']==data.get('node_id')),None)
-                if not node:raise ValueError('没有找到这一个学习章节')
-                if getattr(self,'_remote_machine',False) and plan['selected_id'] and node['id']!=plan['selected_id'] and not completion_payload(material(),workspace().read(),core.read_state())['can_advance']:return self.json({'error':'当前章节尚未由用户勾选完成，Agent 不能进入下一节'},403)
-                def choose_learning(state):
-                    old=dict(state['focus']);old['learning_node_id']=state.get('learning_node_id');state.setdefault('history',[]).append({'focus':old,'view':data.get('previous_view',{})});state['forward_history']=[]
-                    state['learning_node_id']=node['id'];target=next((pid for pid in node['passage_ids'] if not locate(pid).get('heading')),None)
-                    if not target and node.get('source_links'):target=node['source_links'][0]['passage_id']
-                    state['focus']={'passage_id':target,'sentence_id':None,'revision':state['focus']['revision']+1,'view':{}}
-                    if old.get('learning_node_id')!=node['id']:state['teaching_state']={'state':'ready','learning_node_id':node['id'],'updated_at':core.stamp()}
-                    return {'node_id':node['id'],'status':node['status']}
-                result=core.mutate(choose_learning)
-                if data.get('include_progress'):result['progress']=progress_payload()
+                with core.LOCK:
+                    records=core.read_state();selection_guard(records,data)
+                    base_revision=records['revision'];can_patch=can_patch_navigation(data,records)
+                    plan=learning_payload(material(),workspace().read_snapshot(),records);node=next((n for n in plan['nodes'] if n['id']==data.get('node_id')),None)
+                    if not node:raise ValueError('没有找到这一个学习章节')
+                    if getattr(self,'_remote_machine',False) and plan['selected_id'] and node['id']!=plan['selected_id'] and not completion_payload(material(),workspace().read(),records)['can_advance']:return self.json({'error':'当前章节尚未由用户勾选完成，Agent 不能进入下一节'},403)
+                    def choose_learning(state):
+                        old=dict(state['focus']);old['learning_node_id']=state.get('learning_node_id');state.setdefault('history',[]).append({'focus':old,'view':data.get('previous_view',{})});state['forward_history']=[]
+                        record_selection(state,node['id'],core.stamp,'agent'if getattr(self,'_remote_machine',False)else'browser')
+                        state['learning_node_id']=node['id'];target=next((pid for pid in node['passage_ids'] if not locate(pid).get('heading')),None)
+                        if not target and node.get('source_links'):target=node['source_links'][0]['passage_id']
+                        state['focus']={'passage_id':target,'sentence_id':None,'revision':state['focus']['revision']+1,'view':{}}
+                        if old.get('learning_node_id')!=node['id']:state['teaching_state']={'state':'ready','learning_node_id':node['id'],'updated_at':core.stamp()}
+                        result={'node_id':node['id'],'status':node['status']}
+                        if getattr(self,'_remote_machine',False):result['lesson_task_id']=task_for(state,node['id'],self.lesson_actor(),core.stamp)['id']
+                        return result
+                    result=core.mutate(choose_learning)
+                    if data.get('include_progress'):result['progress']=navigation_progress(core.read_state(),base_revision)if can_patch else progress_payload()
                 return self.json(result)
             if path=='/api/projects':
                 identity='project-'+uuid.uuid4().hex[:14];title=core.text(data.get('title'),'项目名称',300)
@@ -609,7 +666,11 @@ class Handler(core.Handler):
                     state.setdefault('read_events',[]).append({'at':at,'passage_ids':ids,'read':data['read'],'channel':channel,'learning_node_id':state.get('learning_node_id'),'client_action':data.get('read_origin')})
                     completion=record_completion(material(),workspace().read(),state,{**data,'passage_ids':ids},core.stamp)
                     return {'passage_ids':ids,'passage_id':ids[0] if len(ids)==1 else None,'read':data['read'],'count':len(ids),'completion':completion}
-                return self.json(core.mutate(mark_page))
+                with core.LOCK:
+                    records=core.read_state();base_revision=records['revision'];can_patch=can_patch_navigation(data,records)
+                    result=core.mutate(mark_page)
+                    if data.get('include_progress'):result['progress']=navigation_progress(core.read_state(),base_revision)if can_patch else progress_payload()
+                return self.json(result)
             answer_match=re.fullmatch(r'/api/questions/([^/]+)/answer',path)
             if answer_match:
                 if getattr(self,'_remote_machine',False) and data.get('action')=='delete':
@@ -738,9 +799,10 @@ class Handler(core.Handler):
                 return self.json(response)
             if path in ('/api/history/back','/api/history/forward'):
                 def save(state):
+                    selection_guard(state,data)
                     source='history' if path.endswith('/back') else 'forward_history';target='forward_history' if source=='history' else 'history'
                     if state.get(source):
-                        old=state[source].pop();state.setdefault(target,[]).append({'focus':dict(state['focus']),'view':data.get('view',{})});state['focus']={**old['focus'],'view':old.get('view',{}),'revision':state['focus']['revision']+1};state['learning_node_id']=old['focus'].get('learning_node_id',state.get('learning_node_id'))
+                        old=state[source].pop();current=dict(state['focus']);current['learning_node_id']=state.get('learning_node_id');state.setdefault(target,[]).append({'focus':current,'view':data.get('view',{})});state['focus']={**old['focus'],'view':old.get('view',{}),'revision':state['focus']['revision']+1};node_id=old['focus'].get('learning_node_id',state.get('learning_node_id'));record_selection(state,node_id,core.stamp,'agent'if getattr(self,'_remote_machine',False)else'browser','history');state['learning_node_id']=node_id
                     return state['focus']
                 return self.json(core.mutate(save))
             match=re.fullmatch(r'/api/rounds/([^/]+)/(status|metrics)',path)
@@ -752,6 +814,7 @@ class Handler(core.Handler):
                     return r
                 return self.json(core.mutate(save))
             return self.json({'error':'没有这个接口'},404)
+        except LessonConflict as error:return self.json({'error':str(error),'code':error.code,'retry_with_existing_draft':True,'reauthorization_required':False},409)
         except (ValueError,KeyError,TypeError,OSError) as error:return self.json({'error':str(error)},400)
 
 class ReaderHTTPServer(ThreadingHTTPServer):

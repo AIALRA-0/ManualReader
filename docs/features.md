@@ -1,109 +1,151 @@
-# 1 怎样打开完整阅读场景
+# 1 先看实际使用中的六栏
 
-启动阅读器后，在项目目录运行下面的命令；端口改为启动器实际显示的端口，再打开命令打印的新 Demo 链接
+首页使用用户提供的硬件访谈截图；下面的分区和手机截图来自官网当前项目，截图连接禁止写入，未更改原记录；原始访谈来自 Chips and Cheese，保留页面中的作者与受访者署名
+
+<div align="center">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="assets/readme/actual-workspace-dark.png">
+  <img src="assets/readme/actual-workspace-light.png" alt="官网只读连接取得的真实访谈阅读页面" width="1500">
+</picture>
+
+图 1 实际硬件阅读中的原文、译文、讲解、问题和练习
+
+</div>
+
+# 2 目录怎样显示路线与完成度
+
+学习目录和原文件目录各自保留；顶部一个按钮可选择阅读完成度、练习完成度或双环；双环外圈与上排数字表示阅读，内圈与下排数字表示练习；只有用户手动勾选才改变阅读完成度
+
+<div align="center">
+
+<img src="assets/readme/actual-directory.png" alt="真实访谈的学习目录与已有阅读进度" width="360">
+
+图 2 真实访谈的学习目录与已有阅读进度
+
+</div>
+
+# 3 三种内容怎样对照
+
+原文展示材料本身，译文保留中文对应，讲解补充理解；点击明确选择一处内容后，另外两栏定位到对应部分，普通滚动不主动触发跳转
+
+<div align="center">
+
+<img src="assets/readme/actual-linked-reading.png" alt="真实访谈中的三栏内容与灰色对应高亮" width="1400">
+
+图 3 真实访谈中的三栏内容与灰色对应高亮
+
+</div>
+
+# 4 问题怎样保留原句和多轮追问
+
+首次问题在译文或讲解的段落下填写并自动保存；问答栏保留原句、回答和缩进追问，未回答时不提前显示继续追问框；理解笔记和追问输入默认折叠
+
+<div align="center">
+
+<img src="assets/readme/actual-questions.png" alt="原句、回答与多轮追问保留在一起" width="650">
+
+图 4 原句、回答与多轮追问保留在一起
+
+</div>
+
+# 5 术语怎样积累并解释
+
+同一术语复用编号，展开后显示定义与直观解释；原文、译文、讲解、问答和练习分别设置名称方式，可保留原词并悬停查看全称
+
+<div align="center">
+
+<img src="assets/readme/actual-terms.png" alt="真实阅读中已经积累的术语与展开解释" width="500">
+
+图 5 真实阅读中已经积累的术语与展开解释
+
+</div>
+
+# 6 练习怎样核对与复习
+
+默认选择后再核对；右上角自动核对按钮开启后，一选就显示判断与解析；曾经答错的题保存在错题本，用户可以手动整理
+
+<div align="center">
+
+<img src="assets/readme/actual-practice.png" alt="当前章节的实际练习和核对入口" width="540">
+
+图 6 当前章节的实际练习和核对入口
+
+</div>
+
+# 7 手机怎样保留同一份记录
+
+手机用底部标签切换各栏，问题、术语和练习仍属于同一项目；图中使用 390 像素浏览器视口，不把桌面多栏挤到一屏
+
+<div align="center">
+
+<img src="assets/readme/actual-phone-reading.png" alt="同一真实项目的手机讲解界面" width="360">
+
+图 7 同一真实项目的手机讲解界面
+
+</div>
+
+# 8 双环和自动核对怎样切换
+
+双环显示方式和自动核对都可关闭，设置刷新后保留；两张局部操作图使用隔离的合成资料，操作不会改到真实项目
+
+<div align="center">
+
+<img src="assets/readme/dual-progress-mobile.png" alt="手机上切换目录进度模式" width="360">
+
+图 8 手机上切换目录进度模式
+
+</div>
+
+<div align="center">
+
+<img src="assets/readme/automatic-check-mobile.png" alt="自动核对开启后的手机选择题界面" width="360">
+
+图 8.1 自动核对保持默认关闭，用户可以随时开启
+
+</div>
+
+# 9 怎样在本地装载可重复的示例
+
+下面命令建立一个独立的四章查价示例，保留十二条固定问答与追问；示例无需调用模型，也不覆盖其他项目
 
 ~~~sh
-# 将合成资料装入一个独立的新项目
+# 端口使用启动器实际显示的值
 python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 ~~~
 
-这份自撰文章沿同一个商品 42 解释查价、命中、未命中与改价后的处理，四章内容和十二条固定问答都可直接阅读；装载演示不调用模型，不改其他项目
+[删除、连接与写回接口](agent-api.md) · [测试记录](validation.md) · [性能记录](performance.md) · [离线语音](offline-voice.md)
 
-<div align="center">
 
-<img src="assets/readme/workspace-dark.png" alt="六区工作台中都有完整的原文、翻译、讲解、问答和练习" width="1400">
+# 10 删除和加载怎样反馈
 
-图 1 实际运行的合成阅读场景，原文、译文与讲解正在对应同一段内容
-
-</div>
-
-# 2 目录怎样保留学习路线
-
-点击目录章节，会切换负责的原文范围、译文、讲解和相关问题；切换原文文件查资料时，主学习目录仍然独立；章节进度只由用户勾选当前展示内容已读后改变，回答的绿三角单独记录是否展开过
-
-<div align="center">
-
-<img src="assets/readme/learning-outline.png" alt="四章目录和当前选中的缓存命中章节" width="300">
-
-图 2 演示没有勾选章节已读，写入讲解与答案不会替用户完成阅读
-
-</div>
-
-# 3 三种内容怎样对应起来
-
-点击“条目可用时，服务从缓存读出 88”这一段，在原文核对动作，在译文读中文，在讲解弄清省去了哪一步；普通滚动不主动改定位；需要看上下文时可以切到完整译文范围
-
-<div align="center">
-
-<img src="assets/readme/source-translation-explanation.png" alt="原文、译文和讲解各自保留内容，点击后高亮同一过程" width="1200">
-
-图 3 缓存命中过程的三处对应，额外讲解不混入译文
-
-</div>
-
-# 4 问题怎样留下来源并继续追问
-
-首次问题在译文或讲解段落下输入并自动保存，回答集中进入问答栏，原文与回答分开显示；继续追问放在对应问题下，理解笔记与输入框默认折叠；编辑问题后保留原编号，旧回答不会把新问题漏出待答池
-
-<div align="center">
-
-<img src="assets/readme/nested-questions.png" alt="问题保留原句与回答，追问缩进显示在下面" width="620">
-
-图 4 “存在副本就一定能命中吗”仍挂在缓存命中的问题下，未展开的追问保持黄色
-
-</div>
-
-# 5 术语怎样解释，名称怎样切换
-
-点击栏目右侧标签图标，只调整当前栏的名称显示；可使用七种命名模式，也可以保留原词、悬停查看名称；术语展开后保留定义与具体直观解释，同一概念继续复用
-
-<div align="center">
-
-<img src="assets/readme/term-modes.png" alt="七种术语名称方式及首次、悬停模式开关" width="380">
-<img src="assets/readme/term-explanation.png" alt="术语的独立定义和具体直观解释" width="440">
-
-图 5 显示方式由脚本切换，术语记录和原句不改写
-
-</div>
-
-# 6 练习怎样反馈，错题怎样保留
-
-选一项再核对，页面显示结果和具体解释；选错的题进入错题本，复习答对后仍保留，用户可以手动移出；原练习作答与复习记录分别保存
-
-<div align="center">
-
-<img src="assets/readme/exercise-feedback.png" alt="两道缓存练习与核对后的表情和解释" width="520">
-
-图 6 第一题检查命中省掉的步骤，下一题检查到期后怎样处理
-
-</div>
-
-# 7 手机上怎样阅读
-
-底部标签切换原文、译文、讲解、问答与术语练习，当前栏目使用手机可用宽度，记录仍归属于同一个项目；问题旁的语音按钮可连接自行部署的转写服务，配置见[离线语音说明](offline-voice.md)
-
-<div align="center">
-
-<img src="assets/readme/walkthrough-mobile.png" alt="手机问答栏与底部栏目标签" width="360">
-
-图 7 同一合成项目在 393 像素视口中的实际界面，使用浏览器模拟
-
-</div>
-
-# 8 删除和加载怎样反馈
-
-删除前用弹窗核对问题原话和影响范围，Agent 还需一次性预览确认；读取较慢时内容区轻微模糊，显示转圈和真实阶段，结束或出错后恢复操作
+删除前通过弹窗核对原话和影响范围；加载时内容区轻微模糊，显示转圈和真实阶段，完成或出错后恢复操作
 
 <div align="center">
 
 <img src="assets/readme/delete-dialog.png" alt="删除回答前的确认弹窗" width="600">
 
-图 8 删除操作先核对对象，取消后保持原记录
+图 10 删除前核对对象，取消则保留原内容
 
-<img src="assets/readme/loading-chapter.png" alt="暂停实际章节请求后出现模糊、转圈和阶段提示" width="1100">
+<img src="assets/readme/loading-chapter.png" alt="真实章节请求等待时的模糊、转圈和阶段提示" width="1100">
 
-图 9 加载阶段来自真实请求状态，没有填写虚构的百分比
+图 10.1 加载提示跟随实际请求
 
 </div>
 
-测试条件见[测试记录](validation.md)，性能与复现方法见[性能记录](performance.md)
+
+<div align="center">
+
+<img src="assets/readme/term-modes.png" alt="每栏独立的七种术语显示方式" width="380">
+
+图 10.2 术语名称按栏目独立切换
+
+<img src="assets/readme/actual-phone-questions.png" alt="真实项目的手机问答界面" width="360">
+
+图 10.3 手机继续阅读同一份问答
+
+<img src="assets/readme/dual-progress-desktop.png" alt="隔离示例中的桌面双环进度" width="1300">
+
+图 10.4 双环也适用于桌面目录
+
+</div>

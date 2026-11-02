@@ -25,7 +25,7 @@ def check_id(value, label='编号'):
     return value
 
 
-_WORKSPACE_LOCKS={};_WORKSPACE_LOCKS_GUARD=threading.Lock()
+_WORKSPACE_LOCKS={};_WORKSPACE_LOCKS_GUARD=threading.Lock();_WORKSPACE_SNAPSHOTS={}
 
 class Workspace:
     def __init__(self, folder):
@@ -36,6 +36,20 @@ class Workspace:
 
     def read(self):
         return json.loads(self.path.read_text('utf8')) if self.path.exists() else {'revision':0, 'files':[], 'explanations':[], 'presentation':{}}
+
+    def read_snapshot(self):
+        """只读请求复用未变化的文件；需要修改内容时继续调用 read 取得独立对象。"""
+        with self.lock:
+            if not self.path.exists():return self.read()
+            stat=self.path.stat();signature=(stat.st_mtime_ns,stat.st_size,stat.st_ino);key=str(self.path.resolve())
+            with _WORKSPACE_LOCKS_GUARD:
+                cached=_WORKSPACE_SNAPSHOTS.get(key)
+                if cached and cached[0]==signature:return cached[1]
+            value=self.read()
+            with _WORKSPACE_LOCKS_GUARD:
+                if len(_WORKSPACE_SNAPSHOTS)>=4:_WORKSPACE_SNAPSHOTS.pop(next(iter(_WORKSPACE_SNAPSHOTS)))
+                _WORKSPACE_SNAPSHOTS[key]=(signature,value)
+            return value
 
     def revision(self):
         return self.path.stat().st_mtime_ns if self.path.exists() else 0
@@ -112,6 +126,8 @@ class Workspace:
         result['reading_files']=files
         result['explanations']=[{k:v for k,v in row.items() if k!='passages'} for row in value['explanations']]
         result['workspace_revision']=value['revision'];result['presentation']=value['presentation']
+        from reader_learning_scope import excluded_sources
+        excluded,outdated=excluded_sources(result,value);result['learning_excluded_source_ids']=sorted(excluded);result['outdated_learning_exclusions']=outdated
         annotate_explanations(result)
         passages_by_id={p['id']:p for p in result['passages']}
         for p in result['passages']:

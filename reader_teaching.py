@@ -11,6 +11,7 @@ from reader_translation import TRANSLATION_RULES
 
 TEACHING_RULES=['讲解和回答统一采用本轮 writing.instructions，保留完整逻辑与自然记忆线索，不额外增加记忆小节或阅读步骤',
     '用户在 Codex 对话中手动触发任务；只完成本次指定的章节或待答问题，不自行讲下一节',
+    '新项目一次只新增一个首层大章，可以同时规划本大章下必要的子节；正文只生成当前任务章节。已有目录继续沿用，不重建整棵树；网页登录、分享、评论与页尾通过 learning/exclusions 明确排除，保留原件，不用删除原文凑覆盖率',
     '先查看 translation_queue，连续读取当前阅读范围的上下文，再把所有非中文自然语言翻译成中文；用 /api/translations/groups 提交完整中文句组并保留原编号，不把 PDF 换行当成断句。图片先看原图，再用 /api/translations/visuals 复用或补译标签；OCR 为空不能直接算无文字',
     '保留标题、段落、列表、加粗、表格、图片和句级对应；公式、代码本体、路径和标识符保持原样，非中文注释及说明需要翻译',
     '当前范围翻译完成即可开始阅读和讲解，不等待整个项目翻译完成；中文原件直接阅读',
@@ -18,13 +19,15 @@ TEACHING_RULES=['讲解和回答统一采用本轮 writing.instructions，保留
     '首次阅读疑问由用户提出，不预测或编造用户问题；一次读取项目问题池，问题来自译文、讲解和多轮追问，页面筛选不影响待答池',
     '术语和练习按轮次累加，不清空旧条目，不重置旧题答案；回答及笔记保留原编号',
     '通过 /api/teaching/result 写回讲解、术语和练习，继续处理当前章节的提问；不添加额外的确认步骤，不自动切章或标记已读',
+    '开始讲解先读取 /api/work?mode=lesson，保留 lesson_task_id 并在写回时原样提交；页面换章不改变这份稿件的归属。409 lesson_selection_changed 是章节状态冲突，保留已有稿件，不重新生成、不要求重新配对；401 或项目权限 403 才按授权问题处理',
     '只有 current_task.completion.can_advance 为 true，才能用 /api/learning/select 进入下一节；唯一信号是用户在页面勾选完成，聊天中的继续指令不能代替',
     '默认 Terra high，相关问题最多两组并行；不添加审稿 Agent，不循环修复；网页保存问题不会自行调用模型',
 ]
 
 def translation_queue(material,context):
-    current=set(context.get('passage_ids',[]));files={};pending=[];visuals=[]
+    current=set(context.get('passage_ids',[]));files={};pending=[];visuals=[];excluded=set(material.get('learning_excluded_source_ids',[]))
     for p in material['passages']:
+        if p['id']in excluded:continue
         if p.get('content_kind')!='explanation' and p.get('kind') in ('image','visual','page_image','figure','scan'):
             if not translation_ready(p):
                 fid=p.get('file_id','primary');row={'source_id':p['id'],'file_id':fid,'kind':p['kind'],'current':p['id'] in current,'src':p.get('src',''),'refs':p.get('refs',[])}

@@ -205,6 +205,11 @@ class Bridge:
         result=json.loads(text)
         if 'explanation' in result:
             out=Path(out);out.mkdir(parents=True,exist_ok=True);prepared=out/'lesson-result.json'
+            work=out/'work.json'
+            if work.exists():
+                packet=json.loads(work.read_text('utf8'))
+                if packet.get('learning_node',{}).get('id')==result.get('learning_node_id') and packet.get('lesson_task_id'):
+                    result.setdefault('lesson_task_id',packet['lesson_task_id'])
             if prepared.exists():
                 prior=json.loads(prepared.read_text('utf8'))
                 if {k:v for k,v in prior.items() if k!='request_id'}=={k:v for k,v in result.items() if k!='request_id'}:result.setdefault('request_id',prior['request_id'])

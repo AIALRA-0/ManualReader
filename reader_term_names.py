@@ -81,7 +81,12 @@ def normalize_state(state,stamp):
         for q in row['questions']:q['term_ids']=list(dict.fromkeys(redirect.get(i,i) for i in q.get('term_ids',[])))
     return {'changed':changed,'duplicate_redirects':redirect,'pending':pending}
 
-def display_state(state):
-    state=copy.deepcopy(state);report=normalize_state(state,lambda:'display_only')
-    state['terms']=[t for t in state.get('terms',[]) if not t.get('duplicate_of') and not any(i in term_name(t)['issues'] for i in ('missing_english_name','missing_chinese_name','chinese_inside_english'))]
+def display_state(state,copy_all=True):
+    if copy_all:state=copy.deepcopy(state)
+    else:
+        # 进度展示只会调整术语、题目与选项的展示字段，不复制完整回答和用户历史。
+        state={**state,'terms':copy.deepcopy(state.get('terms',[])),'rounds':[{**r,'questions':[dict(q)for q in r['questions']]}for r in state.get('rounds',[])],'quizzes':[dict(q)for q in state.get('quizzes',[])]}
+    report=normalize_state(state,lambda:'display_only')
+    excluded={'missing_english_name','missing_chinese_name','chinese_inside_english'}
+    state['terms']=[t for t in state.get('terms',[]) if not t.get('duplicate_of') and not excluded.intersection(term_name(t)['issues'])]
     return state,report

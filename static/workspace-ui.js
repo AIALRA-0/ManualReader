@@ -29,7 +29,7 @@ window.ReaderWorkspaceUI={create(ctx){
    await ctx.flushDraft();await ctx.waitForFocus?.();if(request!==selectionSequence)return;
    remember();const previousView=ctx.capture();
    if(!columns.flat().includes('explanation')){mode='lesson';columns=presets.lesson.map(c=>[...c]);layout()}
-   const selected=await ctx.post('/api/learning/select',{node_id:id,previous_view:previousView,include_progress:true});
+   let selected;try{selected=await ctx.post('/api/learning/select',{node_id:id,previous_view:previousView,include_progress:true,expected_selection_revision:ctx.state()?.learning_selection_revision||0,known_revision:ctx.state()?.revision,known_material_revision:ctx.state()?.material_revision_token})}catch(error){if(error.code==='selection_changed')await ctx.refresh(true);throw error}
    if(request!==selectionSequence)return;
    browseOriginal=false;await ctx.refresh(true,selected.progress);
    if(request!==selectionSequence)return;

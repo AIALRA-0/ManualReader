@@ -10,12 +10,9 @@
 
 <div align="center">
 
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/workspace-dark.png">
-  <img src="docs/assets/readme/workspace-light.png" alt="The running workspace shows an outline, English source, Chinese translation, explanations, nested questions, and exercise feedback" width="1400">
-</picture>
+<img src="docs/assets/readme/user-real-hardware.png" alt="An actual six-panel hardware interview reading session, with sources, translation, explanations, questions, and exercises" width="1600">
 
-Figure 1 A complete running workspace with a self-authored synthetic price-service article and fixed answers; matching passages are highlighted across source, translation, and explanation
+Figure 1 A user-provided actual hardware reading session, cropped to remove browser chrome and the site address. The section screenshots below were captured through a read-only production connection
 
 </div>
 
@@ -63,9 +60,9 @@ The learning outline remains available when you open another source file. Readin
 
 <div align="center">
 
-<img src="docs/assets/readme/learning-outline.png" alt="A four-chapter synthetic learning outline with the cache hit and miss chapter selected" width="300">
+<img src="docs/assets/readme/actual-directory.png" alt="The actual interview learning outline and manual progress" width="300">
 
-Figure 2 The outline keeps reading order, the current chapter, and progress together; no chapter has been marked read in this demonstration
+Figure 2 The existing learning route and manual progress; optional double rings combine reading and exercise percentages
 
 </div>
 
@@ -75,9 +72,9 @@ These three areas show the original material, its translation, and additional te
 
 <div align="center">
 
-<img src="docs/assets/readme/source-translation-explanation.png" alt="The same cache-hit passage is highlighted in the English source, Chinese translation, and explanation" width="1200">
+<img src="docs/assets/readme/actual-linked-reading.png" alt="An actual interview is displayed as linked English source, Chinese translation, and explanation" width="1200">
 
-Figure 3 The explanation traces which action a cache hit saves while retaining its source relationship
+Figure 3 Source, faithful translation, and additional explanation keep distinct places in an actual reading session
 
 </div>
 
@@ -87,7 +84,7 @@ Write initial questions below a translated or explained passage; they autosave. 
 
 <div align="center">
 
-<img src="docs/assets/readme/nested-questions.png" alt="A cache-hit question retains its source, complete answer, and an indented follow-up" width="620">
+<img src="docs/assets/readme/actual-questions.png" alt="Actual saved questions retain their sources, complete answers, and nested follow-ups" width="620">
 
 Figure 4 Opened answers use green triangles; unopened follow-ups remain yellow
 
@@ -99,13 +96,13 @@ Terms contain an independent definition and a concrete explanation. Seven naming
 
 <div align="center">
 
-<img src="docs/assets/readme/term-explanation.png" alt="A term's independent definition and concrete explanation" width="440">
+<img src="docs/assets/readme/actual-terms.png" alt="A term's independent definition and concrete explanation" width="440">
 
-Figure 5.1 The term definition and concrete explanation share the same price-service example
+Figure 5.1 Terms collected during actual reading retain definitions and concrete explanations
 
-<img src="docs/assets/readme/exercise-feedback.png" alt="Multiple-choice options, answer feedback, and an explanation" width="440">
+<img src="docs/assets/readme/actual-practice.png" alt="Multiple-choice options, answer feedback, and an explanation" width="440">
 
-Figure 5.2 An exercise checks a judgment from the same material and explains the selected answer
+Figure 5.2 Exercises from the current chapter; optional automatic checking evaluates a choice immediately
 
 </div>
 
@@ -117,7 +114,7 @@ Bottom tabs switch source, translation, explanation, questions, and study conten
 
 <div align="center">
 
-<img src="docs/assets/readme/walkthrough-mobile.png" alt="The same question on a 393-pixel mobile viewport, with bottom navigation tabs" width="360">
+<img src="docs/assets/readme/actual-phone-reading.png" alt="An actual reading project in a 390-pixel mobile viewport, with bottom navigation tabs" width="360">
 
 Figure 6 A running mobile-width view, tested with browser viewport emulation
 
@@ -149,7 +146,7 @@ Connections are project-scoped. Agents cannot mark manual progress or change per
 
 The running code reuses calculated learning data, avoids repeated translation reconstruction when restoring a reading position, and derives chapter counts from accumulated totals instead of rescanning every paragraph for every chapter. The distribution omits obsolete UI copies and assembly scripts no longer used by its launchers
 
-Checks cover thirty-six synthetic unit tests, answer deletion and editing under the original identifier, loading-error recovery, and desktop/mobile layouts. See [validation](docs/validation.md) and [performance](docs/performance.md) for actual results, conditions, and reproduction
+Deterministic checks and browser tests cover answer editing, chapter-bound writeback, restart recovery, manual completion, double-ring progress, automatic checking, and desktop/mobile layouts. Large-project measurements use a 2,271-passage exam project and an interview with dozens of saved questions. See [validation](docs/validation.md) and [performance](docs/performance.md) for actual results, conditions, and reproduction
 
 ## 7 How data and licenses are handled
 

@@ -4,9 +4,13 @@ from collections import defaultdict
 
 VERSION='reader-coverage-contract-v1'
 
-def complete_outline(material,nodes):
+def complete_outline(material,nodes,excluded=None,defer_unassigned=False):
     """保留已有章节；尚未分配的材料按原目录追加待讲章节，不声称已讲完。"""
-    nodes=copy.deepcopy(nodes);sources={p['id']:p for p in material.get('passages',[]) if p.get('content_kind')!='explanation' and not p.get('historical')}
+    excluded=set(excluded or());all_sources={p['id']:p for p in material.get('passages',[]) if p.get('content_kind')!='explanation' and not p.get('historical')}
+    nodes=copy.deepcopy(nodes);nodes=[n for n in nodes if not(n['id'].startswith('source-plan-')and not n.get('explanation_ids')and n.get('source_links')and all(l.get('passage_id')in excluded for l in n['source_links']))]
+    for node in nodes:
+        node['source_links']=[l for l in node.get('source_links',[])if l.get('passage_id')not in excluded]
+    sources={pid:p for pid,p in all_sources.items()if pid not in excluded}
     order={p:i for i,p in enumerate(sources)};candidates=defaultdict(list);invalid=[]
     explanations={e['id']:e for e in material.get('explanations',[])}
     for i,node in enumerate(nodes):
@@ -14,7 +18,7 @@ def complete_outline(material,nodes):
         links.extend(link for eid in node.get('explanation_ids',[]) for link in explanations.get(eid,{}).get('source_links',[]))
         for identity in list(node.get('owned_source_ids',[]))+[l.get('passage_id') for l in links]:
             if identity in sources:candidates[identity].append((node.get('number','').count('.'),i,node['id']))
-            elif identity:invalid.append({'chapter_id':node['id'],'source_id':identity})
+            elif identity and identity not in excluded:invalid.append({'chapter_id':node['id'],'source_id':identity})
         node['owned_source_ids']=[]
     owners={pid:sorted(rows,key=lambda x:(-x[0],x[1]))[0][2] for pid,rows in candidates.items()}
     known={n['id']:n for n in nodes}
@@ -25,6 +29,7 @@ def complete_outline(material,nodes):
     files={f['id']:f for f in material.get('reading_files',[])}
     next_number=max([int(n.get('number','0')) for n in nodes if not n.get('parent_id') and str(n.get('number','')).isdigit()]+[-1])+1
     for (fid,sid),ids in missing.items():
+        if defer_unassigned:continue
         f=files.get(fid,{})
         section=next((s for s in f.get('outline',[]) if s.get('id')==sid),{})
         raw_title=section.get('title') or f.get('name') or material.get('title') or '原文'
@@ -41,7 +46,7 @@ def complete_outline(material,nodes):
         node['previous_node_id']=previous;previous=node['id']
         # 阅读先后不自动等于知识依赖，只有明确登记的依赖才列入。
         node['depends_on']=[i for i in node.get('depends_on',[]) if i in known and i!=node['id']]
-    return nodes,{'version':VERSION,'total':len(sources),'assigned':len(owners),'percent':100 if sources else None,
+    return nodes,{'version':VERSION,'total':len(sources),'assigned':len(owners),'percent':round(len(owners)/len(sources)*100,1)if sources else None,'source_total':len(all_sources),'excluded_count':len(excluded&set(all_sources)),'excluded_source_ids':sorted(excluded&set(all_sources)),'deferred':sorted(set(sources)-set(owners))if defer_unassigned else [],
         'source_owners':owners,'unassigned':sorted(set(sources)-set(owners)),'invalid_references':invalid,
         'shared_references':[{'source_id':pid,'chapter_ids':list(dict.fromkeys(r[2] for r in rows)),'responsible_chapter_id':owners[pid]} for pid,rows in candidates.items() if len({r[2] for r in rows})>1],
         'meaning':'比例表示每个原文单元已有负责章节；是否已经翻译、讲解和读完分别计算'}

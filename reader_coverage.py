@@ -579,8 +579,10 @@ def coverage_payload(material, workspace_state, reader_state):
         return result
 
     all_manual = {p['id'] for p in material.get('passages', []) if isinstance(p.get('id'), str)}
+    from reader_learning_scope import excluded_sources
+    excluded,outdated=excluded_sources(material,workspace);learning_scope={pid:ranges for pid,ranges in all_scope.items()if pid not in excluded}
     result = {'schema_version': SCHEMA_VERSION, 'material_id': material.get('id'),
-              'overall': summary(all_scope, all_manual), 'files': [], 'chapters': [], 'issues': issues,
+              'overall': summary(learning_scope, all_manual-set(excluded)), 'original_overall':summary(all_scope, all_manual)if excluded else None,'learning_exclusions':{'count':len(excluded),'source_ids':sorted(excluded),'outdated_source_ids':outdated,'rule':'已排除内容保留原件与旧记录，不计入学习范围，也不算已经讲解或读完'}, 'files': [], 'chapters': [], 'issues': issues,
               'rules': [
                   '翻译和讲解的文字百分比按原文有效字符数计算，图片、表格、公式和代码另列数量',
                   '中文原件可以直接阅读；外文只有在对应范围保存了中文译文时才计入翻译覆盖',
