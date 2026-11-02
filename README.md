@@ -72,7 +72,7 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 <div align="center">
 
-<img src="docs/assets/readme/actual-linked-reading.png" alt="真实访谈的英文原文、中文翻译与关联讲解分成三栏，所选内容用灰色标出" width="1200">
+<img src="docs/assets/readme/actual-linked-reading.png" alt="真实访谈的英文原文、中文翻译与关联讲解分成三栏" width="1400">
 
 图 3 对着实际材料阅读，翻译忠实对应原文，额外讲解保留独立位置
 
@@ -108,13 +108,25 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 更多名称模式、删除确认、自动保存与加载状态见[分区操作图册](docs/features.md)
 
+### 3.5 配色怎样按自己的习惯保存
+
+设置页提供八套浅色与深色组合；可以收藏多套、指定默认组合，或修改七类高亮和进度颜色后保存为自己的方案；已有颜色会保留，切换方案由你决定
+
+<div align="center">
+
+<img src="docs/assets/readme/palettes.png" alt="官网实际设置页中的八套配色、收藏按钮和浅深色自定义颜色" width="900">
+
+图 5.3 官网现有设置页；收藏可以多选，默认组合只选一套
+
+</div>
+
 ## 4 手机上怎样阅读
 
 手机使用底部标签切换原文、译文、讲解、问答和术语练习，当前栏目占满可用宽度；问题仍对应同一份材料，不另建一套移动端记录
 
 <div align="center">
 
-<img src="docs/assets/readme/actual-phone-reading.png" alt="手机宽度下阅读同一条问答，底部标签可以切换其他栏目" width="360">
+<img src="docs/assets/readme/actual-phone-reading.png" alt="手机宽度下阅读真实访谈的讲解，底部标签可以切换其他栏目" width="360">
 
 图 6 同一真实项目在 390 像素宽度下的实际界面，使用浏览器视口模拟
 
@@ -146,7 +158,11 @@ flowchart TD
 
 当前运行路径复用已经算出的章节信息，恢复阅读位置时减少重复重建译文；章节统计先累计总数和已读数，再取得各章范围的计数，避免每章重新扫描全部段落；发行包移除了启动器不再使用的旧界面副本和拼接脚本
 
+本版 71 项确定性测试通过；真实大项目通过正常 HTTPS 与登录链路交替复测，每项目每版 48 次切章；EXAM2 中位数 756 → 626 ms、P95 2037 → 1386 ms，访谈中位数 511 → 422 ms、P95 670 → 540 ms；这些是本次测量值，详细条件与最大值在性能记录中
+
 确定性测试和实际浏览器检查覆盖删答改题、跨章节写回、服务重启、阅读完成、双环进度和自动核对；大项目使用 2271 个片段的 EXAM2 与累积数十条追问的访谈项目，测试副本保留全部内容规模；结果、条件及复现方法见[测试记录](docs/validation.md)和[性能记录](docs/performance.md)
+
+回答和讲解共用公开的[写作规则](reader_prompts.py)；需要材料之外的名称来历、历史或规格时主动检索权威来源，再围绕问题给出明确答案；本版的跨领域对照、耗时和用量见[写作测试记录](docs/writing-quality.md)
 
 ## 7 数据和许可怎样处理
 

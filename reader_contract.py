@@ -92,8 +92,8 @@ def reader_context_fields(data):
 
 
 def writing_guide():
-    from reader_prompts import TEACHING_METHOD, WRITING_VERSION
-    return {'version':WRITING_VERSION,'model':'gpt-6.1-terra','effort':'high','instructions':[TEACHING_METHOD,
+    from reader_prompts import TEACHING_METHOD, NAMING_RULE, WRITING_VERSION
+    return {'version':WRITING_VERSION,'model':'gpt-6.1-terra','effort':'high','instructions':[TEACHING_METHOD,NAMING_RULE,
       '先用普通话正面回答当前问题，再围绕答案解释具体对象、原因和必要前置',
       '问答的“原文：”与“回答：”由接口各占一段显示，正文按真实子问明确作答，再补齐依据；讲解原句只存于来源映射，正文围绕本节内容连贯讲清，不重复抄写原文',
       '本题结论先用普通话说清，所用对象、符号、指代、操作和必要术语就地解释',

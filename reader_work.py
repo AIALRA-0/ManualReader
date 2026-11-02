@@ -137,7 +137,7 @@ def work_packet(material, state, round_id=None, include_answered=False):
                 '回答、术语和每题的选择题在同一次写作中完成；先写完整内容，再由脚本保存和检查',
                 '只输出结果 JSON，不重复打印材料、规划说明或处理总结；写作者不读写文件，也不操作阅读器',
                 '引用链接使用已提供的 reference_url 或实际检索返回的地址，不猜测论文编号',
-                '已给定的完整原文和已有术语可直接使用；只有回答确实需要外部事实时才检索，并保留出处',
+                '已给定的原文和术语直接复用；名称来历、历史、规格等关键事实在材料中没有交代时，主动联网检索权威来源，并保留实际查到的出处',
                 '每条回答按 parts 提交，先按独立疑问拆成多个 parts，各自逐字摘取相应子问并直接作答，再解释这份答案；只有确实共享简短答案的问法才合并，不把整段长问题塞进一个 part；不要重复生成完整 text。脚本统一添加原文与回答首部、关联来源并装配各部分，保留子问原话'],
             'reading_context':learning_payload(material,{'learning_outline':material.get('learning',{}).get('nodes') if material.get('learning',{}).get('scope_active') else None},state)['context'], 'reference_original': reference, 'reference_url':reference_url, 'sources': list(sources.values()),
             'registered_terms': [{**{k: t[k] for k in ('id', 'name', 'aliases','question_ids','definition', 'professional_definition', 'intuitive_explanation', 'needs_intuitive_explanation') if k in t},'version':t.get('version',1)} for t in state['terms']],

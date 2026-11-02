@@ -389,7 +389,7 @@ def _claims(material, workspace, state, index, issues):
     return {pid: _merge(ranges) for pid, ranges in covered.items()}, full, coarse
 
 
-def coverage_payload(material, workspace_state, reader_state):
+def coverage_payload(material, workspace_state, reader_state, *, include_missing=True):
     """返回可直接展示的统计；不会更改材料、来源编号、笔记或阅读记录。"""
     workspace = workspace_state or {}
     state = reader_state or {}
@@ -499,7 +499,8 @@ def coverage_payload(material, workspace_state, reader_state):
     all_scope = {pid: [(0, len(_original(p)))] for pid, p in index.sources.items()}
     read_records = state.get('read_passages', {})
 
-    def summary(scope, manual_ids=None, file_ids=None):
+    def summary(scope, manual_ids=None, file_ids=None,include_excluded=False):
+        if not include_excluded:scope={pid:ranges for pid,ranges in scope.items()if pid not in excluded}
         ids = set(scope)
         chars = sum(_weight(positions.get(pid, []), ranges) for pid, ranges in scope.items())
         translated_chars = sum(_weight(positions.get(pid, []), _intersect(ranges, translated.get(pid, [])))
@@ -568,7 +569,7 @@ def coverage_payload(material, workspace_state, reader_state):
                 elif name == 'translation':
                     metric['label'] = '当前内容按原样保留，不需要翻译文字'
             result[name] = metric
-        manual = set(manual_ids) if manual_ids is not None else ids
+        manual = (set(manual_ids) if manual_ids is not None else ids)-(set()if include_excluded else set(excluded))
         passages = {p['id']: p for p in material.get('passages', []) if isinstance(p.get('id'), str)}
         manual = {pid for pid in manual if pid in passages and not passages[pid].get('heading')
                   and not passages[pid].get('historical') and not passages[pid].get('duplicate_of')
@@ -581,8 +582,8 @@ def coverage_payload(material, workspace_state, reader_state):
     all_manual = {p['id'] for p in material.get('passages', []) if isinstance(p.get('id'), str)}
     from reader_learning_scope import excluded_sources
     excluded,outdated=excluded_sources(material,workspace);learning_scope={pid:ranges for pid,ranges in all_scope.items()if pid not in excluded}
-    result = {'schema_version': SCHEMA_VERSION, 'material_id': material.get('id'),
-              'overall': summary(learning_scope, all_manual-set(excluded)), 'original_overall':summary(all_scope, all_manual)if excluded else None,'learning_exclusions':{'count':len(excluded),'source_ids':sorted(excluded),'outdated_source_ids':outdated,'rule':'已排除内容保留原件与旧记录，不计入学习范围，也不算已经讲解或读完'}, 'files': [], 'chapters': [], 'issues': issues,
+    result = {'schema_version': SCHEMA_VERSION, 'material_id': material.get('id'),'material_title':material.get('title',''),
+              'overall': summary(learning_scope, all_manual-set(excluded)), 'original_overall':summary(all_scope, all_manual,include_excluded=True)if excluded else None,'learning_exclusions':{'count':len(excluded),'source_ids':sorted(excluded),'outdated_source_ids':outdated,'rule':'已排除内容保留原件与旧记录，不计入学习范围，也不算已经讲解或读完'}, 'files': [], 'chapters': [], 'issues': issues,
               'rules': [
                   '翻译和讲解的文字百分比按原文有效字符数计算，图片、表格、公式和代码另列数量',
                   '中文原件可以直接阅读；外文只有在对应范围保存了中文译文时才计入翻译覆盖',
@@ -647,6 +648,30 @@ def coverage_payload(material, workspace_state, reader_state):
                                    'descendant_count': len(descendants) - 1,
                                    **summary(scope, manual),
                                    'own': summary(scopes[node['id']], manual_scopes[node['id']])})
+    if include_missing:
+        # 缺项直接使用上面计算百分比时的字符区间和对象规则，不另猜测覆盖情况。
+        missing={'translation':[],'explanation':[]}
+        file_names={f['id']:f.get('name')or f['id']for f in files}
+        for pid,ranges in learning_scope.items():
+            p=index.sources[pid];original=_original(p);chars=positions.get(pid,[])
+            for name,claims in (('translation',translated),('explanation',explained)):
+                total=_weight(chars,ranges);done=_weight(chars,_intersect(ranges,claims.get(pid,[])));objects_missing=[]
+                for object_pid,kind,start,end in object_rows:
+                    if object_pid!=pid:continue
+                    if name=='translation':
+                        complete=kind=='formula'or (translation_ready(p)if kind=='image'else _weight(chars,translated.get(pid,[]))==len(chars)and languages[pid]!='unknown')
+                    else:complete=pid in full_explanations or start<end and any(a<=start and b>=end for a,b in explained.get(pid,[]))
+                    if not complete:objects_missing.append(kind)
+                if name=='explanation'and pid in code_keys and pid not in full_explanations:objects_missing.append('code')
+                if done==total and not objects_missing:continue
+                spans=[];cursor=0
+                for a,b in _merge(claims.get(pid,[]))+[(len(original),len(original))]:
+                    if a>cursor and _weight(chars,[(cursor,a)]):spans.append({'start':cursor,'end':a,'text':original[cursor:a]})
+                    cursor=max(cursor,b)
+                chapters=[n for n in nodes if pid in scopes.get(n['id'],{})]
+                chapter=max(chapters,key=lambda n:str(n.get('number','')).count('.'))if chapters else {}
+                missing[name].append({'passage_id':pid,'file_id':p.get('file_id','primary'),'file_name':file_names.get(p.get('file_id','primary'),'原文'),'learning_node_id':chapter.get('id'),'chapter':(' '.join([str(chapter.get('number','')),chapter.get('title','')])).strip(),'excerpt':(spans[0]['text']if spans else original or p.get('alt')or p.get('caption')or p.get('kind',''))[:260],'missing_characters':total-done,'missing_objects':dict(Counter(objects_missing)),'ranges':[{'start':v['start'],'end':v['end']}for v in spans],'page_ids':list(dict.fromkeys(r.get('page_id')for r in p.get('refs',[])if r.get('page_id')))})
+        result['missing']=missing
     # 指纹包含统计实际消费的输入；即使手改文件没有递增 revision，也会变化。
     fingerprint = json.dumps({'schema_version': SCHEMA_VERSION, 'material': material,
                               'workspace': workspace, 'reader_state': state},

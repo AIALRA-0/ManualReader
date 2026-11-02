@@ -2,7 +2,7 @@
 from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,unquote
 from http.server import ThreadingHTTPServer
-import base64,copy,json,mimetypes,os,re,sqlite3,threading,uuid,socket,time
+import base64,copy,json,mimetypes,os,re,sqlite3,threading,uuid,socket,time,sys
 import server as core
 from reader_contract import normalize_question,prose_display,writing_guide,canonical_term,reader_context_fields
 from source_parser import parse,apply_translations
@@ -26,12 +26,15 @@ from reader_remote import RemoteMixin,public_base
 from reader_learning import learning_payload,validate_outline
 from reader_term_names import analyze_name,term_name,term_key,normalize_state,display_state
 from reader_teaching import TEACHING_RULES,teaching_context,lesson_task,append_assets,wait_for_user,translation_queue
+from reader_performance import begin_request,server_timing,TimedRLock,timed_call
+from reader_database import DATABASES
 from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
 from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
 from reader_reading import save_layout as save_reading_layout
 from reader_quality import answer_parts,public_rules,project_audit,QA_PART_CONTRACT,LESSON_PART_CONTRACT
 from reader_translation import packets as translation_packets,save_groups as save_translation_groups,save_visuals as save_visual_translations
 
+core.LOCK=TimedRLock()
 ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE={};PROJECT_CACHE={}
 DEFAULT_MATERIAL=Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json')))
 STATIC=Path(os.environ.get('MANUAL_READER_STATIC',str(ROOT/'static')))
@@ -61,7 +64,7 @@ def material(identity=None):
         return PROJECT_CACHE[identity][1]
 def db():
     target=core.DB if mid()==DEFAULT else LIBRARY/mid()/'state.sqlite3'
-    conn=sqlite3.connect(target,timeout=15);conn.execute('PRAGMA journal_mode=WAL');conn.execute('CREATE TABLE IF NOT EXISTS reader_state (id INTEGER PRIMARY KEY CHECK(id=1),value TEXT NOT NULL)');return conn
+    return DATABASES.connect(target)
 def default_focus():
     m=material()
     if not m['passages']:return {'passage_id':None,'sentence_id':None,'revision':1}
@@ -198,12 +201,13 @@ def can_patch_navigation(data,records):
 
 def statistics_payload(scope,include_records=False):
     entries=library() if scope=='all' else [{'id':mid(),'title':material()['title']}]
-    records=[];revisions={};rows=[]
+    records=[];revisions={};rows=[];current_snapshot=None
     for entry in entries:
         identity=entry['id'];document=material(identity);state=stored_state(identity)
+        if identity==mid():current_snapshot=(document,state)
         samples_for_document=samples(document,state);records.extend(samples_for_document)
         revisions[identity]=[state.get('revision',0),mpath(identity).stat().st_mtime_ns,entry['title']]
-        reading=reading_progress(document,state)['overall'];active_questions={q['id'] for r in state.get('rounds',[]) for q in r['questions'] if not q.get('deleted_at')};quizzes=[q for q in state.get('quizzes',[]) if q.get('learning_node_ids') or any(identity in active_questions for identity in q.get('question_ids',[]))]
+        reading=reading_progress(reading_material(document,workspace(identity).read_snapshot()),state)['overall'];active_questions={q['id'] for r in state.get('rounds',[]) for q in r['questions'] if not q.get('deleted_at')};quizzes=[q for q in state.get('quizzes',[]) if q.get('learning_node_ids') or any(identity in active_questions for identity in q.get('question_ids',[]))]
         answered=[q for q in quizzes if q.get('selected') is not None]
         rows.append({'id':identity,'title':entry['title'],'reading':reading,
                      'practice':{'done':len(answered),'total':len(quizzes),'correct':sum(q['selected']==q['correct_index'] for q in answered)},
@@ -212,10 +216,14 @@ def statistics_payload(scope,include_records=False):
     def overall(key):
         result={field:sum(row[key].get(field,0) for row in rows) for field in ('done','total')}
         result['percent']=round(result['done']/result['total']*100,1) if result['total'] else 0
+        if len(rows)==1 and 'percent'in rows[0][key]:result['percent']=rows[0][key]['percent']
         return result
     result={**sample_stats(records,{'overall':overall('reading')}),'data_revisions':revisions,
             'practice':{**overall('practice'),'correct':sum(row['practice']['correct'] for row in rows)},
             'per_material':rows,'terms':sum(row['terms'] for row in rows),'notes':sum(row['notes'] for row in rows)}
+    current_document,current_records=current_snapshot or(material(),stored_state(mid()))
+    result['coverage']=coverage_payload(current_document,workspace().read_snapshot(),current_records)
+    result['current_project']={'id':mid(),'title':current_document['title']}
     if include_records:result['records']=records
     return result
 
@@ -263,6 +271,8 @@ def agent_guide():
     guide['steps']=TEACHING_RULES+guide['steps']
     guide['steps']=[s for s in guide['steps'] if not s.startswith('回答或讲解写回时保留用户当前阅读位置；引导换章')]
     guide['endpoints']['teaching_result']='POST /api/teaching/result'
+    guide['endpoints']['format_explanation']='POST /api/content/explanations/format'
+    guide['explanation_headings']={'write':'新讲解每个话题只使用 reading_heading 或独立 Markdown 标题中的一种；已有独立标题时，下一正文不再显示额外标题','clear':'reading_heading 传空字符串或 null 后持续保持清除；旧排版文件不能覆盖','format':'仅修改已有标题时使用 /api/content/explanations/format，提交 explanation_id、expected_version、headings:[{block_id,reading_heading}]；不要求生成新术语或练习，不改变正文和用户记录'}
     guide['endpoints']['lesson_task']='GET /api/work?mode=lesson'
     guide['endpoints']['learning_exclusions']='GET /api/learning/exclusions；POST /api/learning/exclusions'
     guide['learning_scope']={'exclude':{'passage_ids':['原始单元编号'],'reason':'为何不是本次学习内容','action':'exclude 或 restore','expected_revision':'可选，来自 GET 返回的 revision'},'rule':'排除只影响学习目录与学习覆盖率；原网页、原编号、翻译、问答、笔记和已读记录都保留。原内容改变时原排除不再自动生效，需重新核对','planning':'新项目按章规划：一次只新增一个首层大章，可以同时规划这个大章下的必要子节；未规划的原文留在原文目录与 deferred 清单，不冒充漏失或已学。已有完整目录沿用原编号，不重建；讲解正文仍一次只写回当前任务章节','next_chapter':'新增下一大章和进入下一节都以用户手动完成为条件；不要靠多次调用接口提前铺开所有大章'}
@@ -308,7 +318,12 @@ def agent_guide():
 class Handler(core.Handler):
     def lesson_actor(self):
         return 'agent:'+str(self._grant['id']) if getattr(self,'_remote_machine',False) else 'reader'
+    def end_headers(self):
+        started=getattr(self,'_request_started',time.perf_counter());admit=max(0.,started-getattr(self,'_remote_started',started))*1000
+        self.send_header('Server-Timing',server_timing(started)+f', admit;dur={admit:.2f}')
+        return super().end_headers()
     def context(self):
+        begin_request()
         self._request_started=time.perf_counter();CONTEXT.material_id=self.headers.get('X-Reader-Material') or parse_qs(urlsplit(self.path).query).get('material',[DEFAULT])[0]
     def json(self,data,status=200):
         identity=self.headers.get('X-Reader-Run')
@@ -390,7 +405,10 @@ class Handler(core.Handler):
                 if path=='/api/learning/exclusions':
                     stored=workspace().read();active,outdated=excluded_sources(m,stored)
                     return self.json({'revision':stored['revision'],'exclusions':list(active.values()),'outdated_source_ids':outdated})
-                if path=='/api/coverage':return self.json(coverage_payload(m,workspace().read(),core.read_state()))
+                if path=='/api/coverage':
+                    compact=parse_qs(urlsplit(self.path).query).get('summary')==['true'];value=coverage_payload(m,workspace().read_snapshot(),core.read_state(),include_missing=not compact)
+                    if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
+                    return self.json(value)
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
                 if path=='/api/library':return self.json(library())
                 if path=='/api/library/tree':return self.json(library_tree())
@@ -451,7 +469,7 @@ class Handler(core.Handler):
         except (ValueError,KeyError,OSError) as error:return self.json({'error':str(error)},400)
     def do_POST(self):
         self.context();path=unquote(urlsplit(self.path).path)
-        custom=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/answer',path)) or path in ('/api/speech/transcribe','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
+        custom=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/answer',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',path):custom=True
         if path=='/api/learning/exclusions':custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
@@ -500,6 +518,8 @@ class Handler(core.Handler):
                 if set(group['question_ids'])<=set(saved):store.update(run['id'],{'group_id':group['id'],'type':'group_saved'})
                 return self.json({'saved':saved,'issues':issues,'missing_question_ids':list(set(group['question_ids'])-set(saved)),'run':Runs.public(store.get(run['id']))})
             if (path.startswith(('/api/content/','/api/learning/')) or path in ('/api/teaching/result','/api/question-batches','/api/draft-batches','/api/translations','/api/focus')) and data.get('material_id') is not None and data['material_id']!=mid():raise ValueError('请求体的 material_id 与当前材料不一致，请核对 X-Reader-Material')
+            if path=='/api/content/explanations/format':
+                with core.LOCK:return self.json(workspace().format_explanation(data))
             if path=='/api/teaching/result':
                 with core.LOCK:
                     records=core.read_state();node_id=data.get('learning_node_id');plan=learning_payload(material(),workspace().read(),records)
@@ -548,9 +568,9 @@ class Handler(core.Handler):
                     return self.json({'excluded_count':len(excluded_sources(material(),store.read())[0]),'learning':plan,'original_retained':True,'user_records_changed':False})
             if path=='/api/learning/select':
                 with core.LOCK:
-                    records=core.read_state();selection_guard(records,data)
+                    records=timed_call('read',core.read_state);selection_guard(records,data)
                     base_revision=records['revision'];can_patch=can_patch_navigation(data,records)
-                    plan=learning_payload(material(),workspace().read_snapshot(),records);node=next((n for n in plan['nodes'] if n['id']==data.get('node_id')),None)
+                    plan=timed_call('plan',learning_payload,material(),workspace().read_snapshot(),records);node=next((n for n in plan['nodes'] if n['id']==data.get('node_id')),None)
                     if not node:raise ValueError('没有找到这一个学习章节')
                     if getattr(self,'_remote_machine',False) and plan['selected_id'] and node['id']!=plan['selected_id'] and not completion_payload(material(),workspace().read(),records)['can_advance']:return self.json({'error':'当前章节尚未由用户勾选完成，Agent 不能进入下一节'},403)
                     def choose_learning(state):
@@ -562,9 +582,9 @@ class Handler(core.Handler):
                         if old.get('learning_node_id')!=node['id']:state['teaching_state']={'state':'ready','learning_node_id':node['id'],'updated_at':core.stamp()}
                         result={'node_id':node['id'],'status':node['status']}
                         if getattr(self,'_remote_machine',False):result['lesson_task_id']=task_for(state,node['id'],self.lesson_actor(),core.stamp)['id']
-                        return result
-                    result=core.mutate(choose_learning)
-                    if data.get('include_progress'):result['progress']=navigation_progress(core.read_state(),base_revision)if can_patch else progress_payload()
+                        return result,state
+                    result,selected_state=timed_call('save',core.mutate,choose_learning)
+                    if data.get('include_progress'):result['progress']=timed_call('progress',navigation_progress,selected_state,base_revision)if can_patch else timed_call('progress',progress_payload,selected_state)
                 return self.json(result)
             if path=='/api/projects':
                 identity='project-'+uuid.uuid4().hex[:14];title=core.text(data.get('title'),'项目名称',300)
@@ -669,7 +689,7 @@ class Handler(core.Handler):
                 with core.LOCK:
                     records=core.read_state();base_revision=records['revision'];can_patch=can_patch_navigation(data,records)
                     result=core.mutate(mark_page)
-                    if data.get('include_progress'):result['progress']=navigation_progress(core.read_state(),base_revision)if can_patch else progress_payload()
+                    if data.get('include_progress'):result['progress']=timed_call('progress',navigation_progress,core.read_state(),base_revision)if can_patch else timed_call('progress',progress_payload)
                 return self.json(result)
             answer_match=re.fullmatch(r'/api/questions/([^/]+)/answer',path)
             if answer_match:
@@ -818,13 +838,21 @@ class Handler(core.Handler):
         except (ValueError,KeyError,TypeError,OSError) as error:return self.json({'error':str(error)},400)
 
 class ReaderHTTPServer(ThreadingHTTPServer):
+    # 多栏同时读取页面、文字层和接口时，不让五个待连接名额迫使浏览器重试 TCP。
+    request_queue_size=128
     allow_reuse_address=os.name!='nt'
+    def handle_error(self,request,client_address):
+        if isinstance(sys.exc_info()[1],(BrokenPipeError,ConnectionResetError,ConnectionAbortedError)):return
+        return super().handle_error(request,client_address)
     def server_bind(self):
         if hasattr(socket,'SO_EXCLUSIVEADDRUSE'):
             self.socket.setsockopt(socket.SOL_SOCKET,socket.SO_EXCLUSIVEADDRUSE,1)
         super().server_bind()
 
 class ProductionHandler(RemoteMixin,Handler):
+    def begin_remote(self,method):
+        self._remote_started=time.perf_counter()
+        return super().begin_remote(method)
     def project_available(self,identity):
         if not isinstance(identity,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',identity) or not mpath(identity).exists():return False
         catalog=LIBRARY/'library-index.json'

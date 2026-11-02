@@ -1,7 +1,7 @@
 """保存可编辑问法，按已有阅读记录计算进度，并导出用户自己的问题样本。"""
 from pathlib import Path
 from collections import Counter
-import json,re,os
+import json,re,os,copy,uuid
 from reader_questions import has_current_answer,needs_answer
 
 QUESTION_FORMS={
@@ -22,13 +22,35 @@ QUESTION_FORMS={
 def default_templates():
     return [{'id':f'form-{i:03d}','category':category,'text':text,'enabled':True} for i,(category,text) in enumerate(((c,t) for c,items in QUESTION_FORMS.items() for t in items),1)]
 DEFAULT_COLORS={
- 'light':{'source_fill':'#969696','source_border':'#858585','sentence_fill':'#e1ebe3','sentence_border':'#a4bfae','term_line':'#386f56'},
- 'dark':{'source_fill':'#b0b0b0','source_border':'#9c9c9c','sentence_fill':'#363636','sentence_border':'#808080','term_line':'#b8b8b8'}}
+ 'light':{'source_fill':'#969696','source_border':'#858585','sentence_fill':'#e1ebe3','sentence_border':'#a4bfae','term_line':'#386f56','progress_reading':'#3c6b82','progress_practice':'#95612d'},
+ 'dark':{'source_fill':'#b0b0b0','source_border':'#9c9c9c','sentence_fill':'#363636','sentence_border':'#808080','term_line':'#b8b8b8','progress_reading':'#9bc5d7','progress_practice':'#dfbd82'}}
+
+def palette_catalog():
+    combinations=[('slate','灰蓝与暖金','#3c6b82','#95612d','#9bc5d7','#dfbd82'),('neutral','黑白灰','#555555','#888888','#e0e0e0','#9b9b9b'),('indigo','靛蓝与铜棕','#4c5e9b','#906036','#adbcf0','#dfb68f'),('ocean','海蓝与珊瑚','#236e9a','#a14f47','#8bc9ef','#f0ada5'),('plum','梅紫与沙金','#7b557d','#8d6c2f','#cfaad4','#dfc38c'),('teal','青蓝与赤陶','#276d72','#9d583d','#92ccce','#e7ac91'),('contrast','蓝金高对比','#214caa','#80500a','#9abaff','#ffd386'),('rose','玫瑰与石墨','#9d4f70','#555d6d','#edaac6','#b6bfce')]
+    result=[]
+    for identity,name,lr,lp,dr,dp in combinations:
+        colors=copy.deepcopy(DEFAULT_COLORS)
+        for theme,reading,practice in [('light',lr,lp),('dark',dr,dp)]:
+            colors[theme].update(progress_reading=reading,progress_practice=practice)
+            if identity!='slate':colors[theme].update(term_line=reading,sentence_fill='#e5e5e5'if theme=='light'else'#383838',sentence_border='#969696'if theme=='light'else'#848484')
+        result.append({'id':identity,'name':name,'appearance':colors,'builtin':True})
+    return result
+
+def clean_colors(appearance,previous):
+    if not isinstance(appearance,dict)or set(appearance)-set(DEFAULT_COLORS):raise ValueError('配色需要按浅色和深色分别提交')
+    colors={}
+    for theme,defaults in DEFAULT_COLORS.items():
+        values=appearance.get(theme,previous[theme])
+        if not isinstance(values,dict)or set(values)-set(defaults):raise ValueError('配色字段无效')
+        colors[theme]={**previous[theme],**values}
+        if any(not isinstance(c,str)or not re.fullmatch(r'#[0-9A-Fa-f]{6}',c)for c in colors[theme].values()):raise ValueError('颜色请使用六位十六进制格式，例如 #386f56')
+    return colors
 
 def settings(path):
     value=json.loads(Path(path).read_text('utf8')) if Path(path).exists() else {'templates':default_templates()}
     appearance={theme:{**colors,**value.get('appearance',{}).get(theme,{})} for theme,colors in DEFAULT_COLORS.items()}
-    return {**value,'appearance':appearance,'motion_speed':value.get('motion_speed',.8),'revision':Path(path).stat().st_mtime_ns if Path(path).exists() else 0}
+    custom=value.get('custom_palettes',[]);presets=palette_catalog()+custom
+    return {**value,'appearance':appearance,'custom_palettes':custom,'palette_presets':presets,'palette_favorites':value.get('palette_favorites',['slate','neutral','contrast']),'default_palette':value.get('default_palette'),'active_palette':value.get('active_palette'),'motion_speed':value.get('motion_speed',.8),'revision':Path(path).stat().st_mtime_ns if Path(path).exists() else 0}
 def save_settings(path,data):
     previous=settings(path);rows=data.get('templates',previous['templates'])
     if not isinstance(rows,list) or not 1<=len(rows)<=300:raise ValueError('请保留 1 至 300 条问法')
@@ -40,17 +62,42 @@ def save_settings(path,data):
         if not text or len(text)>500 or '\n' in text:raise ValueError('每条问法请写在一行内，最多 500 字')
         if not category or len(category)>40:raise ValueError('请填写最多 40 字的类别')
         seen.add(identity);clean.append({'id':identity,'category':category,'text':text,'enabled':row.get('enabled',True) is not False})
-    appearance=data.get('appearance',previous['appearance'])
-    if not isinstance(appearance,dict):raise ValueError('配色需要按浅色和深色分别提交')
-    colors={}
-    for theme,defaults in DEFAULT_COLORS.items():
-        values=appearance.get(theme,previous['appearance'][theme])
-        if not isinstance(values,dict) or set(values)-set(defaults):raise ValueError('配色字段无效')
-        colors[theme]={**previous['appearance'][theme],**values}
-        if any(not isinstance(c,str) or not re.fullmatch(r'#[0-9A-Fa-f]{6}',c) for c in colors[theme].values()):raise ValueError('颜色请使用六位十六进制格式，例如 #386f56')
+    colors=clean_colors(data.get('appearance',previous['appearance']),previous['appearance'])
+    custom=copy.deepcopy(previous['custom_palettes']);active=None if'appearance'in data else previous['active_palette'];default=previous['default_palette'];favorites=previous['palette_favorites']
+    action=data.get('palette_action')
+    if action is not None:
+        if not isinstance(action,dict)or action.get('action')not in('save','delete'):raise ValueError('配色操作只能是 save 或 delete')
+        identity=action.get('id');found=next((p for p in custom if p['id']==identity),None)
+        if action['action']=='delete':
+            if not found:raise ValueError('只能删除自己保存的配色组合')
+            custom=[p for p in custom if p['id']!=identity];favorites=[i for i in favorites if i!=identity]
+            if default==identity:default=None
+            if active==identity:active=None
+        else:
+            name=str(action.get('name','')).strip()
+            if not name or len(name)>40:raise ValueError('请给组合填写 1 至 40 字的名称')
+            if identity and not found:raise ValueError('要修改的自定义配色不存在')
+            if any(p['name']==name and p['id']!=identity for p in palette_catalog()+custom):raise ValueError('这个配色名称已存在，请换一个名称')
+            if not found and len(custom)>=30:raise ValueError('最多保存 30 套自定义组合')
+            preset={'id':identity or'palette-'+uuid.uuid4().hex[:16],'name':name,'appearance':clean_colors(action.get('appearance',colors),colors),'builtin':False}
+            custom=[preset if p['id']==identity else p for p in custom]if found else custom+[preset]
+            if'appearance'in data and preset['appearance']==colors:active=preset['id']
+            if preset['id']not in favorites:favorites=[*favorites,preset['id']]
+    presets={p['id']:p for p in palette_catalog()+custom}
+    if'palette_favorites'in data:
+        favorites=data['palette_favorites']
+        if not isinstance(favorites,list)or any(not isinstance(i,str)or i not in presets for i in favorites):raise ValueError('收藏的配色组合不存在')
+        favorites=list(dict.fromkeys(favorites))
+    if'default_palette'in data:
+        default=data['default_palette']
+        if default is not None and default not in presets:raise ValueError('默认配色组合不存在')
+    if'apply_palette'in data:
+        active=data['apply_palette']
+        if active not in presets:raise ValueError('要使用的配色组合不存在')
+        colors=copy.deepcopy(presets[active]['appearance'])
     speed=data.get('motion_speed',previous['motion_speed'])
     if isinstance(speed,bool) or not isinstance(speed,(int,float)) or not .5<=speed<=2:raise ValueError('动画速度请设为 0.5 至 2 倍')
-    target=Path(path);target.parent.mkdir(parents=True,exist_ok=True);temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps({'templates':clean,'appearance':colors,'motion_speed':speed},ensure_ascii=False,indent=2),'utf8');temporary.replace(target);return settings(target)
+    target=Path(path);target.parent.mkdir(parents=True,exist_ok=True);temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps({'templates':clean,'appearance':colors,'motion_speed':speed,'custom_palettes':custom,'palette_favorites':favorites,'default_palette':default,'active_palette':active},ensure_ascii=False,indent=2),'utf8');temporary.replace(target);return settings(target)
 
 def reading_progress(material,state):
     passages=material['passages'];legacy=any(p.get('outline_id') for p in passages)

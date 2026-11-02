@@ -5,7 +5,7 @@ from source_parser import parse, Document, apply_translations, attach_reading_se
 from reader_learning import learning_payload,group_pdf_figures
 from reader_coverage import validate_source_mapping
 from reader_reading import annotate_explanations,prepare as prepare_reading
-from reader_quality import clean_markdown,lesson_display
+from reader_quality import clean_markdown,lesson_display,explanation_headings
 
 
 RULES = [
@@ -140,7 +140,8 @@ class Workspace:
         if headings_file.exists():
             headings=json.loads(headings_file.read_text('utf8')).get('headings',{})
             for p in result['passages']:
-                if p.get('content_kind')=='explanation' and p['id'] in headings:p['reading_heading']=str(headings[p['id']])[:120]
+                if p.get('content_kind')=='explanation' and p['id'] in headings and 'reading_heading'not in p:p['reading_heading']=str(headings[p['id']])[:120]
+        explanation_headings(result['passages'],result['explanations'])
         result['learning']=learning_payload(result,value,{})
         result['association_rules']=RULES
         attach_reading_segments(result)
@@ -272,8 +273,11 @@ class Workspace:
             mapping=validate_source_mapping(material,block)
             p.update(mapping)
             if block.get('source_quote'):p['source_quote']=block['source_quote']
-            if block.get('reading_heading'):p['reading_heading']=str(block['reading_heading'])[:120]
-            clean.append({'id':bid,'markdown':text,**mapping,**({'reading_heading':p['reading_heading']}if p.get('reading_heading')else{}),**({'source_quote':block['source_quote']} if block.get('source_quote') else {})})
+            if 'reading_heading'in block:
+                if block['reading_heading']is not None and not isinstance(block['reading_heading'],str):raise ValueError('阅读标题需要是文字，清除时传空字符串或 null')
+                p['reading_heading']=str(block['reading_heading']or'')[:120]
+            elif old_p and 'reading_heading'in old_p:p['reading_heading']=old_p['reading_heading']
+            clean.append({'id':bid,'markdown':text,**mapping,**({'reading_heading':p['reading_heading']}if 'reading_heading'in p else{}),**({'source_quote':block['source_quote']} if block.get('source_quote') else {})})
         new={'id':identity,'title':title.strip(),'section_id':section,'source_links':clean_links,
              'blocks':clean,'passages':doc.data['passages'],'passage_ids':[p['id'] for p in doc.data['passages']], 'version':(old or {}).get('version',0)+1}
         new.update(validate_source_mapping(material,data))
@@ -282,6 +286,28 @@ class Workspace:
         value['explanations']=[new if r['id']==identity else r for r in value['explanations']] if old else value['explanations']+[new]
         if node is not None:node['explanation_ids']=list(dict.fromkeys(node.get('explanation_ids',[])+[identity]))
         self.write(value,data.get('expected_revision'));return {**{k:v for k,v in new.items() if k!='passages'},'learning_node_ids':[n['id'] for n in value.get('learning_outline',[]) if identity in n.get('explanation_ids',[])]}
+
+    def format_explanation(self,data):
+        """只修改已有标题字段；正文、片段编号和用户记录不参与这次写入。"""
+        with self.lock:
+            value=self.read();identity=check_id(data.get('explanation_id'),'讲解编号')
+            row=next((e for e in value['explanations']if e['id']==identity),None)
+            if not row:raise ValueError('没有找到这份讲解')
+            if data.get('expected_version')!=row['version']:raise ValueError('请先读取讲解的最新版本，再修改标题')
+            updates=data.get('headings')
+            if not isinstance(updates,list)or not updates:raise ValueError('请提交需要修改标题的片段')
+            if set(data)-{'explanation_id','expected_version','expected_revision','headings','material_id'}:raise ValueError('排版接口只接受标题修改；正文请使用讲解写回接口')
+            blocks={b['id']:b for b in row['blocks']};passages={p['id']:p for p in row['passages']};changed=[];seen=set()
+            for item in updates:
+                if not isinstance(item,dict)or set(item)!={'block_id','reading_heading'}:raise ValueError('每项只需 block_id 与 reading_heading')
+                bid=item['block_id'];heading=item['reading_heading']
+                if bid not in blocks or bid in seen:raise ValueError('标题片段不存在或重复')
+                if heading is not None and(not isinstance(heading,str)or len(heading)>120):raise ValueError('标题最多 120 字，清除时传空字符串或 null')
+                seen.add(bid);heading=heading or'';p=passages[identity+'--'+bid]
+                if blocks[bid].get('reading_heading')!=heading or p.get('reading_heading')!=heading:
+                    blocks[bid]['reading_heading']=heading;p['reading_heading']=heading;changed.append(bid)
+            if changed:row['version']+=1;self.write(value,data.get('expected_revision'))
+            return {'id':identity,'version':row['version'],'changed_blocks':changed,'content_changed':False,'assets_required':False}
 
     def present(self,data,material):
         value=self.read();layout=data.get('layout')

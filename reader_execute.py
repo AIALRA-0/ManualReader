@@ -219,7 +219,7 @@ def repair_term_names(bridge,out,question_ids,executable):
     except Exception as error:report.update(state='needs_attention',message=str(error),raw_output_preserved=True)
     save(folder/'script-processing.json',report);return report
 
-def execute(bridge,out,include_answered=False,reader_context=None):
+def _execute(bridge,out,include_answered=False,reader_context=None):
     began=stamp();clock=time.perf_counter();cpu=time.process_time();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
     if (out/'run.json').exists():raise ValueError('这个目录已经有任务记录，请为新一轮选择空目录，避免覆盖原始输出')
     executable=codex_executable()
@@ -245,6 +245,57 @@ def execute(bridge,out,include_answered=False,reader_context=None):
     if errors:raise RuntimeError('部分组需要处理，已完成结果和准确原因见 measured-run.json；没有启动模型修复循环')
     return report
 
+def execute(bridge,out,include_answered=False,reader_context=None):
+    """把执行进程单独登记，外层不把 Shell 提前返回当作写作结束。"""
+    out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
+    if(out/'run.json').exists()or(out/'execution-state.json').exists():raise ValueError('这个目录已有任务，请等待或核对原任务；不能覆盖执行状态或重新派发')
+    state={'pid':os.getpid(),'state':'running','started_at':stamp()}
+    save(out/'execution-state.json',state)
+    try:
+        result=_execute(bridge,out,include_answered,reader_context)
+        save(out/'execution-state.json',{**state,'state':'complete','completed_at':stamp()})
+        return result
+    except Exception as error:
+        save(out/'execution-state.json',{**state,'state':'stopped','completed_at':stamp(),'message':str(error),'completed_outputs_preserved':True})
+        raise
+
+
+def process_running(pid):
+    if not isinstance(pid,int)or pid<=0:return False
+    if os.name=='nt':
+        import ctypes
+        from ctypes import wintypes
+        kernel=ctypes.WinDLL('kernel32',use_last_error=True)
+        kernel.OpenProcess.argtypes=[wintypes.DWORD,wintypes.BOOL,wintypes.DWORD];kernel.OpenProcess.restype=wintypes.HANDLE
+        kernel.GetExitCodeProcess.argtypes=[wintypes.HANDLE,ctypes.POINTER(wintypes.DWORD)];kernel.CloseHandle.argtypes=[wintypes.HANDLE]
+        handle=kernel.OpenProcess(0x1000,False,pid)
+        if not handle:return False
+        try:
+            code=wintypes.DWORD();return bool(kernel.GetExitCodeProcess(handle,ctypes.byref(code)))and code.value==259
+        finally:kernel.CloseHandle(handle)
+    try:os.kill(pid,0);return True
+    except ProcessLookupError:return False
+    except PermissionError:return True
+
+
+def wait_for_report(out,alive=process_running,pause=time.sleep):
+    """只等已经启动的这一轮，不重新派发，也不把等待次数算作新的模型调用。"""
+    out=Path(out);target=out/'measured-run.json';missing=0
+    while not target.exists():
+        state_file=out/'execution-state.json'
+        try:state=json.loads(state_file.read_text('utf8'))if state_file.exists()else{}
+        except (OSError,ValueError):state={}
+        if state.get('state')=='running'and alive(state.get('pid')):
+            save(out/'daily-state.json',{'state':'waiting_for_existing_execution','pid':state['pid'],'updated_at':stamp(),'redispatched':False});missing=0
+        elif state.get('state')in('complete','stopped'):
+            raise RuntimeError('本轮执行进程已结束，但统计文件尚未完成；已保存回答和原始输出保留，请核对 execution-state.json，不要重新派发写作')
+        else:
+            missing+=1
+            if missing>=6:raise RuntimeError('没有找到仍在运行的本轮执行进程，也没有最终统计；请核对本轮日志，不能将此状态当作问题未回答')
+        pause(1)
+    return json.loads(target.read_text('utf8'))
+
+
 def compact_result(report):
     """只向主调度返回运行摘要，完整输入、输出和日志继续保存在本轮目录。"""
     run=report['run']
@@ -263,7 +314,7 @@ def daily(bridge,out,include_answered=False,reader_context=None):
         context_file=out/'reader-feedback.json';save(context_file,reader_context)
         child+=['--reader-feedback-file',str(context_file)]
     shell=('& '+' '.join("'"+v.replace("'","''")+"'" for v in child)) if os.name=='nt' else shlex.join(child)
-    prompt=('你是阅读器日常回答任务的主调度，只处理当前项目的未回答问题。立即执行下面的一条命令；程序会读取问题和材料、附上原图、以两路Terra high普通服务并行生成完整回答、必要前置、术语和练习，并逐组写回。不要开发、测试、部署、读其他文件或历史，也不要自己重复写答案。程序运行期间等待它完成即可；工具返回仍在运行时，用write_stdin等候，单次等候可用60000毫秒，不要频繁轮询。命令完成后，用中文简短汇报实际完成的问题数、写作窗口耗时和返回的用量，明确主调度本次会话的最终用量由启动器在你汇报结束后补入。不得改模型、推理档、服务档或并行数。\n'+shell)
+    prompt=('你是阅读器日常回答任务的主调度，只处理当前项目的未回答问题。立即执行下面的一条命令；程序会读取问题和材料、附上原图、按已准备的分组数量，以Terra high普通服务并行生成完整回答、必要前置、术语和练习，并逐组写回。不要开发、测试、部署、读其他文件或历史，也不要自己重复写答案。程序运行期间必须等到 measured-run.json 已落盘才可汇报，Shell 返回后台会话编号不代表任务结束；工具返回仍在运行时，用write_stdin等候，单次等候可用60000毫秒，不要频繁轮询。命令完成后，用中文简短汇报实际完成的问题数、写作窗口耗时和返回的用量，明确主调度本次会话的最终用量由启动器在你汇报结束后补入。不得改模型、推理档、服务档或并行数。\n'+shell)
     args=command(executable,folder,target,[],writer=False);args[args.index('-s')+1]='danger-full-access'
     for flag in ('shell_tool',):
         pos=args.index(flag);del args[pos-1:pos+1]
@@ -281,7 +332,9 @@ def daily(bridge,out,include_answered=False,reader_context=None):
             except ValueError:continue
             if event.get('type')=='thread.started':session=event['thread_id'];save(folder/'session.json',{'session_id':session})
         code=process.wait()
-    if code or not session:raise RuntimeError('主调度未完成，原始输出与日志已保留')
+    # 主调度可能在 Shell 返回后台会话编号时结束；启动器仍等同一批写作者落盘。
+    report=wait_for_report(out)
+    if not session:raise RuntimeError('写作记录已保留，但主调度没有返回会话编号，暂不能结算主调度用量')
     caller=None
     for attempt in range(20):
         value=conversation_usage(session)
@@ -292,7 +345,7 @@ def daily(bridge,out,include_answered=False,reader_context=None):
     for request in caller['requests']:request['configured_service_tier']=request.get('configured_service_tier') or 'default'
     if (caller.get('model'),caller.get('effort'),caller['configured_service_tier'])!=(MODEL,'high','default'):raise RuntimeError('主调度实际配置不符合Terra high普通服务，日志已保留')
     caller.update(launch_started_at=began,launch_completed_at=stamp(),launch_to_final_seconds=round(time.perf_counter()-clock,3),tool_usage=external_tool_usage((folder/'events.jsonl').read_text('utf8').splitlines()))
-    report=json.loads((out/'measured-run.json').read_text('utf8'));bridge.run_id=report['run']['id'];bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'caller','caller':caller})
+    bridge.run_id=report['run']['id'];bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'caller','caller':caller})
     run=bridge.request('/api/runs/'+bridge.run_id)
     result={'run_id':bridge.run_id,'boundary':'从启动干净主调度到它完成最终汇报；包含读取问题、程序启动、两路写作、必要检索、写回与主调度等待，开发、验收和部署在另一会话记录','started_at':began,'completed_at':stamp(),'launch_to_final_seconds':round(time.perf_counter()-clock,3),'caller':caller,'run':run,'complete_usage':run['complete_usage'],'complete_token_cost_usd':run['complete_estimated_token_cost_usd'],'complete_cost_with_recorded_search_usd':None,'actual_subscription_charge':None}
     if result['complete_token_cost_usd'] is not None:result['complete_cost_with_recorded_search_usd']=round(result['complete_token_cost_usd']+run.get('web_search_calls',0)*.01,8)

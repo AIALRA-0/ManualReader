@@ -149,3 +149,20 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 图 10.4 双环也适用于桌面目录
 
 </div>
+
+
+# 11 大项目实际使用时怎样配合
+
+下面是官网持续阅读的 Hot Chips 访谈，包含真实原件、翻译、逐章讲解、用户追问、术语和练习；截图时所有写入请求被拦截，笔记和进度保持原状；文章内容来自公开访谈，作者署名保留
+
+<div align="center">
+
+<img src="assets/readme/production-workspace.png" alt="官网大项目实际使用的六栏阅读工作台" width="1600">
+
+图 11 官网大项目实际页面；各区仍可独立调整或在手机切换
+
+<img src="assets/readme/palettes.png" alt="八套可收藏和自定义的配色组合" width="900">
+
+图 11.1 每套同时保存浅色与深色；收藏、默认与当前使用状态分别显示
+
+</div>

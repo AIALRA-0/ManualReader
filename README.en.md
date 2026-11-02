@@ -108,6 +108,18 @@ Figure 5.2 Exercises from the current chapter; optional automatic checking evalu
 
 See the [sectioned gallery](docs/features.md) for term modes, deletion confirmation, autosave, and loading states
 
+### 3.5 How can I save color combinations
+
+Settings include eight light/dark palettes. Save multiple favorites, choose one default, or edit seven highlight and progress colors and save a custom palette. Existing colors stay in place until you choose a combination
+
+<div align="center">
+
+<img src="docs/assets/readme/palettes.png" alt="Production settings with eight palettes, favorites and editable light and dark colors" width="900">
+
+Figure 5.3 The real settings page supports multiple favorites and one default palette
+
+</div>
+
 ## 4 How to read on a phone
 
 Bottom tabs switch source, translation, explanation, questions, and study content. The selected panel uses the available width and retains the same project records
@@ -147,6 +159,10 @@ Connections are project-scoped. Agents cannot mark manual progress or change per
 The running code reuses calculated learning data, avoids repeated translation reconstruction when restoring a reading position, and derives chapter counts from accumulated totals instead of rescanning every paragraph for every chapter. The distribution omits obsolete UI copies and assembly scripts no longer used by its launchers
 
 Deterministic checks and browser tests cover answer editing, chapter-bound writeback, restart recovery, manual completion, double-ring progress, automatic checking, and desktop/mobile layouts. Large-project measurements use a 2,271-passage exam project and an interview with dozens of saved questions. See [validation](docs/validation.md) and [performance](docs/performance.md) for actual results, conditions, and reproduction
+
+This version passes 71 deterministic tests. The paired public HTTPS benchmark uses 48 chapter changes per project per version: EXAM2 median 756 → 626 ms and P95 2037 → 1386 ms; interview median 511 → 422 ms and P95 670 → 540 ms. See [performance methodology](docs/performance.md) for maxima and conditions
+
+Answers and explanations share the public [writing rules](reader_prompts.py). Writers actively search authoritative sources for missing historical, naming or specification facts, then answer the actual question. See [cross-domain writing tests](docs/writing-quality.md) for timing, usage and scope
 
 ## 7 How data and licenses are handled
 
