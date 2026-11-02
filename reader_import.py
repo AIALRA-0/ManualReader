@@ -194,6 +194,8 @@ class SourceImporter:
     def import_source(self,data):
         if not isinstance(data,dict):raise ValueError('请按对象提交导入来源')
         if any(key in data for key in ('source_path','local_path','path')):raise ValueError('远程导入不读取服务器本地路径，请上传文件、目录清单或 HTTP(S) 地址')
+        outline_mode=data.get('outline_mode','auto')
+        if outline_mode not in ('auto','agent'):raise ValueError('目录模式请选择auto或agent')
         value=self.workspace.read();expected=data.get('expected_revision')
         if expected is not None and expected!=value['revision']:raise ValueError('文件列表已更新，请刷新后再提交')
         kind=data.get('kind') or data.get('source_kind') or ('directory' if 'files' in data else 'url' if 'url' in data else 'file')
@@ -230,7 +232,7 @@ class SourceImporter:
             name=relative_name(data.get('filename'));raw=decode_file(data.get('content_base64'));archive=archive or Path(name).suffix.lower()=='.zip'
         snapshot=data.get('snapshot_html')
         if snapshot is not None and (not isinstance(snapshot,str) or len(snapshot.encode('utf8'))>MAX_FILE_BYTES):raise ValueError('浏览器 HTML 快照需要是最多 40 MB 的文字')
-        fingerprint=hashlib.sha256(kind.encode()+b'\0'+name.encode()+b'\0'+(source_url or '').encode()+b'\0'+raw+b'\0'+(snapshot or '').encode('utf8')).hexdigest()
+        fingerprint=hashlib.sha256((kind+(':'+outline_mode if outline_mode!='auto' else '')).encode()+b'\0'+name.encode()+b'\0'+(source_url or '').encode()+b'\0'+raw+b'\0'+(snapshot or '').encode('utf8')).hexdigest()
         identity=data.get('file_id') or 'file-'+fingerprint[:20]
         if not isinstance(identity,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,70}',identity) or identity=='primary':raise ValueError('新增文件编号需要使用字母、数字、下划线或连字符，且不能使用 primary')
         old=next((row for row in value['files'] if row['id']==identity),None)
@@ -271,6 +273,13 @@ class SourceImporter:
                     browser=kind=='url' and document['kind']=='html'
                     pending.append({'path':name,'status':'needs_browser_snapshot' if browser else 'pending','action':'upload_browser_snapshot' if browser else 'provide_readable_source','url':source_url,'message':'原始网页已保存，但还没有可读取的正文。请在浏览器打开来源地址，保存完成加载后的 HTML，再提交 snapshot_html' if browser else '原件已保存；请提供可读取的文本、PDF、Office 文档或图片后继续解析'})
                     files[0]['status']='pending'
+            if outline_mode=='agent' and document['passages']:
+                document['suggested_outline']=document['outline'];root_id=identity+'-source-root'
+                document['outline']=[{'id':root_id,'title':data.get('title') or Path(name).stem,'level':1,'parent_id':None,'passage_id':document['passages'][0]['id'],'section_id':root_id}]
+                for p in document['passages']:
+                    p['original_section_id']=p['section_id'];p['section_id']=root_id;p['original_heading']=p['heading'];p['heading']=False
+                    if p['kind']=='heading':p['kind']='paragraph'
+            document['outline_mode']=outline_mode
             document['source']='source' if archive or directory else 'source/'+document.get('source_path',name)
             document['source_url']=source_url;document['original_name']=name
             for unit in document['passages']:
@@ -280,13 +289,18 @@ class SourceImporter:
                     unit['sentences']=[{'id':unit['id']+'-s1','en':label,'zh':'','refs':unit.get('refs',[]),'precision':'object','source_unit_ids':unit.get('source_ids',[])}]
             status='needs_browser_snapshot' if any(p['status']=='needs_browser_snapshot' for p in pending) else 'partial' if pending and _readable(document) else 'pending' if pending else 'ready'
             coverage=_coverage(document,pending,files);document['coverage']=coverage;document['pending']=pending;document['import_status']=status
-            row={'id':identity,'name':name,'title':data.get('title') or document['title'],'kind':document['kind'],'stored_name':stored,'original':True,'outline':document['outline'],'passage_ids':[p['id'] for p in document['passages']],'document':document,'source_kind':kind,'source_url':source_url,'final_url':final_url,'source_tree':'source','source_files':files,'source_fingerprint':fingerprint,'coverage':coverage,'pending':pending,'import_status':status,'model_calls':0}
+            row={'id':identity,'name':name,'title':data.get('title') or document['title'],'kind':document['kind'],'stored_name':stored,'original':True,'outline':document['outline'],'passage_ids':[p['id'] for p in document['passages']],'document':document,'source_kind':kind,'source_url':source_url,'final_url':final_url,'source_tree':'source','source_files':files,'source_fingerprint':fingerprint,'coverage':coverage,'pending':pending,'import_status':status,'model_calls':0,'outline_mode':outline_mode}
             if renderer:row['browser_snapshot']=renderer
             provenance={k:row[k] for k in ('id','name','source_kind','source_url','final_url','source_tree','source_files','source_fingerprint','coverage','pending','import_status','model_calls')}
             (folder/'import-source.json').write_text(json.dumps(provenance,ensure_ascii=False,indent=2),'utf8')
-            value['files'].append(row)
-            shutil.move(str(folder),str(target))
-            try:self.workspace.write(value,value['revision'])
-            except Exception:
-                shutil.rmtree(target);raise
+            # 解析在锁外完成，只在合并新文件时读取最新版本，保留同时写入的译文和讲解。
+            with self.workspace.lock:
+                latest=self.workspace.read();existing=next((f for f in latest['files'] if f['id']==identity),None)
+                if existing:
+                    if existing.get('source_fingerprint')==fingerprint:return existing
+                    raise ValueError('该文件编号已经使用，请使用新编号')
+                latest['files'].append(row);shutil.move(str(folder),str(target))
+                try:self.workspace.write(latest,latest['revision'])
+                except Exception:
+                    shutil.rmtree(target);raise
         return row

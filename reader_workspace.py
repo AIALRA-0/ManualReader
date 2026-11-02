@@ -1,9 +1,11 @@
 """分别保存原文文件、译文和讲解，所有提问继续引用稳定的段落与片段编号。"""
 from pathlib import Path, PurePosixPath
-import base64, copy, difflib, json, re, uuid
+import base64, copy, difflib, json, re, uuid, threading
 from source_parser import parse, Document, apply_translations, attach_reading_segments
 from reader_learning import learning_payload,group_pdf_figures
 from reader_coverage import validate_source_mapping
+from reader_reading import annotate_explanations,prepare as prepare_reading
+from reader_quality import clean_markdown,lesson_display
 
 
 RULES = [
@@ -23,11 +25,14 @@ def check_id(value, label='编号'):
     return value
 
 
+_WORKSPACE_LOCKS={};_WORKSPACE_LOCKS_GUARD=threading.Lock()
+
 class Workspace:
     def __init__(self, folder):
         self.folder = Path(folder)
         self.path = self.folder/'reading-workspace.json'
         self.files = self.folder/'reading-files'
+        with _WORKSPACE_LOCKS_GUARD:self.lock=_WORKSPACE_LOCKS.setdefault(str(self.path.resolve()),threading.RLock())
 
     def read(self):
         return json.loads(self.path.read_text('utf8')) if self.path.exists() else {'revision':0, 'files':[], 'explanations':[], 'presentation':{}}
@@ -35,7 +40,10 @@ class Workspace:
     def revision(self):
         return self.path.stat().st_mtime_ns if self.path.exists() else 0
 
-    def write(self, value, expected=None):
+    def write(self,value,expected=None):
+        with self.lock:return self._write(value,expected)
+
+    def _write(self, value, expected=None):
         if expected is not None and expected != self.read()['revision']:
             raise ValueError('内容已更新，请先读取最新版本再修改')
         self.folder.mkdir(parents=True,exist_ok=True)
@@ -69,12 +77,94 @@ class Workspace:
             for p in copy.deepcopy(row['passages']):
                 p.update(content_kind='explanation',explanation_id=row['id'],source_links=row['source_links'],content_version=row['version'])
                 result['passages'].append(p)
+        # 旧文件曾被重复登记时，只把完全相同的记录显示一次；原始文件与版本记录不改写。
+        projected=[];seen={};aliases=[];conflicts=[]
+        workspace_passages={p['id'] for row in value['explanations'] for p in row['passages']}
+        for p in result['passages']:
+            if p.get('content_kind')=='explanation' and p.get('file_id')=='primary' and not p.get('explanation_id') and p['id'] in workspace_passages:
+                aliases.append({'id':p['id'],'same_explanation_version':True});continue
+            old=seen.get(p['id'])
+            keys=('en','raw_text','file_id','refs','kind')
+            authored_duplicate=old is not None and old.get('content_kind')==p.get('content_kind')=='explanation' and all(old.get(k)==p.get(k) for k in ('en','raw_text','refs','kind'))
+            if old is not None and (all(old.get(k)==p.get(k) for k in keys) or authored_duplicate):
+                # 同一原件重复登记时只合并投影，旧记录不删除；已有非空译文仍然保留。
+                if not old.get('zh') and p.get('zh'):old['zh']=p['zh']
+                elif old.get('zh') and p.get('zh') and old['zh']!=p['zh']:
+                    conflicts.append({'id':p['id'],'field':'zh','values':[old['zh'],p['zh']]})
+                old_sentences={s['id']:s for s in old.get('sentences',[])}
+                for sentence in p.get('sentences',[]):
+                    existing=old_sentences.get(sentence['id'])
+                    if existing is None:old.setdefault('sentences',[]).append(copy.deepcopy(sentence))
+                    elif not existing.get('zh') and sentence.get('zh'):existing['zh']=sentence['zh']
+                if authored_duplicate:
+                    for key in ('explanation_id','source_links','content_version'):
+                        if key in p:old[key]=copy.deepcopy(p[key])
+                aliases.append({'id':p['id'],'file_id':p.get('file_id'),'same_content_and_coordinates':True});continue
+            if old is not None:conflicts.append({'id':p['id'],'field':'source','reason':'同一编号对应不同原文或坐标，需要核对原件'})
+            seen[p['id']]=p;projected.append(p)
+        result['passages']=projected;result['duplicate_import_records']=aliases;result['import_conflicts']=conflicts
+        self.apply_visual_translations(result)
+        for p in result['passages']:
+            if p.get('content_kind')=='explanation':
+                for key in ('en','zh'):
+                    if p.get(key):p[key]=clean_markdown(p[key])
+            if p.get('content_kind')=='explanation' and re.fullmatch(r'\s*(?:#{1,6}\s*)?(?:\*\*)?(?:原文|原句|回答)(?:\*\*)?[：:](?:\*\*)?\s*',p.get('zh') or p.get('en') or ''):p['display_omit']=True
         result['reading_files']=files
         result['explanations']=[{k:v for k,v in row.items() if k!='passages'} for row in value['explanations']]
         result['workspace_revision']=value['revision'];result['presentation']=value['presentation']
+        annotate_explanations(result)
+        passages_by_id={p['id']:p for p in result['passages']}
+        for p in result['passages']:
+            if p.get('content_kind')=='explanation':
+                text=p.get('zh') or p.get('en') or ''
+                alternatives=[passages_by_id.get(link['passage_id'],{}).get(k,'') for link in p.get('source_links',[]) for k in ('en','zh')]
+                p['display_markdown']=lesson_display(text,p.get('source_quote',''),alternatives)
+                if not p['display_markdown'].strip():p['display_omit']=True
+        headings_file=self.folder/'reading-headings.json'
+        if headings_file.exists():
+            headings=json.loads(headings_file.read_text('utf8')).get('headings',{})
+            for p in result['passages']:
+                if p.get('content_kind')=='explanation' and p['id'] in headings:p['reading_heading']=str(headings[p['id']])[:120]
         result['learning']=learning_payload(result,value,{})
         result['association_rules']=RULES
-        return attach_reading_segments(result)
+        attach_reading_segments(result)
+        result['reading_view']=prepare_reading(result,self.folder,original,value['files'])
+        passages_by_id={p['id']:p for p in result['passages']}
+        for group in result['reading_view']['groups']:
+            for segment in group.get('translation_segments',[]):
+                for identity in segment['source_ids']:
+                    if identity in passages_by_id:passages_by_id[identity].setdefault('translation_segments',[]).append(segment)
+        self.apply_visual_translations(result)
+        from reader_alignment import build_alignment
+        result['alignment']=build_alignment(result)
+        return result
+
+    def apply_visual_translations(self,material):
+        """只把已核对原图的结果用于展示；原图变化后保留为未核对。"""
+        from reader_translation import visual_signature
+        from reader_coverage import translation_ready,visual_label_ready
+        path=self.folder/'reading-visual-language.json'
+        if not path.exists():return
+        records=json.loads(path.read_text('utf8')).get('images',[])
+        passages={p['id']:p for p in material['passages']}
+        for row in records:
+            p=passages.get(row.get('image_id'))
+            if not p or row.get('original_signature')!=visual_signature(p):continue
+            status=row.get('status');labels=row.get('labels',[]);sources=row.get('source_ids',[])
+            complete=not row.get('unreadable') and bool(row.get('evidence'))
+            if status=='no_text':complete=complete and not labels
+            elif status=='text_covered_by_ids':complete=complete and bool(sources) and all(i in passages and translation_ready(passages[i]) for i in sources)
+            elif status=='translated':complete=complete and bool(labels) and all(visual_label_ready(x) for x in labels)
+            else:complete=False
+            p.update(visual_language_verified=True,visual_language_status=status,visual_translation_complete=bool(complete),visual_labels=copy.deepcopy(labels))
+            if status=='no_text' and complete:p['source_language']='none'
+            # 已核对的中文标签可以先读；原图中仍无法辨认的小字继续计入缺口。
+            # 标签没有单独文字框时只定位整图，不伪造句级坐标。
+            if status in ('translated','needs_review') and row.get('evidence'):
+                valid=[x for x in labels if visual_label_ready(x) and not x.get('preserve')]
+                label_text=(row.get('translation_markdown') if complete else '') or '\n\n'.join(x['original']+'：'+x['translation'] for x in valid)
+                if label_text and not p.get('zh'):p['zh']=label_text
+            if complete:p['visual_translation_source_ids']=list(sources)
 
     def add_file(self,data):
         return self.import_source(data)
@@ -105,6 +195,9 @@ class Workspace:
         self.write(value,data.get('expected_revision'));return row['document']['coverage']
 
     def explain(self,data,material,used_passages=None):
+        from reader_quality import lesson_parts,clean_markdown
+        data=lesson_parts(data,material)
+        if isinstance(data.get('markdown'),str):data={**data,'markdown':clean_markdown(data['markdown'])}
         value=self.read();identity=check_id(data.get('id') or 'explain-'+uuid.uuid4().hex[:12],'讲解编号')
         node_id=data.get('learning_node_id');node=None
         if node_id is not None:
@@ -135,6 +228,7 @@ class Workspace:
             if not isinstance(markdown,str) or not markdown.strip() or len(markdown)>200000:raise ValueError('请提交讲解 Markdown 或 blocks')
             # 按 Markdown 顶层块划分，代码和表格保留为整体；已存在的相同块沿用编号。
             chunks=re.findall(r'```[\s\S]*?```|~~~[\s\S]*?~~~|(?:(?!\n\s*\n)[\s\S])+',markdown.strip())
+            chunks=[c for c in chunks if not re.fullmatch(r'\s*(?:#{1,6}\s*)?(?:\*\*)?(?:原文|原句|回答)(?:\*\*)?[：:](?:\*\*)?\s*',c)]
             previous=(old or {}).get('blocks',[]);matcher=difflib.SequenceMatcher(a=[b['markdown'] for b in previous],b=chunks,autojunk=False)
             reused={j+k:previous[i+k]['id'] for i,j,n in matcher.get_matching_blocks() for k in range(n)}
             blocks=[{'id':reused.get(i,'block-'+uuid.uuid4().hex[:12]),'markdown':text} for i,text in enumerate(chunks) if text.strip()]
@@ -161,7 +255,9 @@ class Workspace:
             p['sentences'].extend({**s,'historical':True} for s in previous_sentences if s['id'] not in kept)
             mapping=validate_source_mapping(material,block)
             p.update(mapping)
-            clean.append({'id':bid,'markdown':text,**mapping})
+            if block.get('source_quote'):p['source_quote']=block['source_quote']
+            if block.get('reading_heading'):p['reading_heading']=str(block['reading_heading'])[:120]
+            clean.append({'id':bid,'markdown':text,**mapping,**({'reading_heading':p['reading_heading']}if p.get('reading_heading')else{}),**({'source_quote':block['source_quote']} if block.get('source_quote') else {})})
         new={'id':identity,'title':title.strip(),'section_id':section,'source_links':clean_links,
              'blocks':clean,'passages':doc.data['passages'],'passage_ids':[p['id'] for p in doc.data['passages']], 'version':(old or {}).get('version',0)+1}
         new.update(validate_source_mapping(material,data))

@@ -1,6 +1,58 @@
 """保存整组问题，按来源定位；编辑和删除保留原编号、回答与笔记。"""
-import copy,re,uuid
+import copy,re,uuid,hashlib
 from reader_contract import normalize_question
+
+def has_current_answer(question):
+    """回答仍存在且对应当前问题版本时，才算已经回答。"""
+    return bool(str(question.get('answer') or '').strip() and not question.get('deleted_at')
+                and not question.get('answer_deleted_at') and not question.get('answer_outdated')
+                and question.get('answered_question_version',question.get('version',1))==question.get('version',1))
+
+
+def needs_answer(question):
+    return not question.get('deleted_at') and not has_current_answer(question)
+
+
+def question_pool_status(state,round_id=None):
+    questions=[q for r in state['rounds'] if not round_id or r['id']==round_id for q in r['questions'] if not q.get('deleted_at')]
+    return {'saved':len(questions),'pending':sum(needs_answer(q) for q in questions),'answered':sum(has_current_answer(q) for q in questions),'drafts':sum(bool(v.strip()) for values in state.get('drafts',{}).values() for v in values.values()),'scope':'project'}
+
+
+def update_round_status(state,question_id):
+    for row in state['rounds']:
+        if not any(q['id']==question_id for q in row['questions']):continue
+        active=[q for q in row['questions'] if not q.get('deleted_at')]
+        row['status']='answered' if all(has_current_answer(q) for q in active) else 'partial' if any(has_current_answer(q) for q in active) else 'pending'
+
+
+def question_changed(question,stamp):
+    """修改问题后，旧回答留作对照，旧回答的删除标记不延续到新问题。"""
+    question.pop('answer_deleted_at',None)
+    if question.get('answer'):question['answer_outdated']=True
+    else:
+        question.pop('answer_outdated',None)
+        if question.get('answer_parts'):
+            question.setdefault('answer_parts_history',[]).append({'parts':copy.deepcopy(question['answer_parts']),'question_version':question.get('answered_question_version'),'saved_at':stamp(),'action':'question_edit'})
+        for field in ('answer_parts','answer_body','display_answer','previous_answer','answer_revision','format_audit'):
+            question.pop(field,None)
+
+
+def answer_revision(question):
+    if not has_current_answer(question):return None
+    text=str(question['answer'])+'\0'+str(question.get('answered_question_version',question.get('version',1)))
+    return hashlib.sha256(text.encode('utf8')).hexdigest()
+
+def mark_answers_seen(state,rows,stamp):
+    """只登记用户展开过的当前回答，不修改章节已读、笔记或练习。"""
+    if not isinstance(rows,list) or not 1<=len(rows)<=200 or any(not isinstance(row,dict)for row in rows):raise ValueError('请提交本次展开的回答列表')
+    known={q['id']:q for r in state['rounds']for q in r['questions']};seen=[];skipped=[]
+    for row in rows:
+        q=known.get(row.get('question_id'));revision=answer_revision(q)if q and not q.get('deleted_at')else None
+        if not revision or row.get('answer_revision')!=revision:skipped.append(row.get('question_id'));continue
+        records=state.setdefault('answer_views',{});record=records.get(q['id'])
+        if not record or record.get('answer_revision')!=revision:records[q['id']]={'answer_revision':revision,'seen_at':stamp()}
+        seen.append({'question_id':q['id'],**records[q['id']]})
+    return {'seen':seen,'skipped':skipped}
 
 
 def source_for(material,question):
@@ -44,12 +96,26 @@ def infer_learning_node(material,q):
     if q.get('target',{}).get('learning_node_id'):return q['target']['learning_node_id']
     nodes=material.get('learning',{}).get('nodes',[]);p=next((p for p in material['passages'] if p['id']==q.get('passage_id')),{})
     owners=[n['id'] for n in nodes if p.get('explanation_id') in n.get('explanation_ids',[]) or q.get('passage_id') in n.get('passage_ids',[]) or p.get('file_id')=='primary' and p.get('section_id') in n.get('legacy_section_ids',[])]
-    return owners[0] if len(owners)==1 else None
+    if len(owners)==1:return owners[0]
+    # 旧问题只有原文编号时，按章节明确登记的原文归属显示，不改写用户记录。
+    pid=q.get('passage_id');sid=q.get('sentence_id')
+    direct=[n for n in nodes if any(l.get('passage_id')==pid and (not sid or not l.get('sentence_id') or l['sentence_id']==sid) for l in n.get('source_links',[]))]
+    if len(direct)==1:return direct[0]['id']
+    return None
 
 def decorate_question(material,q):
+    from reader_alignment import question_alignment
     result=copy.deepcopy(q);source=source_for(material,q);result['answer_source']=source
+    result['answer_revision']=(q.get('answer_revision') or answer_revision(q)) if has_current_answer(q) else None
+    result['needs_answer']=needs_answer(q)
+    result['alignment']=question_alignment(material,q)
     result['learning_node_id']=infer_learning_node(material,q)
-    if q.get('answer_outdated'):result['previous_answer']=result.get('answer');result['answer_body']=answer_body(q.get('answer'),source);result['answer']=None;return result
+    if not has_current_answer(q):
+        result['answer']=None
+        for key in ('answer_parts','answer_body','display_answer','previous_answer'):result.pop(key,None)
+        if q.get('answer') and not q.get('answer_deleted_at'):
+            result['answer_outdated']=True;result['previous_answer']=q['answer'];result['answer_body']=answer_body(q['answer'],source)
+        return result
     if q.get('answer'):result['answer_body']=answer_body(q['answer'],source);result['display_answer']='原文：\n\n'+source['text']+'\n\n回答：\n\n'+answer_body(q['answer'],source)
     return result
 
@@ -103,12 +169,13 @@ def change_question(state,identity,data,stamp):
         q.setdefault('question_history',[]).append({'text':q['text'],'saved_at':stamp(),'action':'edit'})
         if data.get('expected_version') is not None and data['expected_version']!=q.get('version',1):raise ValueError('问题版本已更新，请读取最新内容')
         q['text']=value;q['original_text']=data['text'];q['question_updated_at']=stamp();q['version']=q.get('version',1)+1
-        if q.get('answer'):q['answer_outdated']=True
+        question_changed(q,stamp);update_round_status(state,identity)
         return {'question_id':identity,'text':value,'original_text':q['original_text'],'version':q['version'],'answer_preserved':bool(q.get('answer'))}
     if data.get('confirmed') is not True:raise ValueError('删除问题前需要再次确认')
+    if q.get('deleted_at'):raise ValueError('这个问题已经删除，历史记录继续保留')
     branch={identity}
     while True:
-        more={item['id'] for item in questions.values() if item.get('parent_question_id') in branch}
+        more={item['id'] for item in questions.values() if not item.get('deleted_at') and item.get('parent_question_id') in branch}
         if more<=branch:break
         branch|=more
     at=stamp()
@@ -116,6 +183,7 @@ def change_question(state,identity,data,stamp):
         item=questions[qid];item.setdefault('deleted_at',at)
         item.setdefault('question_history',[]).append({'text':item['text'],'saved_at':at,'action':'delete'})
         state.get('drafts',{}).get(item['passage_id'],{}).pop('followup:'+qid,None)
+        update_round_status(state,qid)
     return {'question_id':identity,'deleted_ids':sorted(branch),'history_preserved':True}
 
 
@@ -136,10 +204,14 @@ def save_drafts(state,data,locate):
     for row in rows:state['drafts'][row['passage_id']]=row['values']
     return {'saved':True,'passage_ids':[row['passage_id'] for row in rows]}
 
-def sync_questions(state,data,material,create_round,stamp):
+def sync_questions(state,data,material,create_round,stamp,allow_removals=True):
     pid=data.get('passage_id');sid=data.get('sentence_id');parent=data.get('parent_question_id');client=data.get('client_id');version=data.get('version');lines=data.get('lines')
     passage=next((p for p in material['passages'] if p['id']==pid),None)
     if not passage or sid and not any(s['id']==sid for s in passage['sentences']):raise ValueError('提问的位置不属于当前项目')
+    source_refs=data.get('source_refs',[])
+    known={p['id']:p for p in material['passages']}
+    if not isinstance(source_refs,list) or len(source_refs)>500 or any(not isinstance(i,str) or i not in known for i in source_refs):raise ValueError('提问引用的展示组不属于当前项目')
+    if source_refs and pid not in source_refs:raise ValueError('展示组需要包含当前提问的位置')
     if not isinstance(client,str) or not client or len(client)>300 or isinstance(version,bool) or not isinstance(version,int) or version<1:raise ValueError('请提供输入块编号和递增版本')
     if not isinstance(lines,list) or len(lines)>200 or any(not isinstance(x,dict) for x in lines):raise ValueError('问题需要按行提交')
     ids=[x.get('client_line_id') for x in lines]
@@ -168,18 +240,22 @@ def sync_questions(state,data,material,create_round,stamp):
         elif q['text']!=text:
             q.setdefault('question_history',[]).append({'text':q['text'],'saved_at':now,'action':'autosave'})
             q.update(text=text,original_text=raw,version=q.get('version',1)+1,question_updated_at=now)
-            if q.get('answer'):q['answer_outdated']=True
+            question_changed(q,stamp)
         q.pop('deleted_at',None);q['original_text']=raw;q['input_version']=version;q['sync_version']=version;active.add(q['id'])
         excerpt=data.get('source_excerpt')
         if isinstance(excerpt,str) and excerpt.strip():
             q['target']['text']=excerpt.strip();q['target']['source_segment_id']=data.get('source_segment_id')
             if re.search('[\u3400-\u9fff]',excerpt):q['target']['translation']=excerpt.strip()
             else:q['target']['original']=excerpt.strip()
+        if source_refs:
+            q['target']['source_refs']=list(dict.fromkeys(source_refs))
+            q['target']['original']='\n'.join(known[i].get('en','') for i in source_refs if known[i].get('en'))
+            q['target']['translation']='\n'.join(known[i].get('zh','') for i in source_refs if known[i].get('zh'))
     for q in current:
         if q['id'] not in active and not q.get('answer') and not state.get('notes',{}).get(q['id']) and not any(child.get('parent_question_id')==q['id'] and not child.get('deleted_at') for child in allq.values()):
+            if not allow_removals:raise ValueError('Agent 删除问题需要先取得删除预览并二次确认，不能通过清空输入块绕过')
             q['deleted_at']=now;q.setdefault('question_history',[]).append({'text':q['text'],'saved_at':now,'action':'autosave_remove'})
     state['question_inputs'][client]={'version':version,'passage_id':pid,'sentence_id':sid,'parent_question_id':parent,'learning_node_id':node_id,'updated_at':now,'line_ids':[x[0] for x in prepared]}
-    for r in state['rounds']:
-        if any(q.get('client_id')==client for q in r['questions']):r['status']='answered' if all(q.get('answer') and not q.get('answer_outdated') or q.get('deleted_at') for q in r['questions']) else 'partial' if any(q.get('answer') and not q.get('answer_outdated') for q in r['questions']) else 'pending'
+    for q in [q for r in state['rounds'] for q in r['questions'] if q.get('client_id')==client]:update_round_status(state,q['id'])
     questions=[q for r in state['rounds'] for q in r['questions'] if q.get('client_id')==client and not q.get('deleted_at')]
     return {'client_id':client,'version':version,'questions':questions,'saved':True}

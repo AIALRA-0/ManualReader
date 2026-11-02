@@ -1,7 +1,8 @@
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
-import json, os, re, secrets, sqlite3, threading, uuid
+import copy, json, os, re, secrets, sqlite3, threading, uuid
+from reader_questions import has_current_answer,update_round_status
 from datetime import datetime, timezone
 
 ROOT=Path(__file__).resolve().parent
@@ -75,9 +76,10 @@ def save_result(state,rid,data):
  for a in answers:
   if a.get('question_id') not in known:raise ValueError('回答的问题不属于这一轮')
   q=known[a['question_id']]
+  if q.get('deleted_at'):raise ValueError('问题已删除，请重新读取当前问题池')
   if (q.get('client_id') or a.get('question_version') is not None) and a.get('question_version')!=q.get('version',1):raise ValueError('问题已更新，请使用本次 /work 返回的 question_version 写回')
   text(a.get('text'),'回答',30000)
-  if q.get('answer') and not q.get('answer_outdated') and q['answer']!=a['text'].strip():raise ValueError('已有回答，不能直接覆盖')
+  if has_current_answer(q) and q['answer']!=a['text'].strip():raise ValueError('已有回答，不能直接覆盖')
  for t in terms:
   if t.get('term_id'):
    if not any(old['id']==t['term_id'] for old in state['terms']):raise ValueError('要复用的术语不存在')
@@ -91,8 +93,12 @@ def save_result(state,rid,data):
   if not qids or any(qid not in known for qid in qids):raise ValueError('练习必须关联本轮问题')
  for a in answers:
   q=known[a['question_id']]
-  if q.get('answer_outdated') and q.get('answer'):q.setdefault('answer_history',[]).append({'text':q['answer'],'question_text':q.get('answered_question_text'),'question_version':q.get('answered_question_version',1),'saved_at':stamp(),'action':'reanswer'})
+  if q.get('answer') and not has_current_answer(q):q.setdefault('answer_history',[]).append({'text':q['answer'],'question_text':q.get('answered_question_text'),'question_version':q.get('answered_question_version',1),'saved_at':stamp(),'action':'reanswer',**({'parts':copy.deepcopy(q['answer_parts'])} if q.get('answer_parts') else {})})
+  if not has_current_answer(q) and q.get('answer_parts'):
+   if not q.get('answer'):q.setdefault('answer_parts_history',[]).append({'parts':copy.deepcopy(q['answer_parts']),'question_version':q.get('answered_question_version'),'saved_at':stamp(),'action':'reanswer'})
+   q.pop('answer_parts',None)
   q['answer']=a['text'].strip();q['answered_at']=q.get('answered_at') or stamp();q['answered_question_version']=q.get('version',1);q['answered_question_text']=q['text'];q.pop('answer_outdated',None)
+  q.pop('answer_deleted_at',None);q.pop('answer_revision',None)
  for t in terms:
   name=str(t.get('name','')).strip();existing=next((x for x in state['terms'] if x['id']==t.get('term_id') or (name and x['name'].casefold()==name.casefold())),None)
   if not existing:existing={'id':'t-'+uuid.uuid4().hex[:16],'name':name,'definition':t['definition'].strip(),'question_ids':[]};state['terms'].append(existing)
@@ -101,8 +107,9 @@ def save_result(state,rid,data):
    if existing['id'] not in known[qid]['term_ids']:known[qid]['term_ids'].append(existing['id'])
  for quiz in quizzes:
   existing=next((x for x in state['quizzes'] if x['round_id']==rid and x['prompt']==quiz['prompt'].strip()),None)
-  if not existing:state['quizzes'].append({'id':'z-'+uuid.uuid4().hex[:16],'round_id':rid,'prompt':quiz['prompt'].strip(),'options':quiz['options'],'correct_index':quiz['correct_index'],'explanation':quiz['explanation'].strip(),'question_ids':quiz['question_ids'],'selected':None})
- r['status']='answered' if all(q.get('answer') for q in r['questions']) else 'partial';r['updated_at']=stamp();return r
+  if not existing:state['quizzes'].append({'id':'z-'+uuid.uuid4().hex[:16],'round_id':rid,'prompt':quiz['prompt'].strip(),'options':quiz['options'],'correct_index':quiz['correct_index'],'explanation':quiz['explanation'].strip(),'option_explanations':__import__('reader_contract').option_explanations(quiz),'question_ids':quiz['question_ids'],'selected':None})
+ for q in r['questions']:update_round_status(state,q['id'])
+ r['updated_at']=stamp();return r
 
 def round_context(state,rid):
  r=find_round(state,rid);p=PASSAGES[r['passage_id']];allq={q['id']:q for row in state['rounds'] for q in row['questions']};items=[]
@@ -121,7 +128,11 @@ def round_context(state,rid):
 class Handler(BaseHTTPRequestHandler):
  def log_message(self,fmt,*args):return
  def json(self,data,status=200):
-  payload=json.dumps(data,ensure_ascii=False).encode('utf8');self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Content-Length',str(len(payload)));self.end_headers()
+  payload=json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf8');compressed=len(payload)>2048 and bool(re.search(r'(?:^|,)\s*gzip(?:\s*;\s*q=(?!0(?:\.0*)?(?:\s|,|$))[^,]+)?(?:\s*,|\s*$)',self.headers.get('Accept-Encoding',''),re.I))
+  if compressed:payload=__import__('gzip').compress(payload,compresslevel=3)
+  self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Vary','Accept-Encoding')
+  if compressed:self.send_header('Content-Encoding','gzip')
+  self.send_header('Content-Length',str(len(payload)));self.end_headers()
   if self.command!='HEAD':self.wfile.write(payload)
  def file(self,path,ctype):
   if not path.is_file():self.send_error(404);return

@@ -1,7 +1,8 @@
 """把原件转换成可阅读的来源单元，目录和译文均引用这些稳定编号。"""
 from pathlib import Path
 from collections import Counter
-import ast,base64,hashlib,json,re,shutil,statistics,unicodedata
+import ast,base64,hashlib,json,re,shutil,statistics,unicodedata,copy
+from reader_translation import apply_sentence_alignment,translation_flags
 from bs4 import BeautifulSoup,Tag,NavigableString
 
 def normal(text):return re.sub(r'\s+',' ',unicodedata.normalize('NFKC',str(text or ''))).strip()
@@ -96,20 +97,47 @@ def apply_translations(material,rows,complete=True):
         if sid not in known:raise ValueError('译文引用了不存在的原文编号：'+str(sid))
         if sid in seen:raise ValueError('同一个原文编号重复提交：'+sid)
         if not isinstance(row.get('text'),str) or not row['text'].strip():raise ValueError('译文不能为空：'+sid)
+        if 'placeholder' in translation_flags(known[sid].get('en',''),row['text']):raise ValueError('译文必须是成品，不能提交待翻译占位符')
+        apply_sentence_alignment(copy.deepcopy(known[sid]),row)
         seen.add(sid)
     missing=[sid for sid,p in known.items() if sid not in seen and not p.get('zh','').strip()]
     if complete and missing:raise ValueError('还有 '+str(len(missing))+' 个原文单元没有译文，不能标记翻译完成')
     for row in rows:
-        p=known[row['source_id']];p['zh']=row['text'].strip();p['sentences'][0]['zh']=p['zh']
+        p=known[row['source_id']];p['zh']=row['text'].strip();apply_sentence_alignment(p,row);p['translation_audit']=translation_flags(p.get('en',''),p['zh'])
     material['coverage']=audit(material);material['translation_status']='complete' if not missing else 'partial'
     return attach_reading_segments(material)
+
+def _pdf_column_blocks(blocks,width):
+    """先拆开提取器误并的左右栏，再让正文按每一栏自己的顺序阅读。"""
+    middle=width/2;gap=max(5,width*.012)
+    def side(line):
+        box=line['bbox']
+        if abs(line.get('dir',(1,0))[1])>.2:return None
+        return 0 if box[2]<middle-gap else 1 if box[0]>middle+gap else None
+    lines=[line for block in blocks if block.get('type')==0 for line in block.get('lines',[])]
+    body=[line for line in lines if len(''.join(s['text'] for s in line['spans']).strip())>=30]
+    counts=Counter(side(line) for line in body)
+    split_columns=counts[0]>=3 and counts[1]>=3
+    result=[]
+    for index,block in enumerate(blocks):
+        if block.get('type')!=0:continue
+        sides={side(line) for line in block.get('lines',[])}
+        if not split_columns or sides!={0,1}:
+            result.append((str(index),block));continue
+        for column in (0,1):
+            selected=[line for line in block['lines'] if side(line)==column]
+            boxes=[line['bbox'] for line in selected]
+            projected={**block,'lines':selected,'bbox':(min(b[0] for b in boxes),min(b[1] for b in boxes),max(b[2] for b in boxes),max(b[3] for b in boxes))}
+            result.append((str(index)+'.c'+str(column),projected))
+    return result
+
 
 def _pdf(path,identity,output):
     import fitz
     pdf=fitz.open(path);doc=Document(identity,pdf.metadata.get('title') or path.stem,path,'pdf');records=[];sizes=[];margins=Counter()
     for index,page in enumerate(pdf):
         raw=page.get_text('dict');page_records=[]
-        for bi,block in enumerate(raw['blocks']):
+        for bi,block in _pdf_column_blocks(raw['blocks'],page.rect.width):
             if block['type']!=0:continue
             lines=[''.join(s['text'] for s in line['spans']) for line in block['lines']];text='\n'.join(lines).strip()
             if not text:continue
@@ -131,7 +159,7 @@ def _pdf(path,identity,output):
             if rect[1]<page.rect.height*.12 or rect[3]>page.rect.height*.88:margins[re.sub(r'\d+','#',normal(text))]+=1
         records.append(page_records)
     body=statistics.median(sizes) if sizes else 11
-    candidates=[r for r in records[0] if not r['rotated'] and r['box'][1]<pdf[0].rect.height*.28 and len(re.findall(r'[A-Za-z]{2,}',r['text']))>=4 and not re.match(r'^Abstract[.:]',r['text'],re.I)] if records else []
+    candidates=[r for r in records[0] if not r['rotated'] and r['box'][1]<pdf[0].rect.height*.28 and len(re.findall(r'[A-Za-z]{2,}',r['text']))>=4 and (r['size']>body*1.12 or r['first_bold'] or r['title_text'].isupper()) and not re.match(r'^(?:Abstract[.:]|\d+(?:\.\d+)*\.?\s)',r['text'],re.I)] if records else []
     title_row=max(candidates,key=lambda r:(r['size'],-r['box'][1])) if candidates else None
     if title_row:doc.data['title']=normal(title_row['title_text'])
     out=Path(output);out.mkdir(parents=True,exist_ok=True)
@@ -148,7 +176,7 @@ def _pdf(path,identity,output):
         doc.data['pages'][page_id]={'kind':'pdf','number':index+1,'width':page.rect.width,'height':page.rect.height,'image':image,'text_layer':layer}
         entries=records[index]
         # 两栏正文分栏阅读，跨栏标题仍按垂直位置分隔各区域
-        narrow=[r for r in entries if r['box'][2]-r['box'][0]<page.rect.width*.56 and len(r['text'])>80]
+        narrow=[r for r in entries if r['box'][2]-r['box'][0]<page.rect.width*.56 and len(r['text'])>30]
         left=[r for r in narrow if (r['box'][0]+r['box'][2])/2<page.rect.width/2];right=[r for r in narrow if (r['box'][0]+r['box'][2])/2>=page.rect.width/2]
         if left and right and max(r['box'][3] for r in left)>min(r['box'][1] for r in right)+page.rect.height*.15:
             wide=sorted([r for r in entries if r['box'][2]-r['box'][0]>=page.rect.width*.56],key=lambda r:r['box'][1]);ordered=[];remaining=list(entries)
@@ -165,7 +193,7 @@ def _pdf(path,identity,output):
             embedded=re.match(r'^(\d{1,3}(?:\.\d+)*\.[ \t]+[^.\n]{2,110}\.)\s+\S',text)
             abstract=re.match(r'^(Abstract|Keywords)[.:]\s*\S',text,re.I)
             words=re.findall(r'[A-Za-z]{2,}',clean);math_heavy=bool(re.search(r'[∑∫∧=×÷√]|\\(?:frac|sum|int)',clean)) and len(words)<4
-            numbered=bool(re.match(r'^\d+(?:\.\d+)*\.[ \t]+[A-Za-z\u4e00-\u9fff]',text)) and not re.match(r'^\d+\.[ \t]+[A-Z][a-z]+,[ \t]+[A-Z]\.',text)
+            numbered=bool(re.match(r'^(?:\d+(?:\.\d+)+\.?|\d+\.)[ \t]+[A-Za-z\u4e00-\u9fff]',text)) and not re.match(r'^\d+\.[ \t]+[A-Z][a-z]+,[ \t]+[A-Z]\.',text)
             named=bool(re.fullmatch(r'(?:Abstract|Introduction|Conclusion[s]?|Methods|Results|Discussion|References|Bibliography|Acknowledg(?:e)?ments?|Data availability|Code availability|Online content|Appendix(?:\s+\w+)?)',clean,re.I))
             exclude=bool(re.match(r'^(?:Proof[.:]|Theorem\s|Lemma\s|Proposition\s|Corollary\s|Definition\s|Remark\s|Example\s|\d{4}\s+Mathematics|(?:Extended Data )?(?:Fig\.?|Figure|Table)\s*\d|\d+\.[ \t]+[A-Z][a-z]+,)',clean))
             leading=row['leading'];firstline=row['first_line']
@@ -185,6 +213,23 @@ def _pdf(path,identity,output):
             for ri,rect in enumerate(page.get_image_rects(info[0])):
                 doc.add('','image',refs=[{'page_id':page_id,'bbox':list(rect)}],atoms=[f'p{index+1}.image{ii}.{ri}'],alt='原页图片',translatable=False)
         if not entries:doc.add('','page_image',refs=[{'page_id':page_id,'bbox':list(page.rect)}],atoms=[f'p{index+1}.image-page'],alt='本页没有可提取的文字，保留完整原页',translatable=False)
+    bookmarks=pdf.get_toc()
+    if bookmarks:
+        outline=[];stack=[];starts={}
+        for number,(level,title,page_number,*_) in enumerate(bookmarks):
+            candidates=[p for p in doc.data['passages'] if any(r.get('page_id')==f'{identity}:page:{page_number}' for r in p.get('refs',[]))]
+            if not candidates:continue
+            exact=next((p for p in candidates if normal(title).casefold() in normal(p['en']).casefold()),None);target=exact or candidates[0];sid=f'{identity}-toc{number+1}'
+            while stack and stack[-1][0]>=level:stack.pop()
+            outline.append({'id':sid,'title':title,'level':level,'parent_id':stack[-1][1] if stack else None,'passage_id':target['id'],'section_id':sid,'precision':'unit' if exact else 'page'})
+            stack.append((level,sid));starts.setdefault(target['id'],sid)
+        if outline:
+            section=outline[0]['id']
+            for p in doc.data['passages']:
+                if p['id'] in starts:section=starts[p['id']]
+                p['section_id']=section
+            doc.data['outline']=outline;doc.data['outline_source']='pdf_bookmarks'
+    pdf.close()
     return doc.finish()
 
 def _asset(blob,extension,output):
@@ -218,6 +263,8 @@ def _html(path,identity,output,base_url=None,resource_root=None):
             if normal(node):atomic+=1;doc.add(str(node),'paragraph',atoms=[f'dom{atomic}'])
             return
         if not isinstance(node,Tag) or node.name in skipped or node.has_attr('hidden') or node.get('aria-hidden')=='true' or 'display:none' in node.get('style','').replace(' ',''):return
+        if node.name in ('nav','footer') or node.get('role') in ('navigation','contentinfo'):
+            atomic+=1;doc.add(inline(node),'paragraph',atoms=[f'dom{atomic}'],role='page_furniture',translatable=False);return
         if node.name=='img':
             atomic+=1;src=node.get('src','');missing=False
             if base_url and src and not src.startswith('data:'):src=urljoin(base_url,src)

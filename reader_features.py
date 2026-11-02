@@ -2,6 +2,7 @@
 from pathlib import Path
 from collections import Counter
 import json,re,os
+from reader_questions import has_current_answer,needs_answer
 
 QUESTION_FORMS={
  '概念':['是什么？','是什么意思？','指的是什么？','包含哪些东西？','有什么特征？','能举一个例子吗？','有什么反例？'],
@@ -21,8 +22,8 @@ QUESTION_FORMS={
 def default_templates():
     return [{'id':f'form-{i:03d}','category':category,'text':text,'enabled':True} for i,(category,text) in enumerate(((c,t) for c,items in QUESTION_FORMS.items() for t in items),1)]
 DEFAULT_COLORS={
- 'light':{'source_fill':'#e6b543','source_border':'#a46a0d','sentence_fill':'#e1ebe3','sentence_border':'#a4bfae','term_line':'#386f56'},
- 'dark':{'source_fill':'#d6ae53','source_border':'#d6ae53','sentence_fill':'#363636','sentence_border':'#808080','term_line':'#b8b8b8'}}
+ 'light':{'source_fill':'#969696','source_border':'#858585','sentence_fill':'#e1ebe3','sentence_border':'#a4bfae','term_line':'#386f56'},
+ 'dark':{'source_fill':'#b0b0b0','source_border':'#9c9c9c','sentence_fill':'#363636','sentence_border':'#808080','term_line':'#b8b8b8'}}
 
 def settings(path):
     value=json.loads(Path(path).read_text('utf8')) if Path(path).exists() else {'templates':default_templates()}
@@ -60,7 +61,7 @@ def reading_progress(material,state):
     chapters={}
     files=material.get('reading_files') or [{'id':None,'outline':material.get('outline',[]),'passage_ids':[p['id'] for p in passages]}]
     for file in files:
-        outline=file['outline'];members=[p for p in passages if p['id'] in set(file['passage_ids'])];positions={p['id']:i for i,p in enumerate(members)}
+        outline=file['outline'];file_ids=set(file['passage_ids']);members=[p for p in passages if p['id'] in file_ids];positions={p['id']:i for i,p in enumerate(members)}
         for i,row in enumerate(outline):
             start=positions.get(row.get('passage_id'),0);end=next((positions.get(n.get('passage_id'),len(members)) for n in outline[i+1:] if n.get('level',1)<=row.get('level',1)),len(members))
             chapters[row.get('id') or row['passage_id']]=count([p for p in eligible if p['id'] in positions and start<=positions[p['id']]<end])
@@ -74,6 +75,11 @@ def samples(material,state):
             if q.get('deleted_at'):continue
             p=paragraphs.get(q.get('passage_id'),{});source=next((s for s in p.get('sentences',[]) if s['id']==q.get('sentence_id')),None)
             records.append({'schema_version':1,'origin':'user','material_id':material['id'],'material_title':material['title'],'question_id':q['id'],'round_id':round['id'],'passage_id':q.get('passage_id'),'sentence_id':q.get('sentence_id'),'parent_question_id':q.get('parent_question_id'),'question_original':q.get('original_text',q['text']),'question':q['text'],'source_original':(source or {}).get('en') or p.get('aligned_original') or p.get('en','') or (p.get('zh','') if material.get('reader_mode')=='authored' else ''),'source_translation':(source or {}).get('zh') or p.get('zh',''),'source_refs':(source or p).get('refs',[]),'precision':(source or p).get('precision'),'answer':q.get('answer'),'answer_deleted':bool(q.get('answer_deleted_at')),'answer_model':round.get('processing',{}).get('model'),'answer_effort':round.get('processing',{}).get('effort'),'terms':[t for t in state.get('terms',[]) if q['id'] in t.get('question_ids',[])],'practice':[z for z in state.get('quizzes',[]) if q['id'] in z.get('question_ids',[])],'bp':state.get('notes',{}).get(q['id'],''),'saved_at':round.get('created_at'),'answered_at':q.get('answered_at')})
+    by_id={q['id']:q for r in state['rounds'] for q in r['questions']}
+    for record in records:
+        question=by_id[record['question_id']]
+        record['needs_answer']=needs_answer(question)
+        if not has_current_answer(question):record['answer']=None
     return records
 def sample_stats(records,reading=None):
     categories={'含义':r'是什么|是啥|什么叫|啥叫|什么意思|何谓|何为','命名':r'名字|命名|得名|全称|缩写|为什么叫','原因':r'为什么|为啥|为何','作用与价值':r'有.?用|意义|作用|价值|目的|负责','证明与依据':r'证明|依据|推出|支持','步骤':r'怎么|如何|怎样|哪一步|经过|过程','比较':r'区别|相比|比较|更简单|相同','符号':r'公式|符号|等号|箭头|变量|fx|f\(x\)'}
@@ -82,4 +88,4 @@ def sample_stats(records,reading=None):
         for label,pattern in categories.items():
             if re.search(pattern,row['question']):counts[label]+=1
         for phrase in re.findall(r'为什么|为啥|是什么|是什么意思|什么意思|有什么用|有什么意义|怎么证明|如何|怎么|啥叫|为什么叫',row['question']):phrases[phrase]+=1
-    return {'questions':len(records),'answered':sum(bool(r.get('answer')) for r in records),'pending':sum(not r.get('answer') and not r.get('answer_deleted') for r in records),'deleted_answers':sum(bool(r.get('answer_deleted')) for r in records),'rounds':len({(r['material_id'],r['round_id']) for r in records}),'materials':len({r['material_id'] for r in records}),'followups':sum(bool(r.get('parent_question_id')) for r in records),'with_bp':sum(bool(r.get('bp')) for r in records),'anchored':sum(bool(r.get('sentence_id') and r.get('source_original')) for r in records),'question_types':dict(counts),'frequent_forms':phrases.most_common(15),'reading':reading or {}}
+    return {'questions':len(records),'answered':sum(bool(r.get('answer')) for r in records),'pending':sum(r.get('needs_answer',not r.get('answer')) for r in records),'deleted_answers':sum(bool(r.get('answer_deleted')) for r in records),'rounds':len({(r['material_id'],r['round_id']) for r in records}),'materials':len({r['material_id'] for r in records}),'followups':sum(bool(r.get('parent_question_id')) for r in records),'with_bp':sum(bool(r.get('bp')) for r in records),'anchored':sum(bool(r.get('sentence_id') and r.get('source_original')) for r in records),'question_types':dict(counts),'frequent_forms':phrases.most_common(15),'reading':reading or {}}

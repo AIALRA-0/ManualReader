@@ -1,4 +1,4 @@
-"""网页使用统一登录；远程 Agent 通过短期配对取得独立、可撤销的授权。"""
+"""网页使用统一登录；远程 Agent 通过项目配对取得独立、可撤销的授权。"""
 from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,unquote
 import base64,hashlib,hmac,io,ipaddress,json,os,re,secrets,sqlite3,threading,time,uuid
@@ -31,30 +31,30 @@ class Pairings:
     def db(self):return sqlite3.connect(self.path,timeout=15)
     def token(self,identity):return 'mr_'+base64.urlsafe_b64encode(hmac.new(self.key,identity.encode(),hashlib.sha256).digest()).decode().rstrip('=')
     @staticmethod
-    def public(row):return {k:row[k] for k in ['id','material_id','can_import','can_manage','created','expires','code_expires','revoked']}
+    def public(row):return {**{k:row[k] for k in ['id','material_id','can_import','can_manage','created','expires','code_expires','revoked']},'permanent':row['expires']==0}
     def list(self,owner):
         with self.db() as conn:
             conn.row_factory=sqlite3.Row
-            return [self.public(r) for r in conn.execute('SELECT * FROM pairings WHERE owner=? AND expires>? ORDER BY created DESC',(owner,time.time()))]
+            return [self.public(r) for r in conn.execute('SELECT * FROM pairings WHERE owner=? AND (expires=0 OR expires>?) ORDER BY created DESC',(owner,time.time()))]
     def issue(self,owner,data):
         hours=data.get('hours',8)
-        if isinstance(hours,bool) or not isinstance(hours,int) or not 1<=hours<=24:raise ValueError('连接有效期请设为 1 至 24 小时')
+        if isinstance(hours,bool) or not isinstance(hours,int) or not (hours==0 or 1<=hours<=24):raise ValueError('连接有效期请选择1至24小时或永久有效')
         material_id=data.get('material_id') or None
         if not isinstance(material_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',material_id):raise ValueError('连接必须指定当前项目')
         identity='pair-'+uuid.uuid4().hex;code=secrets.token_urlsafe(24);now=time.time()
-        with self.db() as conn:conn.execute('INSERT INTO pairings VALUES(?,?,?,?,?,?,?,?,?,?,0)',(identity,owner,digest(code),digest(self.token(identity)),material_id,0,0,now,now+hours*3600,now+600))
+        with self.db() as conn:conn.execute('INSERT INTO pairings VALUES(?,?,?,?,?,?,?,?,?,?,0)',(identity,owner,digest(code),digest(self.token(identity)),material_id,0,0,now,0 if hours==0 else now+hours*3600,now+600))
         row=next(r for r in self.list(owner) if r['id']==identity)
         return {**row,'pairing_code':code,'exchange_url':ORIGIN+'/machine/v1/pair/exchange'}
     def exchange(self,code):
         with self.db() as conn:
             conn.row_factory=sqlite3.Row;row=conn.execute('SELECT * FROM pairings WHERE code_hash=?',(digest(code),)).fetchone()
-        if not row or not row['material_id'] or row['revoked'] or min(row['expires'],row['code_expires'])<=time.time():return None
-        return {'access_token':self.token(row['id']),'token_type':'Bearer','expires_at':row['expires'],'api_base':ORIGIN+'/machine/v1','material_id':row['material_id'],'capabilities':{'read':True,'write':True,'mark_read':False,'import':bool(row['can_import']),'manage':bool(row['can_manage'])},'endpoints':{'guide':'/guide','progress':'/progress','work':'/work'}}
+        if not row or not row['material_id'] or row['revoked'] or row['code_expires']<=time.time() or row['expires']!=0 and row['expires']<=time.time():return None
+        return {'access_token':self.token(row['id']),'token_type':'Bearer','expires_at':row['expires'] or None,'api_base':ORIGIN+'/machine/v1','material_id':row['material_id'],'capabilities':{'read':True,'write':True,'mark_read':False,'write_user_notes':False,'answer_exercises':False,'import':bool(row['can_import']),'manage':bool(row['can_manage'])},'endpoints':{'guide':'/guide','progress':'/progress','work':'/work'}}
     def authorize(self,token):
         if not token.startswith('mr_') or len(token)>100:return None
         with self.db() as conn:
             conn.row_factory=sqlite3.Row;row=conn.execute('SELECT * FROM pairings WHERE token_hash=?',(digest(token),)).fetchone()
-        return dict(row) if row and row['material_id'] and not row['revoked'] and row['expires']>time.time() else None
+        return dict(row) if row and row['material_id'] and not row['revoked'] and (row['expires']==0 or row['expires']>time.time()) else None
     def revoke(self,owner,identity):
         with self.db() as conn:conn.execute('UPDATE pairings SET revoked=1 WHERE id=? AND owner=?',(identity,owner))
         return {'revoked':True}
@@ -88,14 +88,20 @@ class RemoteMixin:
         if ORIGIN and getattr(self,'_remote_machine',False) and getattr(self,'_mapped_path','')=='/api/guide' and status==200:
             data=json.loads(json.dumps(data,ensure_ascii=False).replace('/api/','/'))
             data['headers']={'Authorization':'Bearer <access_token>','X-Reader-Material':getattr(self,'_grant_material',None) or self.headers.get('X-Reader-Material','')}
-            data['api_base']=public_base();data['capabilities']={'read':True,'write':True,'mark_read':False,'import':bool(self._grant['can_import']),'manage':bool(self._grant['can_manage'])}
+            data['api_base']=public_base();data['capabilities']={'read':True,'write':True,'mark_read':False,'write_user_notes':False,'answer_exercises':False,'import':bool(self._grant['can_import']),'manage':bool(self._grant['can_manage'])}
             data['project_scope']={'material_id':self._grant_material,'upload_project_files':True,'other_projects':False}
             for key in ('library','project','lecture'):data.get('endpoints',{}).pop(key,None)
         return super().json(data,status)
     def begin_remote(self,method):
         REQUEST.machine=False;self._remote_machine=False;self._remote_authorized=False;self._grant_material=None
         if not ORIGIN:return False
-        path=unquote(urlsplit(self.path).path)
+        path=urlsplit(self.path).path
+        for _ in range(3):
+            decoded=unquote(path)
+            if decoded==path:break
+            path=decoded
+        if any(part=='..' for part in path.split('/')) or any(c in path for c in ('\\','\x00','?','#')):
+            self.json({'error':'接口路径不正确'},400);return True
         if path=='/healthz' and method=='GET':self.json({'application':'codex-manual-reader','status':'ready','authentication':'authentik'});return True
         if path=='/machine/v1/pair/exchange' and method=='POST':
             if self.headers.get('Origin') not in (None,ORIGIN):self.json({'error':'请求来源不正确'},403);return True
@@ -112,15 +118,16 @@ class RemoteMixin:
             requested=[self.headers.get('X-Reader-Material'),*query.get('material',[])]
             if any(value is not None and value!=grant['material_id'] for value in requested):self.json({'error':'本连接只能访问配对时选择的项目'},403);return True
             if method=='POST' and mapped=='/api/read':self.json({'error':'阅读进度只由用户在页面上手动勾选，Agent API 无权修改'},403);return True
+            if not self.project_available(grant['material_id']):self.json({'error':'当前项目已移除或不可访问'},403);return True
             self._grant_material=grant['material_id'];self._grant=grant
-            readable=mapped=='/api/practice-book' or mapped in ('/api/runs','/api/coverage','/api/learning','/api/content','/api/guide','/api/material','/api/index','/api/progress','/api/work','/api/translations','/api/statistics','/api/samples','/original','/original.pdf') or bool(re.fullmatch(r'/api/(?:passages|rounds)/[^/]+|/api/runs/run-[a-f0-9]{20}(?:/(?:groups/[12]|reference|caller))?',mapped)) or mapped.startswith(('/page/','/asset/','/content-files/'))
-            if mapped in ('/api/agent/reader_bridge.py','/api/agent/reader_worker.py','/api/agent/reader_execute.py','/api/agent/reader_term_names.py','/api/agent/reader_prompts.py','/api/agent/reader_media.py'):readable=True
-            if mapped=='/api/terms/audit':readable=True
+            readable=mapped in ('/api/writing/rules','/api/format/audit','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}',mapped)) or mapped in ('/api/runs','/api/coverage','/api/learning','/api/content','/api/guide','/api/material','/api/index','/api/progress','/api/work','/api/translations','/api/statistics','/api/samples','/original','/original.pdf') or bool(re.fullmatch(r'/api/questions/[^/]+/history|/api/(?:passages|rounds)/[^/]+|/api/runs/run-[a-f0-9]{20}(?:/(?:groups/[1-4]|reference|caller))?',mapped)) or mapped.startswith(('/page/','/asset/','/content-files/'))
+            if mapped in ('/api/agent/reader_bridge.py','/api/agent/reader_credentials.py','/api/agent/reader_worker.py','/api/agent/reader_execute.py','/api/agent/reader_term_names.py','/api/agent/reader_prompts.py','/api/agent/reader_media.py','/api/agent/reader_quality.py','/api/agent/reader_translation.py'):readable=True
+            if mapped in ('/api/terms/audit','/api/quality-review','/api/quality-review/calls'):readable=True
             if not grant['material_id'] and mapped in ('/api/library','/api/library/tree'):readable=True
-            writable=mapped in ('/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/content/files','/api/content/explanations','/api/content/presentation','/api/rounds','/api/terms','/api/translations','/api/focus','/api/history/back','/api/history/forward','/api/drafts','/api/notes') or bool(re.fullmatch(r'/api/rounds/[^/]+/(?:result|status|metrics)|/api/questions/[^/]+(?:/answer)?|/api/quizzes/[^/]+/(?:answer|options)',mapped))
+            writable=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',mapped)) or mapped in ('/api/reading/layout','/api/translations/groups','/api/translations/visuals') or mapped=='/api/import-jobs' or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',mapped)) or mapped in ('/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/content/files','/api/content/explanations','/api/content/presentation','/api/rounds','/api/terms','/api/translations','/api/focus','/api/history/back','/api/history/forward','/api/drafts') or bool(re.fullmatch(r'/api/rounds/[^/]+/(?:result|status|metrics)|/api/questions/[^/]+(?:/answer)?|/api/quizzes/[^/]+/options',mapped))
             if not grant['material_id'] and grant['can_import'] and mapped in ('/api/projects','/api/library/import','/api/lectures'):writable=True
             if not grant['material_id'] and grant['can_manage'] and (mapped in ('/api/settings','/api/folders','/api/library/clear-trash') or re.fullmatch(r'/api/library/(?:folder|material)/[^/]+/(?:rename|move|trash|restore)',mapped)):writable=True
-            if mapped=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[12]/result)',mapped):writable=True
+            if mapped=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',mapped):writable=True
             if mapped=='/api/terms/normalize':writable=True
             if (method=='GET' and not readable) or (method=='POST' and not writable) or any(value!='current' for value in query.get('scope',[])):self.json({'error':'本连接没有执行此操作的权限'},403);return True
             self.path=mapped+('?' + urlsplit(self.path).query if urlsplit(self.path).query else '');self._mapped_path=mapped;self._remote_authorized=True
@@ -138,6 +145,7 @@ class RemoteMixin:
                     if not 0<=size<=8192:raise ValueError('配对请求过大')
                     data=json.loads(self.rfile.read(size) or b'{}')
                     if not isinstance(data,dict):raise ValueError('请提交 JSON 对象')
+                    if not pairing_revoke and not self.project_available(data.get('material_id')):raise ValueError('请选择当前仍存在的项目')
                     self.json(pairings().issue(owner,data) if not pairing_revoke else pairings().revoke(owner,pairing_revoke[1]))
                 except (ValueError,TypeError):self.json({'error':'配对参数不正确，请检查范围和有效期'},400)
                 return True

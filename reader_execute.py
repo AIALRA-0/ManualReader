@@ -1,4 +1,4 @@
-"""用户在本地手动触发后，由脚本并行运行两组写作，网页不启动模型。"""
+"""用户在本地手动触发后，由脚本并行运行独立写作组，网页不启动模型。"""
 import base64
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor,as_completed
@@ -7,8 +7,9 @@ from urllib.parse import urlsplit,urljoin
 import datetime,json,os,re,shutil,subprocess,time,sys
 
 MODEL='gpt-6.1-terra'
-from reader_prompts import STYLE as WRITING_STYLE, TEACHING_METHOD
+from reader_prompts import STYLE as WRITING_STYLE, TEACHING_METHOD, WRITER_INSTRUCTIONS, NAMING_RULE, WRITING_VERSION
 from reader_media import ensure_visible_sources
+from reader_quality import answer_parts
 
 def stamp():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -17,7 +18,7 @@ def save(path,value):
     temporary.write_text(json.dumps(value,ensure_ascii=False,indent=2),'utf8');temporary.replace(path)
 
 def build_prompt(payload,reference,style=WRITING_STYLE):
-    payload=dict(payload)
+    payload=dict(payload);payload['writing_version']=WRITING_VERSION
     for key in ('output_file','publish_command','reference_file'):payload.pop(key,None)
     files={s.get('file_id') for s in payload['sources'] if s.get('content_kind')!='explanation'}
     files.update(l.get('file_id') for s in payload['sources'] for l in s.get('source_links',[]))
@@ -33,15 +34,19 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
       '理解原句所必需的前置必须在回答里讲清；简单问题简洁，复杂问题充分，不限制回答字数',
       '公式中的多字母程序标识使用LaTeX的mathtt或text保留整个名称，并说明其含义；数学下标使用完整花括号。程序标识与数学下标要区分，不把程序名称擅自改成另一种变量，也不把多字母名称当成几个字母相乘',
       '图片已按 sources.media 中的编号顺序随输入附上；必须实际读图，对估计值和不确定标记保持原有含义',
-      '用户明确追问命名由来、出处，或回答需要材料之外的专业事实，而原文没有提供依据时，必须使用可用的联网检索查证并引用真实权威资料；相关问题合并检索，复用同一份查证结果，不逐题重复搜索。查不到的具体由来如实说明，不用“材料未交代”代替检索，不猜测，不增加审稿或循环修复']
+      NAMING_RULE]
     payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。通过generated_assets返回实际工具产生的path、alt、question_ids；内置工具默认写入本次会话的generated_images目录，脚本会核对会话编号，复制到本组目录并上传，再插入对应回答，不要编造已保存路径。没有实际生成成功时不要写虚构地址。空间形状或结构需要直观看时配图；简单词义不配图。')
     payload['instructions'].append('新术语只提交名称、定义、直观解释和问题编号，不自行编造term_id；只有复用registered_terms中已有条目时才返回其真实term_id，新编号由脚本分配')
     if not payload.get('registered_terms'):
         payload['result_contract']={**payload['result_contract'],'terms':[{k:v for k,v in t.items() if k!='term_id'} for t in payload['result_contract']['terms']]}
     return '请用 Terra high 完成本组阅读回答，直接返回结果JSON\n'+style+'\n任务与原材料：\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
 
-def command(executable,folder,target,images):
+def command(executable,folder,target,images,writer=True):
     args=[executable,'exec','--ignore-user-config','--skip-git-repo-check','--json','--color','never','-m',MODEL,'-c','model_reasoning_effort="high"','-c','service_tier="default"','-c','web_search="live"','-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
+    if writer:
+        writer_instructions=Path(folder)/'writer-instructions.txt'
+        writer_instructions.write_text(WRITER_INSTRUCTIONS,'utf8')
+        args+=['-c','model_instructions_file='+json.dumps(str(writer_instructions.resolve()))]
     for flag in ('apps','plugins','multi_agent','shell_tool','browser_use','computer_use','workspace_dependencies','hooks','fast_mode'):
         args+=['--disable',flag]
     args+=['--enable','image_generation']
@@ -164,9 +169,14 @@ def run_group(bridge,out,group,payload,reference,executable):
     usage=runtime_usage({'session_id':session_id,'configured_service_tier':'default'})
     if not usage:raise RuntimeError('写作已保存，但没有读取到本轮真实用量，不能提前填写统计')
     if usage.get('model')!=MODEL or usage.get('effort')!='high' or usage.get('configured_service_tier')!='default':raise RuntimeError('实际运行配置与Terra high普通服务不一致，结果与日志已保留')
-    usage.update(group_id=identity,type='usage',configured_service_tier='default',model=MODEL,effort='high',tool_usage=external_tool_usage(events.read_text('utf8').splitlines()))
+    usage.update(group_id=identity,type='usage',writing_version=WRITING_VERSION,configured_service_tier='default',model=MODEL,effort='high',tool_usage=external_tool_usage(events.read_text('utf8').splitlines()))
     bridge.request('/api/runs/'+bridge.run_id+'/events',usage);save(out/('usage-'+identity+'.json'),usage)
-    value=result_json(target.read_text('utf8'),group);before_answers={a['question_id']:a.get('text','') for a in value['answers']};asset_issues=store_generated_assets(bridge,value,folder,session_id);changes=normalize_terms(value,payload);media_changes=ensure_visible_sources(value,payload);save(folder/'script-processing.json',{'generated_asset_issues':asset_issues,'media_changes':media_changes,'term_id_changes':changes,'answer_text_changed':any(a.get('text','')!=before_answers[a['question_id']] for a in value['answers']),'definitions_changed':False});save(out/('result-'+identity+'.json'),value)
+    value=result_json(target.read_text('utf8'),group)
+    questions={q['id']:q for q in payload['questions']}
+    for answer in value['answers']:
+        text,parts,issues=answer_parts(answer,questions[answer['question_id']]['text']);answer['text']=text;answer['format_audit']=issues
+        if parts:answer['answer_parts']=parts;answer.pop('parts',None)
+    before_answers={a['question_id']:a.get('text','') for a in value['answers']};asset_issues=store_generated_assets(bridge,value,folder,session_id);changes=normalize_terms(value,payload);media_changes=ensure_visible_sources(value,payload);save(folder/'script-processing.json',{'generated_asset_issues':asset_issues,'media_changes':media_changes,'term_id_changes':changes,'answer_text_changed':any(a.get('text','')!=before_answers[a['question_id']] for a in value['answers']),'definitions_changed':False});save(out/('result-'+identity+'.json'),value)
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'output_ready'})
     receipt=bridge.request('/api/runs/'+bridge.run_id+'/groups/'+identity+'/result',value);save(out/('saved-'+identity+'.json'),receipt)
     if receipt.get('issues') or receipt.get('missing_question_ids'):raise RuntimeError('部分结果未保存，准确缺项已写入本组保存记录；不重跑已完成内容')
@@ -179,7 +189,7 @@ def repair_term_names(bridge,out,question_ids,executable):
     if not pending:return report
     folder=out/'term-name-repair';folder.mkdir(exist_ok=True);target=folder/'final.txt'
     prompt='只修正下面术语名称，返回JSON：{"updates":[{"term_id":"真实编号","name":"中文全称（English Full Name）"}],"unresolved":[]}。有缩写时使用“缩写 中文全称（English Full Name）”，中文全称也需展开缩写的含义，不得只把缩写挪到中文部分。不修改定义、问题、编号或其他内容。根据给出的定义确定中英文对应，括号里只保留英文全称，除明确标记的例外外每个英文单词首字母大写。不得重复中文、颠倒中英文、编造缩写展开。无法确认的编号放入unresolved，不猜测。只做这一次批量处理，不再添加审稿或修复循环。必要时可以检索名称，已有规则无需读取文件。\n'+json.dumps(pending,ensure_ascii=False,separators=(',',':'))
-    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,[]);environment=dict(os.environ)
+    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,[],writer=False);environment=dict(os.environ)
     for key in ('CODEX_THREAD_ID','CODEX_SESSION_ID','MANUAL_READER_TOKEN','MANUAL_READER_PAIRING_CODE'):environment.pop(key,None)
     session=None;started=stamp();metadata=None
     try:
@@ -209,23 +219,27 @@ def repair_term_names(bridge,out,question_ids,executable):
     except Exception as error:report.update(state='needs_attention',message=str(error),raw_output_preserved=True)
     save(folder/'script-processing.json',report);return report
 
-def execute(bridge,out,include_answered=False):
+def execute(bridge,out,include_answered=False,reader_context=None):
     began=stamp();clock=time.perf_counter();cpu=time.process_time();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
     if (out/'run.json').exists():raise ValueError('这个目录已经有任务记录，请为新一轮选择空目录，避免覆盖原始输出')
     executable=codex_executable()
     if not executable:raise ValueError('本地没有找到Codex CLI，请安装并登录后再手动运行；网页不会代替调用模型')
-    manifest=bridge.prepare(out,include_answered=include_answered,observe=False)
+    manifest=bridge.prepare(out,include_answered=include_answered,observe=False,reader_context=reader_context)
+    if not manifest.get('questions'):
+        report={'run':bridge.request('/api/runs/'+bridge.run_id),'coordinator':{'kind':'local_script','total_seconds':round(time.perf_counter()-clock,3)},'groups':[],'term_names':{'state':'not_needed'},'issues':[],'question_pool':manifest.get('question_pool',{}),'message':manifest.get('message')}
+        save(out/'measured-run.json',report)
+        return report
     bridge.start_caller_observer(out)
     run=json.loads((out/'run.json').read_text('utf8'));reference=json.loads((out/'reference.json').read_text('utf8'))
     payloads={g['id']:json.loads((out/('prompt-'+g['id']+'.txt')).read_text('utf8').split('\n',1)[1]) for g in run['groups']}
     prepare_seconds=time.perf_counter()-clock;results=[];errors=[]
-    with ThreadPoolExecutor(max_workers=2) as pool:
+    with ThreadPoolExecutor(max_workers=max(1,min(4,len(run['groups'])))) as pool:
         futures={pool.submit(run_group,bridge,out,g,payloads[g['id']],reference,executable):g['id'] for g in run['groups']}
         for future in as_completed(futures):
             try:results.append(future.result())
             except Exception as error:errors.append({'group_id':futures[future],'message':str(error)})
     term_names=repair_term_names(bridge,out,set(run['question_ids']),executable) if not errors else {'state':'waiting_for_answers'}
-    coordinator={'kind':'local_script','model':None,'started_at':began,'completed_at':stamp(),'total_seconds':round(time.perf_counter()-clock,3),'script_cpu_seconds':round(time.process_time()-cpu,3),'prepare_seconds':round(prepare_seconds,3),'parallel_groups':min(2,len(run['groups'])),'usage':{'input_tokens':0,'cached_input_tokens':0,'cache_write_input_tokens':0,'output_tokens':0,'reasoning_output_tokens':0,'model_calls':0},'scope':'这里只记录本地脚本和并行写作窗口，0 token不包含Codex读取、启动、等待和最终汇报；Codex整轮由caller另记，完整费用须等待整轮日志结算'}
+    coordinator={'kind':'local_script','model':None,'started_at':began,'completed_at':stamp(),'total_seconds':round(time.perf_counter()-clock,3),'script_cpu_seconds':round(time.process_time()-cpu,3),'prepare_seconds':round(prepare_seconds,3),'parallel_groups':min(4,len(run['groups'])),'usage':{'input_tokens':0,'cached_input_tokens':0,'cache_write_input_tokens':0,'output_tokens':0,'reasoning_output_tokens':0,'model_calls':0},'scope':'这里只记录本地脚本和并行写作窗口，0 token不包含Codex读取、启动、等待和最终汇报；Codex整轮由caller另记，完整费用须等待整轮日志结算'}
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'coordinator','coordinator':coordinator})
     report={'run':bridge.request('/api/runs/'+bridge.run_id),'coordinator':coordinator,'groups':results,'term_names':term_names,'issues':errors};save(out/'measured-run.json',report)
     if errors:raise RuntimeError('部分组需要处理，已完成结果和准确原因见 measured-run.json；没有启动模型修复循环')
@@ -234,9 +248,9 @@ def execute(bridge,out,include_answered=False):
 def compact_result(report):
     """只向主调度返回运行摘要，完整输入、输出和日志继续保存在本轮目录。"""
     run=report['run']
-    return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json'}
+    return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json',**{k:report[k] for k in ('question_pool','message') if k in report}}
 
-def daily(bridge,out,include_answered=False):
+def daily(bridge,out,include_answered=False,reader_context=None):
     """手动触发时另开干净的Terra high普通会话，只做本轮回答调度和汇报。"""
     from reader_worker import conversation_usage,external_tool_usage
     import shlex
@@ -245,9 +259,12 @@ def daily(bridge,out,include_answered=False):
     if not executable:raise ValueError('请先安装并登录本地Codex')
     child=[sys.executable,str(Path(__file__).with_name('reader_bridge.py')),'--base',bridge.base,'--material',bridge.headers['X-Reader-Material'],'run-compact','--out',str(out)]
     if include_answered:child+=['--include-answered']
+    if reader_context:
+        context_file=out/'reader-feedback.json';save(context_file,reader_context)
+        child+=['--reader-feedback-file',str(context_file)]
     shell=('& '+' '.join("'"+v.replace("'","''")+"'" for v in child)) if os.name=='nt' else shlex.join(child)
     prompt=('你是阅读器日常回答任务的主调度，只处理当前项目的未回答问题。立即执行下面的一条命令；程序会读取问题和材料、附上原图、以两路Terra high普通服务并行生成完整回答、必要前置、术语和练习，并逐组写回。不要开发、测试、部署、读其他文件或历史，也不要自己重复写答案。程序运行期间等待它完成即可；工具返回仍在运行时，用write_stdin等候，单次等候可用60000毫秒，不要频繁轮询。命令完成后，用中文简短汇报实际完成的问题数、写作窗口耗时和返回的用量，明确主调度本次会话的最终用量由启动器在你汇报结束后补入。不得改模型、推理档、服务档或并行数。\n'+shell)
-    args=command(executable,folder,target,[]);args[args.index('-s')+1]='danger-full-access'
+    args=command(executable,folder,target,[],writer=False);args[args.index('-s')+1]='danger-full-access'
     for flag in ('shell_tool',):
         pos=args.index(flag);del args[pos-1:pos+1]
     args[args.index('web_search="live"')]='web_search="disabled"'

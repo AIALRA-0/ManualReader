@@ -11,8 +11,23 @@ class NoRedirect(HTTPRedirectHandler):
     def redirect_request(self,*args,**kwargs):return None
 
 
+def feedback_file(path):
+    """从本轮文件读取用户反馈，文件内容不参与登录或项目选择。"""
+    if not path:return None
+    raw=Path(path).read_text('utf-8-sig')
+    if len(raw)>24000:raise ValueError('反馈文件过长，请只保留本轮用户指出的未懂之处')
+    try:value=json.loads(raw)
+    except ValueError:value=raw
+    if isinstance(value,str):return {'reader_feedback_latest':{'text':value,'source':'用户在当前Codex对话中的直接反馈'}}
+    if not isinstance(value,dict):raise ValueError('反馈文件需要是用户原话或JSON对象')
+    if 'text' in value:return {'reader_feedback_latest':value}
+    result={k:value[k] for k in ('reader_feedback_latest','confirmed_passage','confirmed_understanding') if k in value}
+    if not result:raise ValueError('反馈文件没有本轮读者反馈或明确确认的内容')
+    return result
+
+
 class Bridge:
-    def __init__(self, base=None, material=None,token=None,pairing=None):
+    def __init__(self, base=None, material=None,token=None,pairing=None,remember=False):
         url_file=Path(__file__).parent/'reader-url.txt'
         base=base or (url_file.read_text('utf8').strip() if url_file.exists() else 'http://127.0.0.1:8939')
         self.base=base.rstrip('/')
@@ -24,10 +39,20 @@ class Bridge:
             self.base=parsed.scheme+'://'+parsed.netloc+'/machine/v1'
             if pairing:
                 request=Request(self.base+'/pair/exchange',data=b'',headers={'Authorization':'Reader-Pairing '+pairing})
-                exchanged=json.load(self.opener.open(request,timeout=30));token=exchanged['access_token'];material=material or exchanged.get('material_id')
-            if not token:raise ValueError('请从网页生成配对说明，或通过 MANUAL_READER_TOKEN 提供连接令牌')
+                exchanged=json.load(self.opener.open(request,timeout=30))
+                if material and material!=exchanged.get('material_id'):raise ValueError('配对码对应另一个项目，未保存连接')
+                token=exchanged['access_token'];material=material or exchanged.get('material_id')
+            from reader_credentials import get as stored_token,put as remember_token
+            self._from_vault=not bool(token)
+            token=token or stored_token(self.base,material)
+            if not token:raise ValueError('本机未保存这个项目的连接；请从网页配对，选择记住连接后无需每次配对')
             self.headers={'Authorization':'Bearer '+token,'Content-Type':'application/json'}
             if material:self.headers['X-Reader-Material']=material
+            if remember:
+                if not material:raise ValueError('记住连接前需要明确项目编号')
+                guide=self.request('/api/guide')
+                if guide.get('material_id')!=material:raise ValueError('服务器返回的项目与连接不一致，未保存凭证')
+                remember_token(self.base,material,token);self._from_vault=True
         else:
             session=json.load(self.opener.open(self.base+'/api/session',timeout=30))
             self.headers={'X-Reader-Pin':session['pin'],'X-Reader-Material':material or session['material_id'],'Content-Type':'application/json'}
@@ -38,19 +63,36 @@ class Bridge:
         if self.remote and path.startswith('/api/'):path=path[4:]
         headers={**self.headers}
         if getattr(self,'run_id',None):headers['X-Reader-Run']=self.run_id
-        return json.load(self.opener.open(Request(self.base+path,data=raw,headers=headers),timeout=60))
+        try:return json.load(self.opener.open(Request(self.base+path,data=raw,headers=headers),timeout=60))
+        except __import__('urllib.error',fromlist=['HTTPError']).HTTPError as error:
+            if self.remote and error.code==401:
+                from reader_credentials import delete
+                if getattr(self,'_from_vault',False):delete(self.base,self.headers.get('X-Reader-Material'))
+                raise ValueError('这个项目的授权已失效或被撤销，请重新配对')from None
+            raise
 
-    def prepare(self, out, round_id=None, include_answered=False, lesson=False, observe=True):
+    def prepare(self, out, round_id=None, include_answered=False, lesson=False, observe=True,reader_context=None,question_ids=None):
         started=time.perf_counter()
         if not lesson:
             out=Path(out);out.mkdir(parents=True,exist_ok=True)
-            question_ids=None
-            if round_id:question_ids=[q['id'] for q in self.request('/api/work?round='+round_id+('&include_answered=true' if include_answered else ''))['questions']]
-            manifest=self.request('/api/runs',{'question_ids':question_ids,'include_answered':include_answered});self.run_id=manifest['id']
+            if round_id:
+                in_round=[q['id'] for q in self.request('/api/work?round='+round_id+('&include_answered=true' if include_answered else ''))['questions']]
+                if question_ids is not None and not set(question_ids)<=set(in_round):raise ValueError('指定问题不属于这轮可处理的问题，请读取原问题状态')
+                question_ids=in_round if question_ids is None else question_ids
+            context={k:reader_context[k] for k in ('reader_feedback_latest','confirmed_passage','confirmed_understanding') if reader_context and k in reader_context}
+            manifest=self.request('/api/runs',{'question_ids':question_ids,'include_answered':include_answered,**context});self.run_id=manifest['id']
             manifest['coordinator_session_id']=os.environ.get('CODEX_THREAD_ID') or os.environ.get('CODEX_SESSION_ID');manifest['local_script_started_at']=__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat()
             (out/'run.json').write_text(json.dumps(manifest,ensure_ascii=False,indent=2),'utf8')
+            if not manifest['question_count']:
+                pool=manifest.get('question_pool',{})
+                inconsistent=pool.get('pending',0)>0
+                result={'run_id':self.run_id,'questions':0,'groups':0,'tasks':[],'model_calls':0,'question_pool':pool,'state':'pool_inconsistent' if inconsistent else 'empty_selection',
+                        'message':'服务端仍有待答记录，但本次没有返回问题；需要核对状态，不能认定用户没有保存问题' if inconsistent else '本次没有返回待答问题；这不表示页面上的问题没有保存',
+                        'next_action':'有明确问题编号时，使用 prepare --question 原问题编号；用户要求重答已有有效答案时再加 --include-answered，只处理这些编号，不扩大到全部已答问题'}
+                (out/'dispatch.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf8')
+                return result
             urls=[group['input_url'] for group in manifest['groups']]+[manifest['reference_url']]
-            with ThreadPoolExecutor(max_workers=2) as pool:payloads=list(pool.map(self.request,urls))
+            with ThreadPoolExecutor(max_workers=min(4,len(urls))) as pool:payloads=list(pool.map(self.request,urls))
             (out/'reference.json').write_text(json.dumps(payloads[-1],ensure_ascii=False),'utf8')
             worker_script=Path(__file__).parent/'reader_worker.py'
             tasks=[]
@@ -59,7 +101,7 @@ class Bridge:
                 payload['publish_command']='使用同一Python执行 reader_worker.py finish --out '+str(out.resolve())+' --group '+identity+'，脚本只检查JSON、编号与缺项，然后一次发布结果，不重新写作'
                 prompt=out/('prompt-'+identity+'.txt');prompt.write_text('使用 Terra high，只处理本组问题。先把回答讲清，再派生术语和选择题。结果只写一次到 output_file，然后执行 publish_command 交给脚本检查和发布，最终仅回复文件路径和条数，不再输出整份JSON，不增加审稿或修复循环。\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':')),'utf8')
                 tasks.append({'group_id':identity,'model':'gpt-6.1-terra','reasoning_effort':'high','fork_turns':'none','message':'先调用 reader_worker.py 的 input 动作读取一次指定输入（该动作会同时记录真实开始时间和本次会话编号）；直接完成写作并保存 output_file，最终只返回路径和条数。输入目录：'+str(out.resolve())+'；组号：'+identity,'input_file':str(prompt.resolve()),'output_file':str(target.resolve()),'worker_script':str(worker_script.resolve())})
-            result={'run_id':self.run_id,'questions':manifest['question_count'],'groups':len(tasks),'tasks':tasks,'script_seconds':round(time.perf_counter()-started,4),'model_calls':0,'dispatch':'现在连续派发全部tasks，不在两组之间检索、写作或等待；每组使用全新历史；生成结果后运行 reader_bridge.py collect 自动写回和提取真实日志用量'}
+            result={'run_id':self.run_id,'questions':manifest['question_count'],'groups':len(tasks),'tasks':tasks,'script_seconds':round(time.perf_counter()-started,4),'model_calls':0,'dispatch':'现在连续派发全部tasks，不在各组之间检索、写作或等待；每组使用全新历史；生成结果后运行 reader_bridge.py collect 自动写回和提取真实日志用量'}
             environment=dict(os.environ)
             if self.remote:environment['MANUAL_READER_TOKEN']=self.headers['Authorization'].removeprefix('Bearer ')
             command=[sys.executable,str(Path(__file__).resolve()),'--base',self.base,'--material',self.headers.get('X-Reader-Material',''),'watch','--out',str(out.resolve())]
@@ -72,6 +114,9 @@ class Bridge:
             return result
         query=('round='+round_id+'&' if round_id else '')+('include_answered=true' if include_answered else '')
         packet=self.request('/api/work?'+('mode=lesson' if lesson else query))
+        if reader_context:
+            for key in ('reader_feedback_latest','confirmed_passage','confirmed_understanding'):
+                if key in reader_context:packet[key]=reader_context[key]
         out=Path(out);out.mkdir(parents=True,exist_ok=True)
         (out/'work.json').write_text(json.dumps(packet,ensure_ascii=False,indent=2),'utf8')
         if lesson:
@@ -206,18 +251,27 @@ if __name__=='__main__':
     parser.add_argument('--base')
     parser.add_argument('--material')
     parser.add_argument('--pairing-code-stdin',action='store_true')
+    parser.add_argument('--remember',action='store_true',help='用户选择后，把当前项目连接保存到系统凭据库')
     sub=parser.add_subparsers(dest='action',required=True)
-    prepare=sub.add_parser('prepare');prepare.add_argument('--round');prepare.add_argument('--include-answered',action='store_true');prepare.add_argument('--lesson',action='store_true');prepare.add_argument('--out',required=True)
+    sub.add_parser('connect');sub.add_parser('forget')
+    prepare=sub.add_parser('prepare');prepare.add_argument('--round');prepare.add_argument('--question',action='append',dest='question_ids',help='只准备指定原问题，可多次填写');prepare.add_argument('--include-answered',action='store_true');prepare.add_argument('--lesson',action='store_true');prepare.add_argument('--out',required=True);prepare.add_argument('--reader-feedback-file')
     apply=sub.add_parser('apply');apply.add_argument('result');apply.add_argument('--out',required=True);apply.add_argument('--metrics')
     collect=sub.add_parser('collect');collect.add_argument('--out',required=True)
     watch=sub.add_parser('watch');watch.add_argument('--out',required=True)
     caller=sub.add_parser('watch-caller');caller.add_argument('--out',required=True)
     for name in ('run','run-compact','daily'):
-        run=sub.add_parser(name);run.add_argument('--out',required=True);run.add_argument('--include-answered',action='store_true')
-    args=parser.parse_args();bridge=Bridge(args.base,args.material,os.environ.get('MANUAL_READER_TOKEN'),sys.stdin.readline().strip() if args.pairing_code_stdin else os.environ.get('MANUAL_READER_PAIRING_CODE'))
-    if args.action in ('run','run-compact','daily'):
+        run=sub.add_parser(name);run.add_argument('--out',required=True);run.add_argument('--include-answered',action='store_true');run.add_argument('--reader-feedback-file')
+    args=parser.parse_args()
+    if args.action=='forget':
+        from reader_credentials import delete
+        delete(args.base,args.material);print(json.dumps({'forgotten':True}));sys.exit(0)
+    bridge=Bridge(args.base,args.material,os.environ.get('MANUAL_READER_TOKEN'),sys.stdin.readline().strip() if args.pairing_code_stdin else os.environ.get('MANUAL_READER_PAIRING_CODE'),remember=args.remember)
+    reader_context=feedback_file(getattr(args,'reader_feedback_file',None))
+    if args.action=='connect':
+        guide=bridge.request('/api/guide');result={'connected':True,'material_id':guide.get('material_id'),'remembered':args.remember,'credential_source':'系统凭据库或本轮显式凭证'}
+    elif args.action in ('run','run-compact','daily'):
         from reader_execute import execute,compact_result,daily
-        result=daily(bridge,args.out,args.include_answered) if args.action=='daily' else execute(bridge,args.out,args.include_answered)
+        result=daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)
         if args.action=='run-compact':result=compact_result(result)
-    else:result=bridge.prepare(args.out,args.round,args.include_answered,args.lesson) if args.action=='prepare' else bridge.collect(args.out) if args.action=='collect' else bridge.watch(args.out) if args.action=='watch' else bridge.watch_caller(args.out) if args.action=='watch-caller' else bridge.apply(args.result,args.out,args.metrics)
+    else:result=bridge.prepare(args.out,args.round,args.include_answered,args.lesson,reader_context=reader_context,question_ids=args.question_ids) if args.action=='prepare' else bridge.collect(args.out) if args.action=='collect' else bridge.watch(args.out) if args.action=='watch' else bridge.watch_caller(args.out) if args.action=='watch-caller' else bridge.apply(args.result,args.out,args.metrics)
     print(json.dumps(result,ensure_ascii=False,indent=2))

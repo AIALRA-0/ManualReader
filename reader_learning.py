@@ -1,5 +1,6 @@
 """学习章节独立于原文件目录；来源、讲解和旧问题均保留自己的编号。"""
 import copy,re
+from reader_reading import scope as reading_scope
 
 
 def learning_nodes(material,stored=None):
@@ -51,8 +52,12 @@ def validate_outline(data,material):
         if not isinstance(legacy,list) or any(s not in sections for s in legacy):raise ValueError('关联的旧讲解章节不存在')
         item={'id':identity,'parent_id':parent,'title':title.strip(),'number':number,'source_links':normalized,'explanation_ids':list(dict.fromkeys(explanations)),
               'legacy_section_ids':list(dict.fromkeys(legacy)),'source_label':str(row.get('source_label',''))[:200]}
+        dependencies=row.get('depends_on',[])
+        if not isinstance(dependencies,list) or any(d not in known for d in dependencies):raise ValueError('前置章节必须已经出现在当前章节之前')
+        item['depends_on']=list(dict.fromkeys(dependencies))
         known[identity]=item;clean.append(item)
-    return clean
+    from reader_responsibility import complete_outline
+    return complete_outline(material,clean)[0]
 
 
 def effective_links(node,nodes,material):
@@ -68,16 +73,20 @@ def effective_links(node,nodes,material):
     return result
 
 
-def learning_payload(material,stored,state):
+def _static_learning(material,stored):
+    state={}
     nodes=learning_nodes(material,stored.get('learning_outline'));passages=material['passages']
+    from reader_responsibility import complete_outline
+    nodes,coverage_plan=complete_outline(material,nodes)
     for node in nodes:
         body=[p for p in passages if p.get('explanation_id') in node.get('explanation_ids',[]) or (p.get('file_id')=='primary' and p.get('section_id') in node.get('legacy_section_ids',[]))]
         node['status']='ready' if any(not p.get('heading') and (p.get('zh') or p.get('en') or '').strip() for p in body) else 'planned'
         node['passage_ids']=[p['id'] for p in body]
         node['level']=node.get('number','').count('.')+1
         node['effective_source_links']=effective_links(node,nodes,material)
+        node['source_range']=reading_scope(material,node['effective_source_links'])
         visible=[p for p in body if p.get('explanation_id') in node.get('explanation_ids',[])] if node.get('explanation_ids') else body
-        visible=[p for p in visible if not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',(p.get('zh') or p.get('en') or ''))]
+        visible=[p for p in visible if not p.get('display_omit') and not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',(p.get('zh') or p.get('en') or ''))]
         node['reading_passage_ids']=[p['id'] for p in visible]
         done=sum(bool(state.get('read_passages',{}).get(p['id'])) for p in visible);total=len(visible)
         node['own_reading_progress']={'done':done,'total':total,'percent':round(done/total*100) if total else 0}
@@ -89,14 +98,39 @@ def learning_payload(material,stored,state):
             descendants=expanded
         own=[n for n in nodes if n['id'] in descendants]
         reading_ids=sorted({pid for n in own for pid in n['reading_passage_ids']})
+        node['_subtree_reading_ids']=reading_ids
         node['subtree_passage_ids']=sorted({pid for n in own for pid in n['passage_ids']})
         total=len(reading_ids);done=sum(bool(state.get('read_passages',{}).get(pid)) for pid in reading_ids)
         node['reading_progress']={'done':done,'total':total,'percent':round(done/total*100) if total else 0,'descendant_count':len(descendants)-1}
+    return nodes,coverage_plan
+
+
+_PLAN_CACHE={}
+_PLAN_LOCK=__import__('threading').RLock()
+
+def learning_payload(material,stored,state):
+    import copy
+    key=(id(material),stored.get('revision'))
+    cacheable=bool(material.get('alignment'))and isinstance(stored.get('revision'),int)
+    with _PLAN_LOCK:cached=_PLAN_CACHE.get(key)if cacheable else None
+    if cached and cached[0]is material:
+        nodes=[{**n,'own_reading_progress':dict(n['own_reading_progress']),'reading_progress':dict(n['reading_progress'])}for n in cached[1][0]];coverage_plan=cached[1][1]
+    else:
+        nodes,coverage_plan=_static_learning(material,stored)
+        if cacheable:
+            with _PLAN_LOCK:
+                if len(_PLAN_CACHE)>=8:_PLAN_CACHE.pop(next(iter(_PLAN_CACHE)))
+                _PLAN_CACHE[key]=(material,copy.deepcopy((nodes,coverage_plan)))
+    passages=material['passages'];read=state.get('read_passages',{})
+    for node in nodes:
+        for field,ids in [('own_reading_progress',node['reading_passage_ids']),('reading_progress',node.pop('_subtree_reading_ids'))]:
+            done=sum(bool(read.get(pid))for pid in ids);total=len(ids)
+            node[field].update(done=done,total=total,percent=round(done/total*100)if total else 0)
     ids={n['id'] for n in nodes};selected=state.get('learning_node_id')
     if selected not in ids:selected=next((n['id'] for n in nodes if n['status']=='ready'),nodes[0]['id'] if nodes else None)
     active=stored.get('learning_outline') is not None or material.get('reader_mode')=='authored' or state.get('learning_node_id') in ids
     current=next((n for n in nodes if n['id']==selected),None) if active else None
-    related=set((current or {}).get('passage_ids',[]));related.update(l['passage_id'] for l in (current or {}).get('effective_source_links',[]))
+    related=set((current or {}).get('passage_ids',[]));related.update((current or {}).get('source_range',{}).get('passage_ids',[]));related.update(l['passage_id'] for l in (current or {}).get('effective_source_links',[]))
     for p in passages:
         if p['id'] in related:related.update(p.get('origin_ids',[]))
     registered={q['id']:q for r in state.get('rounds',[]) for q in r['questions']}
@@ -106,15 +140,16 @@ def learning_payload(material,stored,state):
         if owner:return owner==current['id']
         seen=(seen or set())|{q['id']};parent=registered.get(q.get('parent_question_id'))
         if parent and parent['id'] not in seen:return belongs(parent,seen)
-        owners=[n['id'] for n in nodes if q.get('passage_id') in n['passage_ids']]
-        if len(owners)==1:return owners[0]==current['id']
+        from reader_questions import infer_learning_node
+        inferred=infer_learning_node({**material,'learning':{'nodes':nodes}},q)
+        if inferred:return inferred==current['id']
         return False
     questions=[q for q in registered.values() if not q.get('deleted_at') and belongs(q)]
     qids={q['id'] for q in questions};tids={tid for q in questions for tid in q.get('term_ids',[])}
     terms=[t['id'] for t in state.get('terms',[]) if t['id'] in tids or qids.intersection(t.get('question_ids',[]))]
-    return {'nodes':nodes,'selected_id':selected,'scope_active':active,
+    return {'nodes':nodes,'coverage_plan':coverage_plan,'selected_id':selected,'scope_active':active,
             'context':{'material_id':material['id'],'learning_node_id':(current or {}).get('id'),'source_links':(current or {}).get('effective_source_links',[]),
-                       'explanation_ids':(current or {}).get('explanation_ids',[]),'passage_ids':sorted(related),'question_ids':[q['id'] for q in questions],'term_ids':terms},
+                       'explanation_ids':(current or {}).get('explanation_ids',[]),'passage_ids':sorted(related),'question_ids':[q['id'] for q in questions],'term_ids':terms,'source_range':(current or {}).get('source_range',{})},
             'default_directory':'learning' if stored.get('learning_outline') or material.get('reader_mode')=='authored' or material.get('kind')=='project' else 'source'}
 
 

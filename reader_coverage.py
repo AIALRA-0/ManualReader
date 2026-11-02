@@ -15,8 +15,9 @@ _PROTECTED = re.compile(
     r'```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]*`|'
     r'\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$[^$\n]+\$|'
     r'https?://[^\s<>\])]+|\b[A-Za-z]:[\\/][^\s<>]+|'
-    r'(?<!\w)(?:\.{0,2}/|/)[\w./\\-]+|'
-    r'(?<!\w)(?:[\w.-]+/)+[\w.-]+')
+    r'(?<!\w)(?:\.{1,2}/|/)[A-Za-z0-9_./\\-]+|'
+    r'(?<!\w)(?:[A-Za-z0-9_.-]+/){2,}[A-Za-z0-9_.-]+|'
+    r'(?<!\w)(?:[A-Za-z0-9_.-]+/)+[A-Za-z0-9_.-]+\.[A-Za-z0-9]{1,10}\b')
 _FORMULA_SPANS = re.compile(r'\\\[[\s\S]*?\\\]|\\\([\s\S]*?\\\)|\$\$[\s\S]*?\$\$|\$[^$\n]+\$')
 
 
@@ -70,10 +71,47 @@ def is_chinese_text(value):
     return _language(_text(value)) == 'zh'
 
 
+def valid_preserved_token(row,allow_product_names=False):
+    """只允许原样保留短人名或编号，不能借此把外文句子标成已译。"""
+    if not isinstance(row,dict) or not isinstance(row.get('text'),str):return False
+    token=row['text']
+    if not token or token!=token.strip() or len(token)>64 or '\n' in token:return False
+    if row.get('reason')=='person_name':
+        return bool(re.fullmatch(r"[A-Z][A-Za-z'’.-]*(?: [A-Z][A-Za-z'’.-]*){1,5}",token))
+    if row.get('reason')=='identifier':
+        shape=bool(re.fullmatch(r'[A-Za-z0-9_./:+#-]+(?: [A-Za-z0-9_./:+#-]+){0,2}',token))
+        return shape and bool(re.search(r'[0-9_]',token) or re.fullmatch(r'[A-Z]{2,12}',token))
+    if allow_product_names and row.get('reason')=='product_name':
+        return bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9 &'()+./-]*",token)) and len(token.split())<=8
+    return False
+
+
+def translation_segment_ready(segment,allow_product_names=False):
+    """人名和课号已逐字登记时，只判断剩余的应译文字是否为中文。"""
+    text=_text(segment.get('text'))
+    preserved=segment.get('preserved_tokens',[])
+    if not isinstance(preserved,list) or len(preserved)>30 or any(not valid_preserved_token(row,allow_product_names) or row['text'] not in text for row in preserved):return False
+    if is_chinese_text(text):return True
+    for row in preserved:text=text.replace(row['text'],'')
+    return bool(preserved) and (_language(text) in {'zh','not_required'} or not text.strip())
+
+
+def visual_label_ready(label):
+    """图中产品名可原样保留，其余标签仍需要真实的中文翻译。"""
+    if label.get('preserve'):
+        return bool(label.get('original')) and label.get('original')==label.get('translation') and label.get('preserve_reason') in ('symbol','product_name','unit','numeric','identifier')
+    preserved=label.get('preserved_tokens',[])
+    if not isinstance(preserved,list) or any(not isinstance(row,dict) or not isinstance(row.get('text'),str) or row['text'] not in label.get('original','') for row in preserved):return False
+    return translation_segment_ready({'text':label.get('translation',''),'preserved_tokens':preserved},allow_product_names=True)
+
+
 def translation_ready(source, translation=None, source_language=None):
     """判断原文能否以中文阅读，外文原件需要在对应位置保存中文译文。"""
     if isinstance(source, dict):
         row = source
+        if row.get('kind') in _IMAGES and row.get('visual_language_verified'):
+            return bool(row.get('visual_translation_complete'))
+        if row.get('translation_segments') and all(translation_segment_ready(s) for s in row['translation_segments']):return True
         if _code(row) or row.get('kind') in _FORMULAS:
             return True
         original = _original(row)
@@ -440,6 +478,8 @@ def coverage_payload(material, workspace_state, reader_state):
                 original = _text(p.get('ocr_text'))
                 declaration = p.get('source_language') or p.get('detected_language')
             languages[pid] = _language(original, declaration)
+            if kind in _IMAGES and p.get('visual_translation_complete'):
+                languages[pid] = 'not_required' if p.get('visual_language_status')=='no_text' else 'foreign'
             if pid not in positions:
                 continue
             if languages[pid] in {'zh', 'not_required'}:
@@ -494,6 +534,8 @@ def coverage_payload(material, workspace_state, reader_state):
                     complete = [(pid, a, b) for pid, a, b in needed if languages[pid] in {'zh', 'not_required'}
                                 or (languages[pid] != 'unknown'
                                     and _language(_text(index.sources[pid].get('zh'))) == 'zh')]
+                    if kind == 'image':
+                        complete = [(pid,a,b) for pid,a,b in needed if translation_ready(index.sources[pid])]
                     if kind == 'table':
                         complete = [(pid, a, b) for pid, a, b in needed
                                     if _weight(positions.get(pid, []), translated.get(pid, []))

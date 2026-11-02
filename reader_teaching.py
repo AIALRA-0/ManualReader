@@ -1,16 +1,17 @@
 """整理当前项目的教学任务，累加保存术语与练习，写回后等待用户。"""
 import copy,re,uuid
-from reader_contract import canonical_term,writing_guide,QUIZ_WRITING_RULE
-from reader_prompts import TEACHING_METHOD
+from reader_contract import canonical_term,writing_guide
 from reader_learning import learning_payload
 from reader_completion import completion_payload
 from reader_terms import revise_term
 from reader_term_names import term_name,term_key
 from reader_coverage import translation_ready
+from reader_quality import LESSON_PART_CONTRACT
+from reader_translation import TRANSLATION_RULES
 
-TEACHING_RULES=[QUIZ_WRITING_RULE,TEACHING_METHOD,
+TEACHING_RULES=['讲解和回答统一采用本轮 writing.instructions，保留完整逻辑与自然记忆线索，不额外增加记忆小节或阅读步骤',
     '用户在 Codex 对话中手动触发任务；只完成本次指定的章节或待答问题，不自行讲下一节',
-    '先查看 translation_queue，把当前阅读范围内所有非中文自然语言翻译成中文并按原编号写回；不限英语，其他语种同样需要翻译',
+    '先查看 translation_queue，连续读取当前阅读范围的上下文，再把所有非中文自然语言翻译成中文；用 /api/translations/groups 提交完整中文句组并保留原编号，不把 PDF 换行当成断句。图片先看原图，再用 /api/translations/visuals 复用或补译标签；OCR 为空不能直接算无文字',
     '保留标题、段落、列表、加粗、表格、图片和句级对应；公式、代码本体、路径和标识符保持原样，非中文注释及说明需要翻译',
     '当前范围翻译完成即可开始阅读和讲解，不等待整个项目翻译完成；中文原件直接阅读',
     '本节讲解、需要的新术语和选择题练习在同一次写作中输出；术语复用已有编号，定义与直观解释共两段；练习沿用现有选择题格式',
@@ -22,8 +23,13 @@ TEACHING_RULES=[QUIZ_WRITING_RULE,TEACHING_METHOD,
 ]
 
 def translation_queue(material,context):
-    current=set(context.get('passage_ids',[]));files={};pending=[]
+    current=set(context.get('passage_ids',[]));files={};pending=[];visuals=[]
     for p in material['passages']:
+        if p.get('content_kind')!='explanation' and p.get('kind') in ('image','visual','page_image','figure','scan'):
+            if not translation_ready(p):
+                fid=p.get('file_id','primary');row={'source_id':p['id'],'file_id':fid,'kind':p['kind'],'current':p['id'] in current,'src':p.get('src',''),'refs':p.get('refs',[])}
+                visuals.append(row);files.setdefault(fid,[]).append(p['id'])
+            continue
         if p.get('content_kind')=='explanation' or p.get('explanation_id') or p.get('translatable') is False or p.get('heading') and not (p.get('en') or '').strip():continue
         if p.get('duplicate_of') or p.get('role') in ('page_furniture','whitespace') or p.get('display_role') in ('figure_label','decoration'):continue
         original=p.get('en') or ''
@@ -33,12 +39,12 @@ def translation_queue(material,context):
         foreign=any(c.isalpha() and not '\u3400'<=c<='\u9fff' for c in prose)
         kana=bool(re.search('[\u3040-\u30ff\uac00-\ud7af]',prose))
         translated=p.get('zh','').strip()
-        if not foreign or (han and han/max(1,len(letters))>.6 and not kana) or translation_ready(original,translated):continue
+        if not foreign or (han and han/max(1,len(letters))>.6 and not kana) or translation_ready(p):continue
         fid=p.get('file_id','primary');row={'source_id':p['id'],'file_id':fid,'kind':p.get('kind'),'current':p['id'] in current}
         pending.append(row);files.setdefault(fid,[]).append(p['id'])
-    return {'pending_count':len(pending),'current_source_ids':[p['source_id'] for p in pending if p['current']],
-            'units':pending,'files':[{'file_id':fid,'source_ids':ids,'read_url':'/api/translations?file_id='+fid} for fid,ids in files.items()],
-            'instruction':'先翻译 current_source_ids 对应的非中文原文，按 source_id 和句子编号写回；其他待译内容可以后续继续，不启动后台模型'}
+    return {'pending_count':len(pending)+len(visuals),'current_source_ids':[p['source_id'] for p in pending+visuals if p['current']],
+            'units':pending,'visual_units':visuals,'files':[{'file_id':fid,'source_ids':ids,'read_url':'/api/translations?file_id='+fid} for fid,ids in files.items()],
+            'instruction':TRANSLATION_RULES}
 
 def teaching_context(material,stored,state):
     plan=learning_payload(material,stored,state)
@@ -53,13 +59,14 @@ def lesson_task(material,stored,state,node_id=None):
     node=next((n for n in plan['nodes'] if n['id']==identity),None)
     if not node:raise ValueError('请先建立学习目录并选择要讲解的章节')
     if identity!=plan['selected_id']:raise ValueError('先按用户指令选择当前章节，再取得本节讲解任务')
-    ids=set(node['passage_ids'])|{l['passage_id'] for l in node['effective_source_links']}
+    ids=set(node['passage_ids'])|set(node.get('source_range',{}).get('passage_ids',[]))|{l['passage_id'] for l in node['effective_source_links']}
     return {'material_id':material['id'],'mode':'lesson','learning_node':node,**teaching_context(material,stored,state),
-            'sources':[{'id':p['id'],'original':p.get('en'),'translation':p.get('zh'),'kind':p.get('kind'),'source_links':p.get('source_links',[])} for p in material['passages'] if p['id'] in ids],
+            'sources':[{'id':p['id'],'original':p.get('en'),'translation':'\n\n'.join(s['text'] for s in p.get('translation_segments',[])) or p.get('zh'),'kind':p.get('kind'),'src':p.get('src'),'refs':p.get('refs',[]),'page_ids':list(dict.fromkeys(r['page_id'] for r in p.get('refs',[]) if r.get('page_id'))),'source_links':p.get('source_links',[])} for p in material['passages'] if p['id'] in ids],
             'registered_terms':state['terms'],'writing':writing_guide(),'writer':{'model':'gpt-6.1-terra','effort':'high'},
-            'result_contract':{'request_id':'本次任务的唯一编号','learning_node_id':identity,'translations':[{'file_id':'原文文件编号','translations':[{'source_id':'本章每个待译原文单元的编号，逐项覆盖，不可遗漏','text':'完整中文译文，保留原有结构'}]}],'explanation':{'id':'稳定讲解编号','title':node['title'],'markdown':'本次讲解正文'},
+            'translation_writeback':{'text':'先 POST /api/translations/groups，reading_groups 中一份连贯译文完整对应 expected_source_ids','images':'先 POST /api/translations/visuals，逐图核对标签，保留真实原图指纹和定位','legacy':'下方 translations 是旧接口兼容格式，新生成优先使用上述句组接口'},
+            'result_contract':{'request_id':'本次任务的唯一编号','learning_node_id':identity,'translations':[{'file_id':'原文文件编号','translations':[{'source_id':'本章每个待译原文单元的编号，逐项覆盖，不可遗漏','text':'完整中文译文，保留原有结构'}]}],'explanation':{'id':'稳定讲解编号','title':node['title'],'parts':[LESSON_PART_CONTRACT]},
                                'terms':[{'term_id':'复用已有编号；明确改善时 action=revise 并传 expected_version','name':'中文全称（English Full Name）','professional_definition':'定义','intuitive_explanation':'直观解释'}],
-                               'quizzes':[{'prompt':'选择题','options':['选项一','选项二','选项三','选项四'],'correct_index':0,'explanation':'答案解析'}]}}
+                               'quizzes':[{'prompt':'选择题','options':['选项一','选项二','选项三','选项四'],'correct_index':0,'explanation':'正确答案为什么成立','option_explanations':['与原始选项逐项对应，说明每个错误选项具体错在哪里']}]}}
 
 def append_assets(state,data,node_id,explanation_id,passage_ids,stamp):
     issues=[];saved={'terms':[],'quizzes':[]};known_q={q['id'] for r in state['rounds'] for q in r['questions']}
@@ -89,7 +96,7 @@ def append_assets(state,data,node_id,explanation_id,passage_ids,stamp):
                     if not isinstance(options,list) or not 2<=len(options)<=6 or any(not isinstance(o,str) or not o.strip() for o in options) or isinstance(correct,bool) or not isinstance(correct,int) or not 0<=correct<len(options):raise ValueError('练习选项或正确答案格式不正确')
                     collection=next((q for q in state['quizzes'] if q.get('prompt')==prompt.strip() and q.get('options')==options and q.get('correct_index')==correct and (node_id in q.get('learning_node_ids',[]) or explanation_id in q.get('explanation_ids',[]))),None)
                     if collection is None:
-                        collection={'id':'z-'+uuid.uuid4().hex[:16],'round_id':None,'prompt':prompt.strip(),'options':options,'correct_index':correct,'explanation':explanation.strip(),'question_ids':qids,'selected':None,'created_at':stamp()};state['quizzes'].append(collection)
+                        collection={'id':'z-'+uuid.uuid4().hex[:16],'round_id':None,'prompt':prompt.strip(),'options':options,'correct_index':correct,'explanation':explanation.strip(),'option_explanations':__import__('reader_contract').option_explanations(row),'question_ids':qids,'selected':None,'created_at':stamp()};state['quizzes'].append(collection)
                     else:collection['question_ids']=list(dict.fromkeys(collection.get('question_ids',[])+qids))
                 for key,value in [('learning_node_ids',node_id),('explanation_ids',explanation_id)]:collection[key]=list(dict.fromkeys(collection.get(key,[])+[value]))
                 if passage_ids:collection.setdefault('passage_id',passage_ids[0])

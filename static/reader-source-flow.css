@@ -1,0 +1,71 @@
+/* 各页先保留尺寸，图片按需加载，避免图片到达时把阅读位置挤走。 */
+.reader-page-stack{display:flex;flex-direction:column;align-items:flex-start;gap:18px;min-width:100%;padding-bottom:16px;overflow-anchor:none}
+.reader-source-page{position:relative;flex:none;max-width:none;overflow-anchor:none}
+.reader-page-label{font-size:12px;line-height:24px;color:var(--muted,#777);height:24px;padding:0 8px;position:sticky;left:0;white-space:nowrap}
+.reader-page-preview{display:block;object-fit:contain;max-width:none!important;background:#fff}
+.reader-source-page .pdf-page{margin:0!important}
+.reader-source-group{margin:0 0 18px;padding:0;overflow-anchor:none}
+.translation .reader-source-group>article.passage,.translation .reader-source-group td>article.passage{padding:2px 0!important;margin:0!important;border:0!important;min-height:0!important}
+.reader-source-group .reading-segment{padding:0!important;margin:0!important}
+.reader-source-group .chinese>p,.reader-source-group .english>p{margin:0 0 8px}
+.reader-group-paragraph>article{display:block}
+.translation:not([data-language=both]) .reader-continuation>article.passage,.translation:not([data-language=both]) .reader-continuation>article>.chinese,.translation:not([data-language=both]) .reader-continuation>article>.english,.translation:not([data-language=both]) .reader-continuation>article .reading-segment,.translation:not([data-language=both]) .reader-continuation>article p{display:inline}
+.reader-continuation>article+article::before{content:' '}
+.reader-group-questions{display:block}
+.reader-group-questions:empty{display:none}
+.markdown-body hr+hr{display:none}
+.reader-group-figure{padding:0!important;border:0!important;border-radius:0}
+.reader-figure-name{margin:6px 0 10px;text-align:center;font-size:12px;color:var(--muted)}
+.reader-figure-fragments[hidden]{display:none!important}
+.reader-source-crop{display:block;width:65%;height:auto;max-height:420px;object-fit:contain;margin:0 auto 10px;cursor:zoom-in}
+.reader-group-figure>article .chinese,.reader-group-figure>article .english{font-size:inherit}
+.reader-figure-labels{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;font-size:14px;line-height:1.8}
+.translation .reader-figure-labels>article.passage{display:inline-flex!important;gap:8px;padding:0!important;margin:0!important;border:0!important;min-height:0!important}
+.reader-figure-labels .chinese,.reader-figure-labels .english,.reader-figure-labels p,.reader-figure-labels .reading-segment{display:inline!important;margin:0!important;padding:0!important;min-height:0!important}
+.reader-group-questions>.inline-question{margin:4px 0!important}
+.reader-group-composer>summary{display:flex;align-items:center;gap:8px;min-height:26px;padding:2px 0;cursor:pointer;list-style:none;font-size:11px;color:var(--muted)}
+.reader-group-composer>summary::-webkit-details-marker{display:none}
+.reader-group-composer>summary svg{width:12px;height:12px;flex:none}
+.reader-group-composer[open]>summary svg:nth-child(2){transform:rotate(90deg)}
+.reader-group-composer>.inline-question>summary{display:none!important}
+.reader-group-composer>.inline-question{margin:0 0 12px!important}
+.reader-group-question-source{font-size:12px;line-height:1.6;margin:10px 0 6px;color:var(--muted);max-height:4.8em;overflow:auto}
+.inline-questions-hidden .inline-question,.inline-questions-hidden .reader-group-composer{display:none!important}
+.reader-coherent-fragments>.passage>.chinese{display:none!important}
+.reader-coherent-fragments:empty,.translation[data-language=zh] .reader-coherent-fragments{display:none}
+.reader-coherent-active,.reader-coherent-source-active{background:var(--selected);border-radius:3px}
+.reader-coherent-segment{cursor:pointer}
+.reader-coherent-segment:has(h1,h2,h3,h4,h5,h6){cursor:default}
+.reader-coherent-segment{margin:0 0 10px}
+.reader-coherent-segment>p{margin:0 0 8px}
+.reader-coherent-group .reader-continuation{display:block}
+.reader-translation-page{font-size:12px;color:var(--muted,#777);margin:20px 0 12px;padding:6px 0;border-top:1px solid var(--line,#555)}
+.reader-translation-page:first-child{margin-top:0}
+.reader-reflow-table{border-collapse:collapse;width:100%;table-layout:auto}
+.reader-reflow-table td{border:1px solid var(--line,#555);padding:8px;vertical-align:top;min-width:45px}
+.reader-range-summary{font-size:12px;color:var(--muted,#777);padding:0 0 12px}
+.reader-explanation-pages{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.reader-page-link{border:0;background:transparent;color:inherit;font:inherit;font-size:12px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:2px 0}
+[data-pane] .markdown-body img,[data-pane] .source-media img,[data-pane] .original-reading img{display:block;width:auto;max-width:65%!important;height:auto;object-fit:contain;margin:12px auto;cursor:zoom-in}
+.reader-media-dialog .media-view-stage{display:flex;align-items:flex-start;justify-content:center;min-width:0;min-height:0;transform-origin:0 0}
+.reader-media-dialog .media-view-stage>img{display:block;max-width:none!important;max-height:none!important;object-fit:contain;margin:auto;flex:none;aspect-ratio:auto}
+.media-view-viewport:has(img),.media-view-viewport:has(svg){cursor:grab;touch-action:none}
+.media-view-viewport.is-dragging{cursor:grabbing;user-select:none}
+@media(max-width:760px){.reader-source-crop{width:70%;max-height:320px}[data-pane] .markdown-body img,[data-pane] .source-media img,[data-pane] .original-reading img{max-width:70%!important}.reader-reflow-table{font-size:14px}.reader-page-stack{gap:12px}.reader-explanation-pages{gap:12px}}
+
+/* 只有具备可用坐标的标注才提供定位操作，不能精确对应的标签仍可正常阅读。 */
+.reader-figure-labels .reader-source-static{cursor:text!important;background:transparent!important;outline:0!important}
+.reader-figure-labels .reader-source-action{cursor:pointer;text-decoration:none}
+.reader-coherent-segment .reader-group-composer{margin:0}
+.reader-group-composer>.inline-question{padding-top:0!important;border:0!important}
+/* 对照栏共用中性灰色；原页继续使用原有彩色坐标高亮。 */
+:root{--reader-linked-fill:#e7e7e5;--reader-linked-preview:#efefed}
+html[data-theme=dark]{--reader-linked-fill:#383838;--reader-linked-preview:#2e2e2e}
+#translation .reader-linked,#explanation .reader-linked,#interaction .reader-linked{background:var(--reader-linked-fill)!important;border-radius:4px;outline:none!important}
+#translation .reader-linked-preview,#explanation .reader-linked-preview,#interaction .reader-linked-preview{background:var(--reader-linked-preview)!important;border-radius:4px;outline:none!important}
+#original-reading .reader-linked,#original-reading .reader-linked-preview{background:color-mix(in srgb,var(--source-fill,#969696) 22%,transparent)!important;border-radius:3px}
+.reader-linked,.reader-linked-preview{transition:background-color calc(.22s / var(--motion-speed,.8)) ease;scroll-margin-block:20px}
+button.icon-btn[aria-pressed=true],.pane-actions button[aria-pressed=true],.top-actions button[aria-pressed=true],.tab-row button[aria-selected=true],.mobile-tabs button[aria-selected=true]{box-shadow:none!important;background:var(--selected)!important}
+button:focus:not(:focus-visible){outline:none!important}
+button:focus-visible,.icon-btn:focus-visible{outline:none!important;background:var(--selected)!important;box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--text) 22%,transparent)!important}
+@media(prefers-reduced-motion:reduce){.reader-linked,.reader-linked-preview{transition:none}}

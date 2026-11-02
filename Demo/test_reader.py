@@ -13,7 +13,8 @@ class ReaderTests(unittest.TestCase):
  def test_review_keeps_original_answer_and_note(self):
   record_answer(self.state,'q1',0,self.stamp);s=change(self.state,{'action':'start'},self.stamp)
   result=change(self.state,{'action':'answer','quiz_id':'q1','selected':1,'session_id':s['id']},self.stamp)
-  self.assertTrue(result['correct']);self.assertEqual(payload(self.state)['count'],0);self.assertEqual(self.state['quizzes'][0]['selected'],0);self.assertEqual(self.state['notes'],[{'text':'保留笔记'}]);self.assertEqual(self.state['read'],['original'])
+  self.assertTrue(result['correct']);self.assertEqual(payload(self.state)['count'],1);self.assertEqual(payload(self.state)['unmastered'],0);self.assertEqual(self.state['quizzes'][0]['selected'],0);self.assertEqual(self.state['notes'],[{'text':'保留笔记'}]);self.assertEqual(self.state['read'],['original'])
+  change(self.state,{'action':'remove','quiz_id':'q1','confirmed':True},self.stamp)
   self.assertEqual(change(self.state,{'action':'start'},self.stamp)['items'],[])
  def test_repeat_review_write_is_idempotent(self):
   record_answer(self.state,'q1',0,self.stamp);s=change(self.state,{'action':'start'},self.stamp);data={'action':'answer','quiz_id':'q1','selected':1,'session_id':s['id']};change(self.state,data,self.stamp);change(self.state,data,self.stamp);self.assertEqual(len(self.state['practice_book']['attempts']),2)

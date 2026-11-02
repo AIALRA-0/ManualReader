@@ -28,6 +28,7 @@ class Runs:
         finally:conn.close()
     def create(self,material_id,packet):
         identity='run-'+uuid.uuid4().hex[:20];stamp=now();row={'id':identity,'material_id':material_id,'created_at':stamp,'state':'prepared','writer':packet['writer'],'question_ids':[q['id'] for q in packet['questions']],'packet':packet,'events':[{'type':'prepared','at':stamp}],'groups':{str(i+1):{'id':str(i+1),'question_ids':ids,'state':'prepared'} for i,ids in enumerate(packet['groups'])}}
+        if packet.get('writing_version'):row['writing_version']=packet['writing_version']
         if not row['groups']:row.update(state='completed',completed_at=stamp)
         with self.db() as conn:conn.execute('INSERT INTO runs VALUES(?,?)',(identity,json.dumps(row,ensure_ascii=False)))
         return row
@@ -57,7 +58,7 @@ class Runs:
                 if not isinstance(usage,dict):raise ValueError('用量需要使用实际运行记录中的对象')
                 target['usage']={k:v for k,v in usage.items() if k in ('input_tokens','cached_input_tokens','cache_write_input_tokens','output_tokens','reasoning_output_tokens','model_calls') and isinstance(v,int) and not isinstance(v,bool) and v>=0}
                 target['usage_source']=str(data.get('source','client_runtime'))[:80]
-                for key in ('model','effort','configured_service_tier'):
+                for key in ('model','effort','configured_service_tier','writing_version'):
                     if data.get(key):target[key]=str(data[key])[:100]
                 if isinstance(data.get('requests'),list):target['requests']=[{k:v for k,v in item.items() if k in target['usage'] and isinstance(v,int) and v>=0} for item in data['requests'] if isinstance(item,dict)]
                 if isinstance(data.get('tool_usage'),dict) and isinstance(data['tool_usage'].get('web_search_calls'),int) and data['tool_usage']['web_search_calls']>=0:target['tool_usage']=data['tool_usage']

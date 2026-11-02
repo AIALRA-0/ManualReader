@@ -11,11 +11,11 @@
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/desktop-dark.png">
-  <img src="docs/assets/readme/desktop-light.png" alt="The synthetic cache example shows the outline, source, translation, questions, and terminology" width="1200">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/question-roundtrip.png">
+  <img src="docs/assets/readme/question-light.png" alt="The synthetic cache example shows the outline, source, translation, three-level questions, and terminology" width="1200">
 </picture>
 
-Figure 1 The running synthetic cache example, with a Terra high answer that traces how a dictionary and linked list change together
+Figure 1 The current interface uses fixed synthetic answers to demonstrate source links, three-level follow-ups, and answer-reading state
 
 </div>
 
@@ -31,7 +31,10 @@ Read the source and translation, write questions below a passage, and manually a
 - Read original PDF pages and locations, with Markdown support for mathematics, tables, code, images, and Mermaid diagrams
 - Resize desktop columns or switch mobile tabs
 - Optionally run offline speech recognition with a visible recording timer and stop control
-- Autosave understanding notes and review mistakes in rounds; a correct review removes an item without changing the original attempt
+- Autosave notes and review previous mistakes in rounds; correctly reviewed items stay until manually removed, while original attempts remain intact
+- Colored disclosure triangles show unread and opened answers; updated answers turn yellow again, and opening them saves the green state across reloads
+- Confirm deletion in a modal; Agents must also review and confirm a scoped, single-use deletion preview, preserving identifiers and history
+- Slow reads show a subtle blur, spinner, and actual processing stage; errors release the loading state
 - Enlarge images, tables, formulas, and diagrams; writers can reuse source images, draw flowcharts, or generate an actual illustration when useful
 
 An Agent can also write chapter explanations for code projects or projects without an original document
@@ -111,7 +114,19 @@ Answers prefer real source images. Mermaid is available for process explanations
 
 ## 6 Validation and current limits
 
-Checks cover answer formatting, collapsed inputs, four term display modes, ambiguous aliases, protected mathematics and code, image references, and desktop/mobile layout
+Checks cover answer formatting, collapsed inputs, seven term-name modes, ambiguous aliases, protected mathematics and code, image references, and desktop/mobile layout
+
+The new regression follows answer, deletion, question editing, default pending-pool retrieval, and writeback under the original identifier. It preserves three-level follow-ups, notes, exercises, and manual progress, and checks deletion-preview scope, expiry, changed content, and replay rejection
+
+<div align="center">
+
+<img src="docs/assets/readme/loading-chapter.png" alt="A chapter request softly blurs the source and translation while showing a spinner and its real stage, with the outline and questions still visible" width="1200">
+
+Figure 4 The actual loading state during a paused chapter request; completion or error restores interaction
+
+</div>
+
+See the [feature gallery](docs/features.md) for deletion dialogs, mobile views, and loading states, and the [validation record](docs/validation.md) for checks and limits
 
 Small writing comparisons used mathematics, processor architecture, caching, osmosis, request retries, probability, and temperature control with Terra high on standard service. See [validation](docs/validation.md) for conditions and scope
 
