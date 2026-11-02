@@ -1,3 +1,12 @@
+# v0.3.1
+
+- 使用完整六区阅读场景展示产品，并提供分区操作图册与可装载的合成 Demo
+- 章节进度改为累计计数，复用同一请求中的章节计划，减少历史返回时重复重建译文
+- 移除运行入口不再使用的旧界面副本与拼接脚本，当前渲染器和第三方许可保留
+- 新增五项性能行为回归，与现有测试合计三十六项；测量条件与结果见 docs/performance.md
+
+The README now demonstrates a complete six-area reading workflow with reproducible synthetic content. Chapter counting and plan reuse reduce repeated work, history navigation reconstructs translations once, and obsolete distribution copies are removed
+
 # v0.3.0
 
 ## 1 阅读和提问有什么变化

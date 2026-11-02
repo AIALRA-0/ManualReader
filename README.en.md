@@ -2,142 +2,157 @@
 
 <h1>ManualReader</h1>
 
-<p>Read the source, compare its translation, and keep your questions beside the passage</p>
+<p>Read sources, translations, and explanations together, with your questions and understanding kept beside them</p>
 
-[Get started](#2-get-started) · [Reading flow](#3-complete-a-reading-session) · [Agent API](docs/agent-api.md) · [简体中文](README.md)
+[Get started](#2-how-to-start-reading) · [Six-panel walkthrough](#3-how-the-six-areas-work-together) · [Feature gallery](docs/features.md) · [Download](https://github.com/AIALRA-0/ManualReader/releases/latest) · [简体中文](README.md)
 
 </div>
 
 <div align="center">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/question-roundtrip.png">
-  <img src="docs/assets/readme/question-light.png" alt="The synthetic cache example shows the outline, source, translation, three-level questions, and terminology" width="1200">
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/readme/workspace-dark.png">
+  <img src="docs/assets/readme/workspace-light.png" alt="The running workspace shows an outline, English source, Chinese translation, explanations, nested questions, and exercise feedback" width="1400">
 </picture>
 
-Figure 1 The current interface uses fixed synthetic answers to demonstrate source links, three-level follow-ups, and answer-reading state
+Figure 1 A complete running workspace with a self-authored synthetic price-service article and fixed answers; matching passages are highlighted across source, translation, and explanation
 
 </div>
 
-## 1 What this application does
+## 1 How this workspace helps you read
 
-ManualReader is a reading workspace for people who compare source material, ask follow-up questions, and keep a record of their understanding
+Read the material, write questions beside the sentence that stopped you, and manually ask your own Codex conversation to answer them. The reader saves sources, answers, terms, exercises, and notes without requiring a generated course before you begin
 
-Read the source and translation, write questions below a passage, and manually ask your own Codex conversation to answer them. The application displays and records the results; it does not automatically generate a course before you can start reading
+- Keep a learning outline separate from source-file outlines, with manual reading and exercise progress
+- Switch, split, or stack source, translation, and explanation panels
+- Click to locate corresponding content while retaining each question's original passage and follow-up relationships
+- Autosave questions and notes; updated answers turn yellow, and opening them saves the green state
+- Choose term-name modes per panel, check exercise explanations, and revisit previous mistakes
+- Switch mobile tabs and enlarge images, tables, formulas, and diagrams
 
-- Switch between source, translation, and explanation, or arrange them in columns and vertical splits
-- Keep questions anchored to passages, with nested follow-ups, personal notes, and exercise results
-- Configure seven term-name modes independently in five panels; hover shows the full name by default without rewriting the source
-- Read original PDF pages and locations, with Markdown support for mathematics, tables, code, images, and Mermaid diagrams
-- Resize desktop columns or switch mobile tabs
-- Optionally run offline speech recognition with a visible recording timer and stop control
-- Autosave notes and review previous mistakes in rounds; correctly reviewed items stay until manually removed, while original attempts remain intact
-- Colored disclosure triangles show unread and opened answers; updated answers turn yellow again, and opening them saves the green state across reloads
-- Confirm deletion in a modal; Agents must also review and confirm a scoped, single-use deletion preview, preserving identifiers and history
-- Slow reads show a subtle blur, spinner, and actual processing stage; errors release the loading state
-- Enlarge images, tables, formulas, and diagrams; writers can reuse source images, draw flowcharts, or generate an actual illustration when useful
+## 2 How to start reading
 
-An Agent can also write chapter explanations for code projects or projects without an original document
-
-## 2 Get started
-
-Requirements: Python 3.10 or later and a modern browser. Initial dependency installation needs network access
-
-- First, download the repository and open a terminal in its directory
-- Next, run the launcher for your operating system; it creates a local Python environment without changing system packages
+Requirements: Python 3.10 or later, a modern browser, and network access for first-time dependency installation. Run the launcher in the extracted repository directory
 
 ```powershell
-# Windows: create a local environment and start the reader
+# Windows: create a local environment and launch the reader
 .\Start-Reader.ps1
 ```
 
 ```sh
-# Linux or macOS: create a local environment and start the reader
+# Linux or macOS: create a local environment and launch the reader
 sh ./Start-Reader.sh
 ```
 
-- Open the address printed by the launcher, normally `http://localhost:8939`; the repository starts with a synthetic cache example
-- Import your own material, or ask a question about the demonstration
+Open the local address printed by the launcher. To load the complete scene shown above, run this command in the same directory and open the new Demo link printed in the terminal
 
-To load the actual model answer shown in the screenshots, run `python Demo/load_example.py --base http://127.0.0.1:8939`. Use the port printed by your launcher if it differs; this command only writes to the synthetic demonstration project
+```sh
+# Create an isolated synthetic project without overwriting existing material
+python Demo/load_walkthrough.py --base http://127.0.0.1:8939
+```
 
-See [deployment instructions](docs/deployment.md) for manual installation, custom ports, and data migration
+Use the launcher's actual port if it differs. The walkthrough includes four chapters, source text, translations, explanations, twelve questions and follow-ups, terms, and exercises. Its fixed content is included in the repository; loading it calls no model and changes no other project's notes or progress
 
-See [import behavior and limitations](docs/importing.md) for file formats, source locations, and translation responsibilities
+See [deployment](docs/deployment.md) for installation and backups, and [importing](docs/importing.md) for PDFs, websites, presentations, repositories, and empty projects
 
-## 3 Complete a reading session
+## 3 How the six areas work together
+
+### 3.1 Use the outline to keep your place
+
+The learning outline remains available when you open another source file. Reading progress changes when you manually mark the displayed content as read
+
+<div align="center">
+
+<img src="docs/assets/readme/learning-outline.png" alt="A four-chapter synthetic learning outline with the cache hit and miss chapter selected" width="300">
+
+Figure 2 The outline keeps reading order, the current chapter, and progress together; no chapter has been marked read in this demonstration
+
+</div>
+
+### 3.2 Compare sources, translations, and explanations
+
+These three areas show the original material, its translation, and additional teaching. Clicking locates and highlights matching content; ordinary scrolling remains a reading action
+
+<div align="center">
+
+<img src="docs/assets/readme/source-translation-explanation.png" alt="The same cache-hit passage is highlighted in the English source, Chinese translation, and explanation" width="1200">
+
+Figure 3 The explanation traces which action a cache hit saves while retaining its source relationship
+
+</div>
+
+### 3.3 Keep questions and follow-ups anchored
+
+Write initial questions below a translated or explained passage; they autosave. Answers appear in the question panel with source and answer separated. Follow-ups stay nested beneath their parent, while notes and follow-up inputs are initially collapsed
+
+<div align="center">
+
+<img src="docs/assets/readme/nested-questions.png" alt="A cache-hit question retains its source, complete answer, and an indented follow-up" width="620">
+
+Figure 4 Opened answers use green triangles; unopened follow-ups remain yellow
+
+</div>
+
+### 3.4 Revisit terms and exercise your understanding
+
+Terms contain an independent definition and a concrete explanation. Seven naming modes are configured per panel, with optional hover names and first-occurrence replacement. Exercises explain the selected judgment and keep previous mistakes available for review
+
+<div align="center">
+
+<img src="docs/assets/readme/term-explanation.png" alt="A term's independent definition and concrete explanation" width="440">
+
+Figure 5.1 The term definition and concrete explanation share the same price-service example
+
+<img src="docs/assets/readme/exercise-feedback.png" alt="Multiple-choice options, answer feedback, and an explanation" width="440">
+
+Figure 5.2 An exercise checks a judgment from the same material and explains the selected answer
+
+</div>
+
+See the [sectioned gallery](docs/features.md) for term modes, deletion confirmation, autosave, and loading states
+
+## 4 How to read on a phone
+
+Bottom tabs switch source, translation, explanation, questions, and study content. The selected panel uses the available width and retains the same project records
+
+<div align="center">
+
+<img src="docs/assets/readme/walkthrough-mobile.png" alt="The same question on a 393-pixel mobile viewport, with bottom navigation tabs" width="360">
+
+Figure 6 A running mobile-width view, tested with browser viewport emulation
+
+</div>
+
+Optional self-hosted speech input shows recording state and lets you edit the transcription. See [offline voice](docs/offline-voice.md) for installation and recognition limits
+
+## 5 How an Agent connects to your reading
+
+Copy the current project's connection instructions into your own Codex conversation. The Agent reads saved questions and writes results through project APIs; you still trigger the conversation manually
 
 <div align="center">
 
 ```mermaid
 flowchart TD
-    A[Read the source and translation] --> B[Write questions below the passage]
-    B --> C[Manually ask your Codex conversation to answer]
-    C --> D[Write answers and terminology through the project API]
-    D --> E[Ask follow-ups or complete exercises]
-    E --> F[Mark the displayed content as read yourself]
+    A[Read and write a question beside its source] --> B[Trigger your own Codex conversation]
+    B --> C[Write answers, terms, and exercises under original identifiers]
+    C --> D[Read, follow up, and practice]
+    D --> E[Manually mark the displayed content read]
 ```
 
-Figure 2 The reader controls progress; the Agent does not mark material as read
+Figure 7 The page displays and records the work; the reader controls learning progress
 
 </div>
 
-Use the connection button and paste its instructions into your Codex conversation. Each answer displays its source separately. Personal notes and follow-up inputs start collapsed. Answers, terms, and exercises accumulate without clearing earlier notes
+Connections are project-scoped. Agents cannot mark manual progress or change personal notes and exercise attempts. Deletion requires a preview followed by a scoped confirmation. See the [Agent API](docs/agent-api.md) for current fields, clients, and writing rules
 
-<div align="center">
+## 6 How performance and stability are checked
 
-<img src="docs/assets/readme/mobile-dark.png" alt="A mobile question tab shows an answer with collapsed note and follow-up inputs" width="360">
+The running code reuses calculated learning data, avoids repeated translation reconstruction when restoring a reading position, and derives chapter counts from accumulated totals instead of rescanning every paragraph for every chapter. The distribution omits obsolete UI copies and assembly scripts no longer used by its launchers
 
-Figure 3 Mobile tabs keep the selected panel at full width
+Checks cover thirty-six synthetic unit tests, answer deletion and editing under the original identifier, loading-error recovery, and desktop/mobile layouts. See [validation](docs/validation.md) and [performance](docs/performance.md) for actual results, conditions, and reproduction
 
-</div>
+## 7 How data and licenses are handled
 
-## 4 Connect an Agent
+The public repository contains application code, dependencies, synthetic material, and screenshots, without private reading data, databases, credentials, recordings, or model weights. Back up data before upgrades and retain existing reading directories
 
-Connections are scoped to one project. The API uses stable file, passage, sentence, and question identifiers
-
-- Read the question pool and corresponding source material
-- Write translations against their original identifiers
-- Save chapter explanations with source associations
-- Append answers, reusable terms, and multiple-choice exercises
-- Advance the learning chapter only after the reader manually marks it complete
-
-See the [Agent API](docs/agent-api.md) and [deployment instructions](docs/deployment.md) for contracts, pairing, and authentication
-
-## 5 Speech and visual explanations
-
-The speech pilot uses a quantized SenseVoice ONNX model through sherpa-onnx, running on your own machine. It requires an initial model download and FFmpeg; recordings are processed in memory rather than saved as reading material
-
-Click the microphone beside an input, speak, and click again to finish. The transcript remains editable. See [offline speech](docs/offline-voice.md) for installation and limitations
-
-Answers prefer real source images. Mermaid is available for process explanations. New illustrations are requested only when existing images or diagrams are insufficient, and depend on the connected Codex tools
-
-## 6 Validation and current limits
-
-Checks cover answer formatting, collapsed inputs, seven term-name modes, ambiguous aliases, protected mathematics and code, image references, and desktop/mobile layout
-
-The new regression follows answer, deletion, question editing, default pending-pool retrieval, and writeback under the original identifier. It preserves three-level follow-ups, notes, exercises, and manual progress, and checks deletion-preview scope, expiry, changed content, and replay rejection
-
-<div align="center">
-
-<img src="docs/assets/readme/loading-chapter.png" alt="A chapter request softly blurs the source and translation while showing a spinner and its real stage, with the outline and questions still visible" width="1200">
-
-Figure 4 The actual loading state during a paused chapter request; completion or error restores interaction
-
-</div>
-
-See the [feature gallery](docs/features.md) for deletion dialogs, mobile views, and loading states, and the [validation record](docs/validation.md) for checks and limits
-
-Small writing comparisons used mathematics, processor architecture, caching, osmosis, request retries, probability, and temperature control with Terra high on standard service. See [validation](docs/validation.md) for conditions and scope
-
-Speech remains a pilot. Technical English names can be misrecognized; source anchoring lets the reader say “why does this function work this way” and edit names afterward
-
-## 7 Data, support, and licensing
-
-The public repository contains application code, required frontend dependencies, synthetic demonstrations, and validation notes. It excludes real documents, question databases, pairing credentials, recordings, and model weights
-
-Back up the complete runtime data directory before migration or upgrades. Local service binds to loopback; public deployment requires HTTPS, login protection, and project-specific pairing
-
-Report reproducible issues with synthetic examples. Do not publish private documents, connection codes, or reading records
-
-No project source license has been selected yet. Third-party components retain their respective licenses; see [third-party notices](THIRD_PARTY_NOTICES.md)
+Local launch binds to loopback. Public deployment requires HTTPS, authentication, and project authorization. Project source has no separately assigned license; dependency notices are in [third-party notices](THIRD_PARTY_NOTICES.md)

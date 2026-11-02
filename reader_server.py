@@ -171,10 +171,11 @@ def progress_payload(progress=None):
         row['questions']=[decorate_question(m,q) for q in row['questions']]
     progress['mistake_quiz_ids']=practice_payload(progress)['quiz_ids']
     learning=learning_payload(m,stored,progress)
+    completion=completion_payload(m,stored,progress,plan=learning)
     learning['coverage_plan']={k:v for k,v in learning.get('coverage_plan',{}).items()if k not in ('source_owners','shared_references')}
     learning['nodes']=[{k:v for k,v in node.items()if k not in ('source_links','owned_source_ids')}for node in learning['nodes']]
     return {**progress,'learning':learning,'material_revision':material_revision(),
-            'completion':completion_payload(m,stored,progress),
+            'completion':completion,
             'settings_revision':SETTINGS.stat().st_mtime_ns if SETTINGS.exists() else 0,
             'reading_progress':reading_progress(m,progress)}
 
@@ -362,7 +363,8 @@ class Handler(core.Handler):
                         return self.json({'material_id':mid(),'passages':[{'id':p['id'],'file_id':p.get('file_id'),'text':p.get('aligned_original') or p.get('en') or p.get('zh','')} for p in m['passages'] if p.get('file_id') in needed or p.get('explanation_id') in eids and p.get('explanation_id')]})
                     return self.json(Runs.public(row))
                 if path=='/api/learning':
-                    state=core.read_state();return self.json({**learning_payload(m,workspace().read(),state),'completion':completion_payload(m,workspace().read(),state)})
+                    state=core.read_state();stored=workspace().read();plan=learning_payload(m,stored,state)
+                    return self.json({**plan,'completion':completion_payload(m,stored,state,plan=plan)})
                 if path=='/api/coverage':return self.json(coverage_payload(m,workspace().read(),core.read_state()))
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
                 if path=='/api/library':return self.json(library())

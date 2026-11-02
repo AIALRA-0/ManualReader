@@ -1,0 +1,319 @@
+{
+  "title": "Demo · 跟着一次查价请求理解缓存",
+  "provenance": "自撰合成文章与固定演示问答，不含私人阅读记录，不是本轮模型性能测试",
+  "chapters": [
+    {
+      "title": "查价请求需要什么，资料分别存在哪里",
+      "paragraphs": [
+        {
+          "en": "A small price service",
+          "zh": "一个小型查价服务",
+          "explanation": "",
+          "part_title": "",
+          "questions": [],
+          "heading": true
+        },
+        {
+          "en": "A customer opens product 42. The price service receives the product identifier and must return the price currently stored in its database. In this demonstration, that price is 88 yuan.",
+          "zh": "顾客打开商品 42 的页面；查价服务收到商品编号，需要返回数据库里保存的价格；本例中，这个价格是 88 元",
+          "explanation": "先把这次请求看成一句很具体的话：请告诉我商品 42 卖多少钱。42 用来确定查哪一件商品，88 才是这次查到的价格；二者不是同一个量。顾客看到页面之前，服务要先取得价格，再把价格放进响应返回，因此整段材料讨论的都是这次取价过程",
+          "part_title": "请求里有编号，为什么还要另查价格",
+          "questions": [
+            {
+              "text": "42 和 88 分别是什么？",
+              "answer": "42 是本例的商品编号，用来找到这件商品；88 是数据库为这件商品保存的价格，单位是元。服务收到 42 后查到 88，再把 88 返回给顾客",
+              "terms": [],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "The database is the durable record. The cache is a separate place that keeps a temporary copy of a result. Removing a cache entry does not remove the database record.",
+          "zh": "数据库保存持久记录；缓存是另一个位置，临时保留查到的结果副本；移除缓存条目不会删除数据库记录",
+          "explanation": "本例先把数据库当作正式价格表，缓存则是服务为了方便重复查询而留下的一份副本。顾客需要价格时，服务可以先看看手边有没有可用副本；这就是引入缓存的目的。副本丢了，正式价格表仍在，服务可以重新查询并留下新副本",
+          "part_title": "数据库和缓存分别保存什么",
+          "questions": [
+            {
+              "text": "为什么有了数据库还要缓存？",
+              "answer": "同一个商品可能被连续查看，每次都重新访问数据库会重复完成相同的查询。服务把已取得的价格留成短期副本，下次副本可用时直接取用，从而减少对数据库的重复访问",
+              "terms": [
+                {
+                  "name": "缓存（Cache）",
+                  "definition": "缓存是为了重复使用而临时保存数据副本的位置；程序先检查副本是否存在且可用，命中时复用，未命中时再访问原数据",
+                  "intuitive_explanation": "可以想象店员把刚查过的价格抄在手边的小纸条上；再次有人问同一商品时先看纸条，纸条失效或丢了就重新查正式价目表"
+                }
+              ],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "A key identifies one cached result. We use price:42 for the price of product 42, and store both the value and its expiration time in the entry.",
+          "zh": "键用来区分缓存中的不同结果；本例使用 price:42 表示商品 42 的价格，在同一条目里保存价格与到期时刻",
+          "explanation": "缓存里可能同时存放许多商品的价格，所以还要给每份副本一个查找标记。price:42 就是这份副本的键：price 表示查价格，42 表示查这件商品；服务凭这个键取回价格以及到期时刻，才能继续判断这份副本是否可用",
+          "part_title": "服务怎样找到正确的副本",
+          "questions": [
+            {
+              "text": "键是什么，为什么写 price:42？",
+              "answer": "键是用来查找一条缓存记录的标记。本例约定 price:42 指向商品 42 的价格副本；price 和 42 共同把这份价格与其他商品或其他类型的数据区分开",
+              "terms": [
+                {
+                  "name": "缓存键（Cache Key）",
+                  "definition": "缓存键是在缓存中查找某条记录的标记；同一套命名规则必须让同一数据使用同一键，并区分不同数据",
+                  "intuitive_explanation": "把正式价目表看成书架，缓存键就像贴在手边纸条上的商品编号；编号相同才能拿到这次要查的那张纸条"
+                }
+              ],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        }
+      ]
+    },
+    {
+      "title": "命中时省去哪一步，未命中时怎样继续",
+      "paragraphs": [
+        {
+          "en": "Follow one request through the cache",
+          "zh": "跟着一次请求走过缓存",
+          "explanation": "",
+          "part_title": "",
+          "questions": [],
+          "heading": true
+        },
+        {
+          "en": "For product 42, the service first looks up price:42. It checks that an entry exists and that the current time is earlier than its expiration time. Both checks must pass before the copy can be reused.",
+          "zh": "查商品 42 时，服务先查找 price:42，确认记录存在，并确认当前时刻早于到期时刻；两项都通过，才会复用这个副本",
+          "explanation": "现在沿着商品 42 的这次请求往下走。服务先用 price:42 找到对应条目；找到后还要看它何时到期，因为存在的副本也可能已经太旧。如果当前时刻尚未到期，服务就按本例的规则把这个副本当作可用结果，接下来可以直接取出价格",
+          "part_title": "找到一条记录，为什么还不算检查结束",
+          "questions": [
+            {
+              "text": "找到了缓存为什么还要看时间？",
+              "answer": "因为找到记录只说明副本仍在，并没有说明它仍在本例允许使用的时间内。条目到期后，服务要重新读取数据库；检查到期时刻，正是为了决定这次能不能继续复用旧副本",
+              "terms": [
+                {
+                  "name": "到期时刻（Expiration Time）",
+                  "definition": "到期时刻是当前规则允许继续使用一条缓存记录的截止时刻；请求发生时，程序用当前时刻与它比较，决定复用还是重新取得数据",
+                  "intuitive_explanation": "店员给纸条写上“十点前可直接使用”；九点五十九分还能照着读，到了十点就要重新查价"
+                }
+              ],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "If the entry is valid, the service reads the cached value 88 and returns it to the customer. This is a cache hit. The service skips the database read, not the work of reading the cache or sending the response.",
+          "zh": "条目可用时，服务从缓存读出 88 并返回给顾客，这叫缓存命中；这次省去的是读取数据库，读取缓存和发送响应仍然要做",
+          "explanation": "两项检查都通过后，服务直接从缓存里取出 88，再把这个价格返回给顾客，这就是这次命中的完整动作。这里省掉的是重新去数据库取价这一趟，并不是请求从此不用处理；查缓存、取副本和返回结果仍然存在。这样读原文，就能明确“命中节省工作”具体节省了哪一步",
+          "part_title": "命中以后，到底省去了什么",
+          "questions": [
+            {
+              "text": "缓存命中到底省了哪一步？为什么还要返回？",
+              "answer": "省掉的是本次数据库读取。服务仍然要从缓存取出价格 88，再把它写入响应返回给顾客；否则服务虽然已经拿到价格，顾客的页面却还没有收到结果。可以把它想成已经把价目表那一页留在手边：不用再走到书架，但仍要拿起这一页并把价格告诉提问的人",
+              "terms": [
+                {
+                  "name": "缓存命中（Cache Hit）",
+                  "definition": "缓存命中是请求在缓存中找到了按当前规则可用的数据副本；程序读取这个副本并继续完成请求，从而省去对应的原数据访问",
+                  "intuitive_explanation": "顾客再次问商品 42 的价格，店员发现手边纸条仍可用，直接读出 88 元告诉顾客；省去的是重新查正式价目表，并没有省掉回答顾客"
+                }
+              ],
+              "quizzes": [
+                {
+                  "prompt": "本例缓存命中后，哪一步被省去",
+                  "options": [
+                    "重新从数据库读取商品价格",
+                    "从缓存条目中取得价格副本",
+                    "把查到的价格返回给顾客",
+                    "检查副本是否符合使用规则"
+                  ],
+                  "correct_index": 0,
+                  "explanation": "命中意味着已有可用副本，因此省去对应的数据库读取；其余动作仍然需要完成",
+                  "option_explanations": [
+                    "命中后可以复用副本，因此不用再读数据库",
+                    "复用副本仍然要先把值取出来",
+                    "顾客仍在等待服务响应，因此必须返回结果",
+                    "判断是否可用就是本例命中的前提"
+                  ]
+                }
+              ],
+              "followup": {
+                "text": "存在副本就一定能命中吗？",
+                "answer": "不一定；本例还要求当前时刻早于到期时刻。记录存在但已经到期时，服务仍然要读取数据库，取得新的价格副本"
+              }
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "If the entry is missing or expired, the service reads the database instead. It then stores the returned value with a new expiration time and sends the value to the customer. This path is a cache miss.",
+          "zh": "条目缺失或到期时，服务改为读取数据库，再把读到的价格和新的到期时刻存入缓存，随后将价格返回给顾客；这条路径叫缓存未命中",
+          "explanation": "如果刚才找不到条目，或者发现条目已到期，这次就不能沿用副本。服务于是回到数据库查商品 42 的正式价格；拿到结果后，一方面把价格返回给顾客，另一方面留下新副本和新的到期时刻，供后续请求使用。未命中并不是读请求失败，而是这次多走了取得原数据的路径",
+          "part_title": "未命中后，请求怎样继续",
+          "questions": [
+            {
+              "text": "未命中是不是说明这次查价失败？",
+              "answer": "不是；未命中表示缓存没有提供这次可直接复用的副本。服务继续读取数据库，取得价格后照常返回，并保存新副本，后续请求才有机会命中",
+              "terms": [
+                {
+                  "name": "缓存未命中（Cache Miss）",
+                  "definition": "缓存未命中是请求没有在缓存里取得按当前规则可用的副本；程序需要沿原数据访问路径继续处理",
+                  "intuitive_explanation": "店员没有找到可用纸条，就回正式价目表查询；查到价格后仍能回答顾客，只是这次没有省下查表的动作"
+                }
+              ],
+              "quizzes": [
+                {
+                  "prompt": "发现缓存副本已经到期，本例接下来怎样处理",
+                  "options": [
+                    "立即返回错误，不再处理请求",
+                    "继续返回旧副本直到缓存被删除",
+                    "读取数据库并写入新副本后返回",
+                    "只延长旧副本的时间而不再查价"
+                  ],
+                  "correct_index": 2,
+                  "explanation": "本例规定到期后重新读取数据库，再保存本次得到的价格；不能只把旧价格的日期改掉",
+                  "option_explanations": [
+                    "未命中有数据库读取路径，因此不需要直接失败",
+                    "到期已经不满足本例的副本使用规则",
+                    "重新取得原数据，才能得到本次应保存的价格",
+                    "只改日期没有重新查价，无法得到数据库当前保存的价格"
+                  ]
+                }
+              ]
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "Suppose a valid cache lookup takes 1 millisecond, while a database read takes 10 milliseconds in this local demonstration. A hit avoids that database read. These illustrative numbers describe this example, not every deployment.",
+          "zh": "假设本地演示中，一次可用缓存读取耗时 1 毫秒，一次数据库读取耗时 10 毫秒；命中省去了这次数据库读取；这些数字用于说明本例，实际部署需要测量",
+          "explanation": "再用具体数字把刚才省掉的步骤看清楚。若缓存读取花 1 毫秒，数据库读取花 10 毫秒，命中时就不再追加那次 10 毫秒的数据库访问；未命中时则已经查过缓存，还要继续查数据库。这里比较的是两条实际执行路径，响应发送等共有步骤仍要计入完整耗时",
+          "part_title": "怎样比较命中和未命中的等待",
+          "questions": [
+            {
+              "text": "是不是用了缓存就一定更快？",
+              "answer": "本例命中时省去了更慢的数据库读取，所以这条路径能减少等待；未命中时，服务已经花时间查缓存，还要继续读数据库。因此要结合命中比例和两次访问的实际耗时判断，不能只看是否安装了缓存",
+              "terms": [
+                {
+                  "name": "毫秒（Millisecond）",
+                  "definition": "毫秒是时间单位，一毫秒等于一秒的千分之一；本例用它记录一次访问从开始到得到结果的耗时",
+                  "intuitive_explanation": "把一秒分成一千份，其中一份就是一毫秒；若一次读取花十毫秒，就是占了这样十份时间"
+                }
+              ],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        }
+      ]
+    },
+    {
+      "title": "价格变化后，怎样让旧副本停止使用",
+      "paragraphs": [
+        {
+          "en": "Keep copies useful after a price change",
+          "zh": "价格变化后怎样处理副本",
+          "explanation": "",
+          "part_title": "",
+          "questions": [],
+          "heading": true
+        },
+        {
+          "en": "Assume the database price changes from 88 to 90 while the cached copy still contains 88. A cache hit can now return the old price until the entry expires or is invalidated.",
+          "zh": "假设数据库价格已从 88 改为 90，而缓存仍存着 88；条目到期或被失效处理之前，缓存命中可能返回旧价格",
+          "explanation": "前面只讨论了怎样复用，现在正式价格发生变化，才出现一个新的问题：服务手边的副本跟不上价目表了。数据库里已是 90，缓存里却仍是 88；如果只满足到期时间检查就返回缓存，这段时间顾客会看到旧价格。因此更新流程必须考虑怎样处理已经留下的副本",
+          "part_title": "正式价格变了，旧副本为何还会被读到",
+          "questions": [
+            {
+              "text": "数据库都改了，缓存为什么不会自己跟着变？",
+              "answer": "在本例中，缓存和数据库是两个独立保存数据的位置。修改数据库只改了正式记录；若更新流程没有同时通知缓存，缓存里的 88 就仍然存在，直到到期或被主动处理",
+              "terms": [],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "One simple policy is to update the database and then remove price:42 from the cache. The next request misses, reads 90 from the database, and creates a new copy.",
+          "zh": "一种简单规则是先更新数据库，再移除缓存里的 price:42；下一次请求因没有副本而未命中，从数据库读出 90，并建立新副本",
+          "explanation": "要让旧副本停止被使用，本例选择先改正式价格，再删除对应缓存条目。下一次顾客查询时，服务发现条目不存在，就沿已经讲过的未命中路径去数据库读取 90，再保存新的副本。这里删除的是复用捷径里的旧记录，正式价格仍留在数据库中",
+          "part_title": "删除副本之后，下一次读到什么",
+          "questions": [
+            {
+              "text": "为什么删除缓存就能让下一次取到新价格？",
+              "answer": "删除后查缓存会找不到条目，服务于是必须执行数据库读取；数据库已经更新为 90，所以这次取出的就是 90，再把它保存成新副本。关键是沿本例规定的先更新数据库、再移除副本的次序走完",
+              "terms": [
+                {
+                  "name": "缓存失效（Cache Invalidation）",
+                  "definition": "缓存失效是让旧副本不再作为当前请求可复用结果的处理；程序可以删除条目或标记其不可用，使后续请求重新取得原数据",
+                  "intuitive_explanation": "店员知道价目表已经改价，便把手边旧纸条拿走；下一位顾客来问时重新查正式价格，并写一张新纸条"
+                }
+              ],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "A time to live of 30 seconds is a fallback limit in this example. It bounds how long an untouched entry may be reused; it does not itself synchronize every database update with every cache entry.",
+          "zh": "本例以 30 秒生存时间作为兜底期限，限制未被更新的条目还能复用多久；这个期限本身不会把每次数据库更新同步到缓存里",
+          "explanation": "到期规则在这里提供另一道时间限制。即使更新流程没有主动移除某个条目，它也只能按本例的规则复用到到期时刻；一旦到期，服务重新查价。生存时间负责限制复用期限，主动失效则负责在已知价格变化时尽早停止复用，两者作用不同",
+          "part_title": "设置三十秒，是否就完成同步",
+          "questions": [
+            {
+              "text": "TTL 是什么，为什么有了它还要主动失效？",
+              "answer": "TTL 是 Time To Live 的缩写，表示记录还能按当前规则存活多久。本例设置三十秒，并不意味着数据库改价后立刻停止用旧价格；主动失效能在已知改价时先拿走旧副本，TTL 则在没有主动处理时限制它还能用多久",
+              "terms": [
+                {
+                  "name": "TTL 生存时间（Time To Live）",
+                  "definition": "生存时间是数据条目在当前规则下允许保留或复用的时长；写入时用当前时刻加上这一时长得到到期时刻，请求到来时再据此判断是否可用",
+                  "intuitive_explanation": "纸条上写“从现在起三十秒内可用”，经过三十秒便要重查；若在十秒时已经得知价格变化，也可以提前把纸条拿走"
+                }
+              ],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        }
+      ]
+    },
+    {
+      "title": "怎样根据原句复盘一次完整请求",
+      "paragraphs": [
+        {
+          "en": "Review the complete path",
+          "zh": "回看一次完整请求",
+          "explanation": "",
+          "part_title": "",
+          "questions": [],
+          "heading": true
+        },
+        {
+          "en": "Read each request as a sequence of observable actions: receive a product identifier, inspect the cached entry, choose the hit or miss path, and return a price. Record which action produced each value.",
+          "zh": "把请求读成一串可观察动作：收到商品编号，检查缓存条目，选择命中或未命中路径，再返回价格；记录每个值是在哪一步取得的",
+          "explanation": "回看这份材料时，先抓住请求始终要做成的事：返回商品价格。然后用同一个商品 42 走过两条路径，逐步指出 88 或 90 是从哪里读出的，以及为什么这一刻能够复用。这样，遇到命中、到期、失效这些词时，就能把它们放回具体动作，而不是单独背定义",
+          "part_title": "怎样把术语接回同一条请求",
+          "questions": [
+            {
+              "text": "怎么确认自己读懂了，而不是记住几个词？",
+              "answer": "试着不看解释，说出商品 42 的一次命中与一次未命中分别经过哪些动作，并说明价格来自哪一处。再把价格改成 90，沿主动失效后的下一次请求走一遍；能解释每一步为什么发生，就把名称接回了实际过程",
+              "terms": [],
+              "quizzes": []
+            }
+          ],
+          "heading": false
+        },
+        {
+          "en": "A useful question points to a specific step and names the missing relationship. For example: after removing the cached entry, why does the next request read the new database value?",
+          "zh": "有用的问题会指出具体步骤和没接上的关系，例如：移除缓存条目后，为什么下一次请求会读到数据库的新价格",
+          "explanation": "如果仍然卡住，不必重问整个主题。直接选中让你断开的那句话，把“发生了什么，但我不知道为什么能推出下一步”写下来；回答就能保留这个原句，围绕同一步补齐关系，下一轮追问也继续放在它下面",
+          "part_title": "问题怎样保留自己卡住的位置",
+          "questions": [],
+          "heading": false
+        }
+      ]
+    }
+  ]
+}

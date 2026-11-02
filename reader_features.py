@@ -53,18 +53,30 @@ def save_settings(path,data):
     target=Path(path);target.parent.mkdir(parents=True,exist_ok=True);temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps({'templates':clean,'appearance':colors,'motion_speed':speed},ensure_ascii=False,indent=2),'utf8');temporary.replace(target);return settings(target)
 
 def reading_progress(material,state):
-    passages=material['passages'];position={p['id']:i for i,p in enumerate(passages)};legacy=any(p.get('outline_id') for p in passages)
+    passages=material['passages'];legacy=any(p.get('outline_id') for p in passages)
     eligible=[p for p in passages if not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and (not legacy or p.get('outline_id') or p.get('file_id')!='primary' or p.get('content_kind')=='explanation') and ((p.get('zh') or p.get('en') or '').strip() or p.get('kind') in ('image','visual','page_image'))]
     def count(items):
         total=len(items);done=sum(bool(state.get('read_passages',{}).get(p['id'])) for p in items)
         return {'done':done,'total':total,'percent':round(done/total*100) if total else 0}
     chapters={}
+    eligible_ids={p['id'] for p in eligible};read=state.get('read_passages',{})
     files=material.get('reading_files') or [{'id':None,'outline':material.get('outline',[]),'passage_ids':[p['id'] for p in passages]}]
     for file in files:
         outline=file['outline'];file_ids=set(file['passage_ids']);members=[p for p in passages if p['id'] in file_ids];positions={p['id']:i for i,p in enumerate(members)}
+        # 先累计每个位置之前的总数与已读数，各章随后只做两次相减。
+        totals=[0];done=[0]
+        for p in members:
+            included=p['id'] in eligible_ids
+            totals.append(totals[-1]+included);done.append(done[-1]+bool(included and read.get(p['id'])))
+        ends=[len(members)]*len(outline);following=[]
+        for i in range(len(outline)-1,-1,-1):
+            while following and outline[following[-1]].get('level',1)>outline[i].get('level',1):following.pop()
+            if following:ends[i]=positions.get(outline[following[-1]].get('passage_id'),len(members))
+            following.append(i)
         for i,row in enumerate(outline):
-            start=positions.get(row.get('passage_id'),0);end=next((positions.get(n.get('passage_id'),len(members)) for n in outline[i+1:] if n.get('level',1)<=row.get('level',1)),len(members))
-            chapters[row.get('id') or row['passage_id']]=count([p for p in eligible if p['id'] in positions and start<=positions[p['id']]<end])
+            start=positions.get(row.get('passage_id'),0);end=ends[i]
+            total=max(0,totals[end]-totals[start]);finished=max(0,done[end]-done[start])
+            chapters[row.get('id') or row['passage_id']]={'done':finished,'total':total,'percent':round(finished/total*100) if total else 0}
     for explanation in material.get('explanations',[]):chapters[explanation['id']]=count([p for p in eligible if p.get('explanation_id')==explanation['id']])
     return {'overall':count(eligible),'chapters':chapters}
 
