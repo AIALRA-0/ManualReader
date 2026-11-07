@@ -25,7 +25,7 @@ Read the material, write questions beside the sentence that stopped you, and man
 - Keep a learning outline separate from source-file outlines, with manual reading and exercise progress
 - Switch, split, or stack source, translation, and explanation panels
 - Click to locate corresponding content while retaining each question's original passage and follow-up relationships
-- Autosave questions and notes; new or updated answers turn yellow; opened answers stay yellow while a follow-up is unanswered, turn cyan while an exercise is unfinished, and turn green when both are complete
+- Autosave questions and notes; new or updated answers turn yellow; each question stays yellow until its current answer is read, turns cyan while its own exercise is unfinished, and turns green when complete; follow-ups do not change their ancestors
 - Choose term-name modes per panel, check exercise explanations, and revisit previous mistakes
 - Switch mobile tabs and enlarge images, tables, formulas, and diagrams
 
@@ -88,7 +88,7 @@ Write initial questions below a translated or explained passage; they autosave. 
 
 <img src="docs/assets/readme/actual-questions.png" alt="Actual saved questions retain their sources, complete answers, and nested follow-ups" width="620">
 
-Figure 4 Question triangles distinguish unread or unanswered content, unfinished exercises, and completed answers
+Figure 4 Question triangles distinguish unread or unanswered content, unfinished exercises, and completed answers independently for every question
 
 </div>
 

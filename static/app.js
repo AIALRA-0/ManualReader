@@ -231,22 +231,20 @@
   return answerViewCache.get(identity);
  }
  function answerIsSeen(id,revision){return !!revision&&(state?.answer_views?.[id]?.answer_revision===revision||localAnswerViews(docId)[id]===revision)}
- function pendingQuestionBranches(){
-  const questions=state?.rounds.flatMap(r=>r.questions).filter(q=>!q.deleted_at)||[],byId=new Map(questions.map(q=>[q.id,q])),children=new Map(),memo=new Map(),unansweredPractice=new Set(),practiceOwners=new Map();
+ function questionPendingStates(){
+  const questions=state?.rounds.flatMap(r=>r.questions).filter(q=>!q.deleted_at)||[],unansweredPractice=new Set(),practiceOwners=new Map();
   for(const [id,parts]of Object.entries(state?.inline_practice?.answers||{}))for(const quiz of Object.values(parts).flat()){if(!practiceOwners.has(quiz))practiceOwners.set(quiz,new Set());practiceOwners.get(quiz).add(id)}
-  for(const quiz of currentQuizzes())if(quiz.selected===null||quiz.selected===undefined)for(const id of new Set([...(quiz.question_ids||[]),...(practiceOwners.get(quiz.id)||[]),quiz.placement?.question_id].filter(Boolean)))unansweredPractice.add(id);
-  for(const q of questions)if(q.parent_question_id){if(!children.has(q.parent_question_id))children.set(q.parent_question_id,[]);children.get(q.parent_question_id).push(q.id)}
-  function pending(id,visiting=new Set()){if(memo.has(id))return memo.get(id);if(visiting.has(id))return{questions:true,practice:false};const q=byId.get(id);if(!q)return{questions:false,practice:false};visiting.add(id);const descendants=(children.get(id)||[]).map(child=>pending(child,visiting)),value={questions:!!(q.needs_answer??(!q.answer||q.answer_outdated||q.answer_deleted_at))||descendants.some(row=>row.questions),practice:unansweredPractice.has(id)||descendants.some(row=>row.practice)};visiting.delete(id);memo.set(id,value);return value}
-  for(const q of questions)pending(q.id);return memo;
+  for(const quiz of currentQuizzes())if(quiz.selected===null||quiz.selected===undefined){const placement=quiz.placement||{},owners=practiceOwners.get(quiz.id)||(placement.kind==='answer'&&placement.question_id?[placement.question_id]:placement.kind==='lesson'?[]:quiz.question_ids||[]);for(const id of owners)unansweredPractice.add(id)}
+  return new Map(questions.map(q=>[q.id,{questions:!!q.needs_answer||!q.answer||!!q.answer_outdated||!!q.answer_deleted_at,practice:unansweredPractice.has(q.id)}]));
  }
  function paintAnswerState(card,pending){
   const lamp=card.querySelector(':scope>summary>.answer-read-marker');if(!lamp)return;
   const revision=card.dataset.answerRevision,version=Number(card.dataset.questionVersion)||1;
   const read=revision?answerIsSeen(card.id,revision):state?.answer_views?.[card.id]?.question_version===version||localAnswerViews(docId)[card.id]==='question:'+version;
   const value=!read||pending?.questions?'unread':pending?.practice?'pending':'complete';lamp.dataset.seen=String(read);lamp.dataset.answerState=value;
-  lamp.title=!read?'尚未阅读这条问题或当前回答':pending?.questions?'还有本条问题或追问未回答':pending?.practice?'已阅读，问题已答完，还有练习未作答':'已阅读，问题和对应练习都已完成';lamp.dataset.tooltip=lamp.title;lamp.setAttribute('aria-label',lamp.title);
+  lamp.title=!read?'尚未阅读这条问题或当前回答':pending?.questions?'本条问题尚未回答':pending?.practice?'本条问题已阅读，对应练习尚未作答':'本条问题已阅读，对应练习已作答';lamp.dataset.tooltip=lamp.title;lamp.setAttribute('aria-label',lamp.title);
  }
- function paintAnswerLights(){const pending=pendingQuestionBranches();for(const card of $('interaction').querySelectorAll('.question-card'))paintAnswerState(card,pending.get(card.id))}
+ function paintAnswerLights(){const pending=questionPendingStates();for(const card of $('interaction').querySelectorAll('.question-card'))paintAnswerState(card,pending.get(card.id))}
  async function flushAnswerViews(){
   clearTimeout(answerViewTimer);answerViewTimer=null;const rows=[...answerViewQueue.values()];answerViewQueue.clear();const groups=new Map();
   for(const row of rows){if(!groups.has(row.material_id))groups.set(row.material_id,[]);groups.get(row.material_id).push({question_id:row.question_id,answer_revision:row.answer_revision,question_version:row.question_version})}
