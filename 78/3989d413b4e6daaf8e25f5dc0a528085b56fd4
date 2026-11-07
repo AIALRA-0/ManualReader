@@ -1,0 +1,143 @@
+Demo/load_project_files.py
+  s_1c46d58ed67333::t_638290f2d6584b 1-3,5-26
+  s_1c46d58ed67333::t_0c0a161c47a14f 4
+docs/project-files.md
+  s_1c46d58ed67333::t_69175aebe01e2c 1-55,57-71
+  s_1c46d58ed67333::t_3e9df0a1ba9f7b 56
+.gitignore
+  s_1c46d58ed67333::t_9419ef01b144f0 25-29
+Demo/test_project_files.py
+  s_1c46d58ed67333::t_0901320c1b93f7 1-55
+Demo/test_reader.py
+  s_1c46d58ed67333::t_61a89f6869b81a 22
+Demo/test_search_contract.py
+  s_1c46d58ed67333::t_c89eab859db870 2,6,15-16
+README.en.md
+  s_1c46d58ed67333::t_efc0341105fecb 19-20,28,91,125-150,191
+README.md
+  s_1c46d58ed67333::t_c6da660d089910 7,26,89,123-148,187
+docs/features.md
+  s_1c46d58ed67333::t_e2dd620c72913f 169-184
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_c1d22b9e39a473 49-54
+objective_grading.py
+  s_1c46d58ed67333::t_36b077bbb50038 1-93
+reader_agent_contract.py
+  s_1c46d58ed67333::t_5cf314d24ba9d2 1-3
+reader_blocks.py
+  s_1c46d58ed67333::t_8d69d86efcde1e 1-60
+reader_bridge.py
+  s_1c46d58ed67333::t_53ca2ace644c93 123,267,269,278-280
+reader_chapter_progress.py
+  s_1c46d58ed67333::t_665df127ce0a0b 1-40
+reader_code_runner.py
+  s_1c46d58ed67333::t_662a85b3d4edb0 1-86
+reader_code_sandbox.py
+  s_1c46d58ed67333::t_c652dc57c956d8 1-10
+reader_completion.py
+  s_1c46d58ed67333::t_8189710d9979c4 6
+reader_connected.py
+  s_1c46d58ed67333::t_ee80b40880cbe3 1-42
+reader_content.py
+  s_1c46d58ed67333::t_6bf43d9f290109 5,92-93
+reader_contract.py
+  s_1c46d58ed67333::t_0391dfedab621b 5-28,34,50,60,122-132
+reader_execute.py
+  s_1c46d58ed67333::t_7958e598798d6a 10-11,15,36,42,46,59-61,113,137,142-144,156-157,159-162,165-167,172,174,176-202,265,271,291-331
+reader_features.py
+  s_1c46d58ed67333::t_fab6c7e399a302 100-102,106
+reader_framework_legacy.py
+  s_1c46d58ed67333::t_787aa55214cb11 1-75
+reader_generation.py
+  s_1c46d58ed67333::t_cc1aee2688e149 1-180
+reader_learning.py
+  s_1c46d58ed67333::t_4185354caeb33f 91,152-153
+reader_lesson_checks.py
+  s_1c46d58ed67333::t_f1135c1a5af14e 1-49
+reader_lesson_tasks.py
+  s_1c46d58ed67333::t_7618649434e849 11
+reader_practice.py
+  s_1c46d58ed67333::t_38a785cb59d4f5 25,30-31,37-40,43-45,47-49,61,63,67
+reader_project_files.py
+  s_1c46d58ed67333::t_397b9afb07f572 1-185
+reader_prompts.py
+  s_1c46d58ed67333::t_678644a272474e 1-23
+reader_quality.py
+  s_1c46d58ed67333::t_d5d4dd6a1ff145 4-6,76,83-93,102,113-114,123-124,132,137-138,141-142,146-149,183,186,188,191-193
+reader_questions.py
+  s_1c46d58ed67333::t_cc792c5f7a998c 46,51-58,60
+reader_remote.py
+  s_1c46d58ed67333::t_b6a7b74834617d 2,125-126,134
+reader_sequence.py
+  s_1c46d58ed67333::t_1c9e49af96aed3 1-142
+reader_server.py
+  s_1c46d58ed67333::t_12c721770405d7 2-3,57-58,96-97,104-105,122,144-147,155-164,195-196,198-200,215,233,255,262,302,307-308,318,324,330,338-339,342-355,375-396,402-404,407,435-446,448,489,546,564-581,593-597,603-607,616,630-635,637-640,652-656,706,743,813
+reader_teaching.py
+  s_1c46d58ed67333::t_74d769ae2076e9 12,18,24,60-73,80-82,84,86-92,107-110,120,124,126,130-136
+reader_tool_audit.py
+  s_1c46d58ed67333::t_9622f7521ccc2e 1-68
+reader_work.py
+  s_1c46d58ed67333::t_271453987fc1ce 11-22,34,36,46,63,111,132,137-138,140,149,152,155,159,170-173,180,189
+reader_worker.py
+  s_1c46d58ed67333::t_200f0461f1dcf4 56-77
+reader_workspace.py
+  s_1c46d58ed67333::t_528be4cda6d7f3 55,145-146,159,250,263,273,279-285,289-290,293,295-296
+reader_writer_transport.py
+  s_1c46d58ed67333::t_2eb0537c4bc5a9 1-51
+requirements.txt
+  s_1c46d58ed67333::t_86acdf55f95c39 7
+server.py
+  s_1c46d58ed67333::t_c6d04556d8afa5 5,82-84,91,103-104,107,115-116
+static/app.css
+  s_1c46d58ed67333::t_9d20b9b2ee48d6 3,212,235,286,308,319,321,331,336,397,413,419,441-442,446-447,513,532-604
+static/app.js
+  s_1c46d58ed67333::t_18bcde5d5c3539 4,6,12,18,53,56,58,60-63,67,143,187-189,192-194,196,237-243,245-252,255-256,259-263,269-301,303,307-308,311,314-315,329-330,332,336,357-389,392,401,405-407,410,414,435
+static/index.html
+  s_1c46d58ed67333::t_03e1cd231c28da 16-19,35
+static/library-ui.js
+  s_1c46d58ed67333::t_c777255e371c0f 45
+static/math-text.js
+  s_1c46d58ed67333::t_1b99c17524d053 22-23,113,115-116,118-133
+static/reader-code-editor.js
+  s_1c46d58ed67333::t_5288fc133e6883 1-13
+static/reader-inline-practice.js
+  s_1c46d58ed67333::t_6d99d554ed2eae 1-79
+static/reader-markdown.js
+  s_1c46d58ed67333::t_44372a846ba6ea 23,26-27,29-32,34
+static/reader-practice.js
+  s_1c46d58ed67333::t_289efb7ea23a7a 15,20-22
+static/reader-project-files.css
+  s_1c46d58ed67333::t_bb9162b6249b48 1-11
+static/reader-project-files.js
+  s_1c46d58ed67333::t_a555eb6a741c6e 1-62
+static/reader-source-flow.js
+  s_1c46d58ed67333::t_3c349b56bd3a64 36-37,48-56,62,66
+static/reader-terms.js
+  s_1c46d58ed67333::t_f46571ed427484 25
+static/reader-ui.js
+  s_1c46d58ed67333::t_0fe862d16578a4 5-6,69,80-81,86
+static/remote-ui.js
+  s_1c46d58ed67333::t_c6aa3ca25c534a 7-9
+static/settings.html
+  s_1c46d58ed67333::t_fbd11cc1fd78b4 2
+static/settings.js
+  s_1c46d58ed67333::t_0312bf786e30e9 5-6,29
+static/workspace-ui.js
+  s_1c46d58ed67333::t_bcf608671a5571 22-23,59-60,78,103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "783989d413b4e6daaf8e25f5dc0a528085b56fd4",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <71060413+AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
