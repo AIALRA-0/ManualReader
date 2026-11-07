@@ -1,0 +1,59 @@
+Demo/test_file_actions.py
+  s_1c46d58ed67333::t_1fb449a0943cf4 1-52
+README.en.md
+  s_1c46d58ed67333::t_acbd899f5826aa 127,138,191
+README.md
+  s_1c46d58ed67333::t_314ec6f560a501 125,136,187
+docs/features.md
+  s_1c46d58ed67333::t_2c5d456d0bd035 178
+docs/project-files.md
+  s_1c46d58ed67333::t_4784d7da59055b 5-6,10-11,54-56,76-77
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_7a09e57adbf130 55-56
+reader_file_actions.py
+  s_1c46d58ed67333::t_5e1b282cdaa7d8 1-67
+reader_file_events.py
+  s_1c46d58ed67333::t_c3df568d4f51fe 1-72
+reader_project_files.py
+  s_1c46d58ed67333::t_5f2593c028ac15 3-4,23,89-91,99,101
+reader_remote.py
+  s_1c46d58ed67333::t_73d00abfc56be4 125,134
+reader_server.py
+  s_1c46d58ed67333::t_72d13230090cf3 308,402,439-442,551,748
+reader_workspace.py
+  s_1c46d58ed67333::t_c25cb2c1aadda2 3,195-202
+requirements.txt
+  s_1c46d58ed67333::t_648fb9c95c096c 8
+static/app.css
+  s_1c46d58ed67333::t_3078f5bb9a1141 605-607
+static/app.js
+  s_1c46d58ed67333::t_4d1f05b250ffb4 56,63,65,268,271,432
+static/index.html
+  s_1c46d58ed67333::t_383c0661dc2b60 16,18-19,24,35
+static/reader-project-files.css
+  s_1c46d58ed67333::t_d6a4de1c48eb3a 12-20
+static/reader-project-files.js
+  s_1c46d58ed67333::t_5d325aace58b79 12-14,16-17,26,37-38,51-52,54
+static/reader-project-tree.js
+  s_1c46d58ed67333::t_9ef1c8c8da0185 1-57
+static/settings.html
+  s_1c46d58ed67333::t_b2c2da59aecdf5 2
+static/workspace-ui.js
+  s_1c46d58ed67333::t_5870a3ec6f5d70 24,47
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ceae3343aa2dffcaa4b13696d43744f9ce7c69b7",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <71060413+AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
