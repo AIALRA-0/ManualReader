@@ -22,22 +22,31 @@ def payload(state):
         items.append(item)
     return {'items':items,'quiz_ids':[q['id'] for q in items],'count':len(items),'unmastered':sum(q.get('last_correct') is not True for q in items),'rounds':len(book.get('sessions',[]))}
 
-def record_answer(state,identity,selected,stamp,review=False,session_id=None):
+def record_answer(state,identity,selected,stamp,review=False,session_id=None,response=None,pregraded=None):
     available=quizzes(state);q=available.get(identity)
     if not q:raise ValueError('没有找到这道练习')
     book=state.setdefault('practice_book',{});members=book.setdefault('members',{});member=members.setdefault(identity,{})
     current={**q,**member.get('overrides',{})} if review else q
+    objective_result=(pregraded or __import__('objective_grading').grade(current,response)) if current.get('type')in('numeric','ordering','code')else None
+    if objective_result is not None:selected=1 if objective_result['correct']else 0
     if isinstance(selected,bool) or not isinstance(selected,int) or not 0<=selected<len(current['options']):raise ValueError('请先选择一个选项')
     if review:
         session=next((s for s in book.get('sessions',[]) if s['id']==session_id),None)
         if not session or identity not in session['quiz_ids']:raise ValueError('这道题不属于当前复习轮次')
         if identity in session['answered']:return session['answered'][identity]
-    correct=selected==current['correct_index'];result={'correct':correct,'explanation':__import__('reader_contract').quiz_feedback(current,selected),'removed_from_book':False,'quiz_id':identity}
+    if current.get('type')=='recall'and (not isinstance(response,str)or len(response)>30000):raise ValueError('请提交本次自行作答的文字，最多30000字')
+    correct=selected==current['correct_index'];result={'correct':correct,'explanation':__import__('reader_contract').quiz_feedback(current,selected),'removed_from_book':False,'quiz_id':identity,'selected':selected}
+    if objective_result is not None:result.update(objective_result,response=response,self_assessed=False);result['explanation']=(objective_result['correction']+'\n\n'if objective_result.get('correction')else'')+current['explanation']
+    if current.get('type')=='recall':result.update(response=response,reference_answer=current['reference_answer'],self_assessed=True)
     if not correct:member.update(ever_wrong=True,active=True,manual_removed=False)
     elif member.get('ever_wrong') and not member.get('manual_removed'):member['active']=True
-    member['updated_at']=stamp();book.setdefault('attempts',[]).append({'quiz_id':identity,'selected':selected,'correct':correct,'review':review,'session_id':session_id,'at':stamp()})
+    member['updated_at']=stamp();book.setdefault('attempts',[]).append({'quiz_id':identity,'selected':selected,'correct':correct,'review':review,'session_id':session_id,'at':stamp(),**({'response':response,'self_assessed':True}if current.get('type')=='recall'else{})})
+    if objective_result is not None:book['attempts'][-1].update(response=response,grading_method=objective_result['grading_method'],self_assessed=False);q['response']=response;q['last_grade']=copy.deepcopy(objective_result)
+    if current.get('type')=='code':q['code_draft']=response
     if review:session['answered'][identity]=result
-    else:q['selected']=selected
+    else:
+        q['selected']=selected
+        if current.get('type')=='recall':q['response']=response
     result['in_mistake_book']=identity in payload(state)['quiz_ids']
     return result
 
@@ -49,13 +58,13 @@ def change(state,data,stamp):
         items=[q for q in available if wanted is None or q['id'] in wanted];ids=[q['id'] for q in items]
         session={'id':'review-'+uuid.uuid4().hex[:16],'quiz_ids':ids,'answered':{},'started_at':stamp()};book.setdefault('sessions',[]).append(session)
         return {**session,'items':items}
-    if action=='answer':return record_answer(state,identity,data.get('selected'),stamp,True,data.get('session_id'))
+    if action=='answer':return record_answer(state,identity,data.get('selected'),stamp,True,data.get('session_id'),data.get('response'))
     if action in ('create','edit'):
-        source=data.get('quiz',{});prompt=source.get('prompt');options=source.get('options');correct=source.get('correct_index')
+        source=__import__('reader_contract').normalize_quiz(data.get('quiz',{}));prompt=source.get('prompt');options=source.get('options');correct=source.get('correct_index')
         if not isinstance(prompt,str) or not prompt.strip() or len(prompt)>4000:raise ValueError('请填写题目，最多4000字')
         if not isinstance(options,list) or not 2<=len(options)<=6 or any(not isinstance(o,str) or not o.strip() or len(o)>2000 for o in options) or len(set(options))!=len(options):raise ValueError('请填写2至6个不同的选项')
         if isinstance(correct,bool) or not isinstance(correct,int) or not 0<=correct<len(options):raise ValueError('请指定正确选项')
-        update={'prompt':prompt.strip(),'options':options,'correct_index':correct,'explanation':str(source.get('explanation',''))[:12000],'option_explanations':__import__('reader_contract').option_explanations(source)}
+        update={'prompt':prompt.strip(),'options':options,'correct_index':correct,'explanation':str(source.get('explanation',''))[:12000],'option_explanations':__import__('reader_contract').option_explanations(source),**__import__('reader_contract').quiz_fields(source)}
         if action=='create':
             identity='practice-'+uuid.uuid4().hex[:16];book.setdefault('custom',[]).append({'id':identity,**update,'selected':None,'question_ids':[]})
         elif identity not in quizzes(state):raise ValueError('没有找到这道题')

@@ -1,4 +1,6 @@
 """在现有读写接口上增加材料隔离、定位历史和翻译覆盖校验。"""
+from reader_agent_contract import CLIENT_MODULES,CLIENT_PATHS
+from reader_project_files import ProjectFiles
 from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,unquote
 from http.server import ThreadingHTTPServer
@@ -52,6 +54,8 @@ def raw_material(identity=None):
     with core.LOCK:
         if identity not in CACHE or CACHE[identity][0]!=version:CACHE[identity]=(version,json.loads(path.read_text('utf8')))
         return CACHE[identity][1]
+def project_files(identity=None):
+    identity=identity or mid();return ProjectFiles(identity,mpath(identity).parent,SETTINGS,raw_material(identity))
 def workspace(identity=None):return Workspace(mpath(identity).parent)
 def material_revision(identity=None):
     paths=[mpath(identity).parent/name for name in ('reading-layout-overrides.json','translation-groups.json','reading-visual-language.json','reading-headings.json')]
@@ -89,14 +93,16 @@ def round_context(state,rid):
     return {'material_id':mid(),'passage':p,'round':{**r,'questions':items},'terms':state['terms'],'writing':writing_guide()}
 core.db=db;core.default_focus=default_focus;core.locate=locate;core.round_context=round_context
 BASE_SAVE_RESULT=core.save_result
-def save_result(state,rid,data):
-    prepared=copy.deepcopy(data);original_names=[]
+def save_result(state,rid,data,actor='reader'):
+    prepared=copy.deepcopy(data);prepared['_writer_source']=actor;original_names=[]
     for answer in prepared.get('answers',[]):
         question=next((q for r in state['rounds'] for q in r['questions'] if q['id']==answer.get('question_id')),None)
         if question:
             text,parts,issues=answer_parts(answer,question['text']);answer['text']=text
             answer['answer_parts']=parts
             answer['format_audit']=issues
+            for key in ('plan','framework_version'):
+                if prepared.get(key) is not None:answer.setdefault(key,prepared[key])
     ensure_result_media(material(),state,prepared)
     for answer in prepared.get('answers',[]):
         answer.update(validate_source_mapping(material(),answer))
@@ -113,7 +119,7 @@ def save_result(state,rid,data):
     result=BASE_SAVE_RESULT(state,rid,prepared)
     for answer in prepared.get('answers',[]):
         question=next(q for q in result['questions'] if q['id']==answer['question_id']);question.pop('answer_deleted_at',None)
-        for key in ('explained_source_ids','source_ranges','answer_parts','format_audit'):
+        for key in ('explained_source_ids','source_ranges','answer_parts','format_audit','plan','framework_version'):
             if key in answer:question[key]=answer[key]
         question.setdefault('learning_node_id',infer_learning_node(material(),question))
         update_round_status(state,question['id'])
@@ -135,6 +141,10 @@ def save_result(state,rid,data):
     for name,raw in original_names:
         item=next((t for t in state['terms'] if canonical_term(t['name']).casefold()==name.casefold()),None)
         if item and raw and raw!=name and raw not in item.setdefault('source_names',[]):item['source_names'].append(raw)
+    for proposal in prepared.get('quizzes',[]):
+        if isinstance(proposal.get('placement'),dict):
+            saved=next((z for z in state['quizzes']if z.get('prompt')==proposal.get('prompt') and z.get('question_ids')==proposal.get('question_ids')and z.get('placement')==proposal['placement']),None)
+            if saved:saved.update(placement=copy.deepcopy(proposal['placement']),framework_version=__import__('reader_generation').VERSION)
     node=learning_payload(material(),workspace().read(),state)['selected_id']
     if node:wait_for_user(state,node,core.stamp)
     return result
@@ -142,7 +152,16 @@ core.save_result=save_result
 
 def library_sources():
     identities=[DEFAULT]+[p.parent.name for p in LIBRARY.glob('*/material.json')]
-    return [{'id':identity,'title':material(identity)['title'],'kind':material(identity).get('kind','pdf'),'reader_mode':material(identity).get('reader_mode'),'passages':len(material(identity)['passages']),'translation_status':material(identity).get('translation_status','ready' if identity==DEFAULT else 'pending')} for identity in identities]
+    index=LIBRARY/'library-index.json'
+    saved={row['id']:row for row in json.loads(index.read_text('utf8')).get('materials',[])}if index.exists()else{}
+    fields=('title','kind','reader_mode','passages','translation_status');rows=[]
+    for identity in identities:
+        entry=saved.get(identity,{})
+        # 材料树本来就以目录中保存的信息为准；列出名称时不整理全库正文和定位。
+        if all(key in entry for key in fields):rows.append({'id':identity,**{key:entry[key]for key in fields}});continue
+        document=material(identity)
+        rows.append({'id':identity,'title':document['title'],'kind':document.get('kind','pdf'),'reader_mode':document.get('reader_mode'),'passages':len(document['passages']),'translation_status':document.get('translation_status','ready'if identity==DEFAULT else'pending')})
+    return rows
 
 def library_tree():return reader_library.catalog(LIBRARY/'library-index.json',library_sources())
 
@@ -173,8 +192,12 @@ def progress_payload(progress=None):
     orders=quiz_display_orders(progress.get('quizzes',[]))
     for quiz in progress.get('quizzes',[]):quiz.update(display_order=orders.get(quiz['id'],list(range(len(quiz['options'])))),quality_flags=quiz_quality_flags(quiz))
     for row in progress['rounds']:
-        row['questions']=[decorate_question(m,q) for q in row['questions']]
+        from reader_generation import display_parts
+        row['questions']=[display_parts(decorate_question(m,q)) for q in row['questions']]
     progress['mistake_quiz_ids']=practice_payload(progress)['quiz_ids']
+    from reader_generation import practice_placements,VERSION as FRAMEWORK_VERSION
+    progress['framework_version']=FRAMEWORK_VERSION
+    progress['inline_practice']=practice_placements(progress,m)
     learning=learning_payload(m,stored,progress)
     completion=completion_payload(m,stored,progress,plan=learning)
     learning['coverage_plan']={k:v for k,v in learning.get('coverage_plan',{}).items()if k not in ('source_owners','shared_references')}
@@ -189,7 +212,7 @@ def navigation_progress(state,base_revision):
     m=material();stored=workspace().read_snapshot();plan=learning_payload(m,stored,state)
     return {'partial':True,'base_revision':base_revision,'revision':state['revision'],'focus':state['focus'],
             'learning_node_id':state.get('learning_node_id'),'learning_selection_revision':state.get('learning_selection_revision',0),
-            'learning':{**{k:v for k,v in plan.items()if k in ('selected_id','scope_active','context')},'node_progress':[{k:n[k]for k in ('id','reading_progress','own_reading_progress')}for n in plan['nodes']]},
+            'learning':{**{k:v for k,v in plan.items()if k in ('selected_id','scope_active','context')},'node_progress':[{k:n[k]for k in ('id','reading_progress','own_reading_progress','practice_progress','question_progress')}for n in plan['nodes']]},
             'completion':completion_payload(m,stored,state,plan=plan),'reading_progress':reading_progress(reading_material(m,stored),state),
             'read_passages':state.get('read_passages',{}),'manual_completions':state.get('manual_completions',{}),
             'teaching_state':state.get('teaching_state',{}),'history_length':len(state.get('history',[])),
@@ -207,7 +230,7 @@ def statistics_payload(scope,include_records=False):
         if identity==mid():current_snapshot=(document,state)
         samples_for_document=samples(document,state);records.extend(samples_for_document)
         revisions[identity]=[state.get('revision',0),mpath(identity).stat().st_mtime_ns,entry['title']]
-        reading=reading_progress(reading_material(document,workspace(identity).read_snapshot()),state)['overall'];active_questions={q['id'] for r in state.get('rounds',[]) for q in r['questions'] if not q.get('deleted_at')};quizzes=[q for q in state.get('quizzes',[]) if q.get('learning_node_ids') or any(identity in active_questions for identity in q.get('question_ids',[]))]
+        reading=reading_progress(reading_material(document,workspace(identity).read_snapshot()),state)['overall'];quizzes=__import__('reader_contract').current_quizzes(state.get('quizzes',[]))
         answered=[q for q in quizzes if q.get('selected') is not None]
         rows.append({'id':identity,'title':entry['title'],'reading':reading,
                      'practice':{'done':len(answered),'total':len(quizzes),'correct':sum(q['selected']==q['correct_index'] for q in answered)},
@@ -229,14 +252,14 @@ def statistics_payload(scope,include_records=False):
 
 def agent_guide():
     guide={'material_id':mid(),'description':'用户在任意 Codex 对话中手动触发，阅读器只提供读取和写回接口',
-      'preferred_writer':{'model':'gpt-6.1-terra','effort':'high','max_concurrent_groups':4},
+      'preferred_writer':{'model':'gpt-6.1-terra','effort':'high','max_concurrent_groups':2},
       'association_contract_version':2,
       'writing':writing_guide(),
       'steps':['每次接手先读取 /api/content 与 /api/learning，确认材料编号、主学习章节、原文范围和已有讲解；原文件目录通过 /api/index 查阅',
                '需要安排学习路线时，用 /api/learning/outline 保存主学习目录；讲解写入 /api/content/explanations 时提供 learning_node_id，同时保存正文与章节归属',
                '尚无原件的项目可以先建立学习目录并写入讲解；不要把学习目录仅上传为普通 Markdown，也不要用原文 section_id 代替 learning_node_id',
                '从 /api/work 一次取得待回答问题、去重原句、完整原文和已登记术语',
-               '按 groups 分组，默认最多四组 Terra high 并行；把共同材料与本组问题直接放入写作消息，不再让写作者读文件；相同原句留在同一组',
+               '按 groups 分组，默认最多两组 Terra high 并行；把共同材料与本组问题直接放入写作消息，不再让写作者读文件；相同原句留在同一组',
                '回答、术语和练习一起输出，不让写作者操作文件或调用写回接口',
                '由脚本逐条保存并写回；只做格式、编号和缺项检查，不增加审稿 Agent 或循环修复',
                '耗时、token 和缓存从真实运行记录取得，由脚本写入本轮 metrics，不让模型猜测用量',
@@ -276,10 +299,13 @@ def agent_guide():
     guide['endpoints']['lesson_task']='GET /api/work?mode=lesson'
     guide['endpoints']['learning_exclusions']='GET /api/learning/exclusions；POST /api/learning/exclusions'
     guide['learning_scope']={'exclude':{'passage_ids':['原始单元编号'],'reason':'为何不是本次学习内容','action':'exclude 或 restore','expected_revision':'可选，来自 GET 返回的 revision'},'rule':'排除只影响学习目录与学习覆盖率；原网页、原编号、翻译、问答、笔记和已读记录都保留。原内容改变时原排除不再自动生效，需重新核对','planning':'新项目按章规划：一次只新增一个首层大章，可以同时规划这个大章下的必要子节；未规划的原文留在原文目录与 deferred 清单，不冒充漏失或已学。已有完整目录沿用原编号，不重建；讲解正文仍一次只写回当前任务章节','next_chapter':'新增下一大章和进入下一节都以用户手动完成为条件；不要靠多次调用接口提前铺开所有大章'}
+    guide['answer_revisions']={'prepare':'需要重答已答问题时，用 POST /runs 提交 question_ids 和 include_answered=true；沿用原问题，不改问题文字或版本来绕过保护','write':'任务绑定读取时的问题版本和 expected_answer_revision；新稿写回时两项都须匹配；已经更新的回答不被旧任务覆盖','history':'旧正文、片段与写入来源保留；修订会改变回答修订号，重新标为未展开；术语与排版更新不重写答案正文'}
     guide['lesson_writeback']={'prepare':'先读取 /api/work?mode=lesson，保存返回的 lesson_task_id；它把本次稿件绑定到已开始的章节，不绑定网页此刻显示的位置','submit':'POST /api/teaching/result 同时传 lesson_task_id 和 learning_node_id；写作期间用户切换页面也可保存原任务，不改变用户当前章节','recover':'409 lesson_selection_changed 表示章节状态变化，不是授权失效；保留已有稿件，不重新生成、不要求重新配对。已准备任务可直接重交；旧稿没有任务编号时先回到目标章取得任务后提交原稿','navigation':'/api/learning/select 可传 expected_selection_revision，旧页面不能覆盖已经发生的新切章；章节切换仍须遵守用户手动完成规则'}
     guide['learning_contract']['select_request']={'node_id':'下一章节编号'}
     guide['learning_contract']['advance_rule']='只有 progress.completion.can_advance 为 true 时 Agent 才能换章；这个值只由用户手动完成按钮产生，聊天指令和 Agent 提交不能代替'
     guide['endpoints'].update(coverage='GET /api/coverage',import_source='POST /api/content/import',question_sync='POST /api/questions/sync')
+    guide['answer_followups']={'save':'POST /api/questions/sync，沿用parent_question_id、client_id与递增version；source_excerpt保存所问回答片段的原话，source_segment_id以answer:开头定位父回答片段','display':'输入框放在回答各段下；父回答展开时，追问显示在对应片段下，父回答收起时汇总在父问题末尾；同一追问只显示一次，父子编号不变','read_state':'黄色表示当前版本未读，或本条问题及任一层追问仍待回答；青蓝色表示当前版本已读、整条追问链已答，但对应练习未作答；绿色表示已读、整条追问链已答且对应练习已作答；待答项优先显示黄色，不清除原阅读记录。未答问题展开时登记question_version；有回答时登记answer_revision，新回答仍回到未读，不影响章节手动进度'}
+    guide['project_files']={'tree':'GET /project-files/tree?path=相对目录','preview':'GET /project-files/preview?path=相对文件路径','read':'GET /project-files/raw?path=相对文件路径','write':'POST /project-files/file，提交 path 与 content_base64；覆盖已有文件需 expected_modified','rule':'只访问当前项目根目录，包括隐藏文件；保存文件不修改学习章节、译文和已读进度；文件树中的临时查看不切换主原文映射'}
     guide['coverage_contract']={'explained_source_ids':'实际解释过的原文段落、句子或对象编号','source_ranges':'或提交 passage_id、可选 sentence_id、start、end；区间使用原文 Unicode 字符位置，左闭右开','rule':'source_links 只表示引用；未明确解释的引用不算讲解覆盖。覆盖率和进度由脚本计算，不由 Agent 填写'}
     guide['term_update_contract']['rules']='术语保留独立定义和直观解释两段；优先复用正文里已经讲清的解释。同名复用不重复生成；需要改善旧解释时提交 action=revise、expected_version，保留历史和已有编号'
     guide['term_name_contract']={'audit':'GET /api/terms/audit','normalize':'POST /api/terms/normalize','name_update':{'updates':[{'term_id':'已登记编号','expected_name':'读取到的当前名称','name':'缩写 中文全称（English Full Name）'}]},'case_rules':'未标记例外时，英文全称每个单词首字母大写；专有大小写使用 case_exceptions 文字列表，整条英文保留原样使用 english_case_exception=true；代码、网址和数学记号保持原样','repair_rule':'脚本先整理中英文顺序、重复中文、大小写和同名重复。原编号、原名历史、笔记和定义保留。仍有歧义时，本地客户端只把本轮相关名称及已有解释集中提交一次普通Terra high补齐，不审稿、不循环；未能确认的名称继续保留，已保存回答不受影响'}
@@ -289,19 +315,19 @@ def agent_guide():
     guide['endpoints'].update(translation_groups='POST /api/translations/groups',writing_rules='GET /api/writing/rules',format_audit='GET /api/format/audit')
     guide['public_writing_rules']='GET /api/writing/rules：返回网站当前实际提示词和内容职责，可直接查看与复制；不包含访问令牌'
     guide['translation_reading_groups']='连续翻译只需通过 /api/translations/groups 提交 reading_groups，每组 segments 包含完整中文句及真实 source_ids，脚本据此计算每个原ID的覆盖，不再重复写两份正文。独立原单元也可继续通过 /api/translations 写回；旧译文版本保留。漏项或跨项目编号会明确拒绝'
-    guide['teaching_result_contract']={'request_id':'本次任务唯一编号，重试时保持不变','learning_node_id':'当前章节编号','explanation':{'id':'稳定讲解编号','title':'讲解标题','parts':[LESSON_PART_CONTRACT],'update_rule':'修改已有讲解时提供 expected_version，保留旧 blocks 的编号；只改内容，不删除已有提问来源'},'terms':'复用已有术语或提交名称、定义和直观解释的列表','quizzes':'本次内容的选择题列表；可以直接关联本节，不要求先创建用户问题'}
+    guide['teaching_result_contract']={'request_id':'本次任务唯一编号，重试时保持不变','learning_node_id':'当前章节编号','explanation':{'id':'稳定讲解编号','title':'讲解标题','parts':[LESSON_PART_CONTRACT],'update_rule':'修改已有讲解时提供 expected_version，保留旧 blocks 的编号；只改内容，不删除已有提问来源'},'terms':'复用已有术语或提交名称、定义和直观解释的列表','quizzes':'每个讲解 part 至少一道就地练习，placement 逐项覆盖；选择题优先，也可提交 recall，需 reference_answer 和 explanation；练习栏自动汇总相同题号，无需另生成'}
     guide['teaching_result_contract']['translations']=[{'file_id':'原文文件编号','translations':[{'source_id':'本章每个待译原文单元的编号','text':'完整中文译文，保留原有结构'}]}]
     guide['teaching_result_contract']['translation_rule']='本章关联的所有待译原文单元必须逐项完成；接口返回缺项编号时只补译文，再提交已有讲解，不重新生成正文'
     guide.update(teaching_context(material(),workspace().read(),core.read_state()))
     guide['question_pool_rule']='GET /api/work 和 POST /api/runs 汇总当前项目全部已保存且需要回答的问题，包括首次提问和追问。问题没有回答、回答已删除，或回答只对应旧问题版本时，都重新进入待答池；只有删除问题本身才退出。按本次 question_version 写回，旧版本任务不能覆盖新问题。草稿只计数，不作为正式问题处理；include_answered=true 只扩大返回范围，不改变 pending 的含义。用户明确要求重答时，用 POST /api/runs 提交 question_ids=[原问题编号]，已经有效回答的问题另加 include_answered=true；不要因此准备全部已答问题'
     guide['question_deletion']={'preview':'POST /api/questions/{question_id}/deletion-preview','preview_body':{'target':'question 或 answer'},'confirm':'POST /api/questions/{question_id}/deletion-confirm','confirm_body':{'confirmation_id':'预览返回的原值','expected_version':'预览返回的 question_version','expected_text':'预览中的问题原话','confirmed':True},'rule':'用户要求删除后，先读取预览，Agent 自行再次核对项目、原编号、问题文字及受影响的追问，再单独提交确认；不能一拿到预览就盲目自动确认。确认5分钟内有效，仅供同一连接使用一次；问题、回答或追问变化后需要重新预览。删除问题保留回答、笔记和练习历史；删除回答会把原问题送回待答池。不要用清空问题输入块代替删除确认'}
-    guide['fast_answer_path']={'start':'POST /api/runs','client_command':'reader_bridge.py daily --out <本轮空目录>','read_group':'GET /api/runs/{run_id}/groups/{group_id}','save':'POST /api/runs/{run_id}/groups/{group_id}/result','statistics':'GET /api/runs','model':'gpt-6.1-terra','effort':'high','service_tier':'default','parallel_groups':4,'rule':'用户手动运行daily客户端；另开干净的Terra high普通服务主调度，读取问题、启动最多四路同配置写作者、等待并汇报；程序附上原图、逐组保存完整结果，最终计入主调度汇报用量；网页不调用模型，主调度不重抄答案'}
+    guide['fast_answer_path']={'start':'POST /api/runs','client_command':'reader_bridge.py daily --out <本轮空目录>','read_group':'GET /api/runs/{run_id}/groups/{group_id}','save':'POST /api/runs/{run_id}/groups/{group_id}/result','statistics':'GET /api/runs','model':'gpt-6.1-terra','effort':'high','service_tier':'default','parallel_groups':2,'rule':'用户手动运行daily客户端；另开干净的Terra high普通服务主调度，读取问题、启动最多两路同配置写作者、等待并汇报；程序附上原图、逐组保存完整结果，最终计入主调度汇报用量；网页不调用模型，主调度不重抄答案'}
     guide['steps']=[step.replace('每次接手先读取 /api/content 与 /api/learning','首次建立学习路线或导入材料时，按需读取 /api/content 与 /api/learning').replace('从 /api/work 一次取得待回答问题、去重原句、完整原文和已登记术语','回答任务优先用 POST /api/runs 一次准备；旧 /api/work 仅供兼容') for step in guide['steps']]
     guide['steps'].insert(0,'用户要求回答问题时，优先手动运行 reader_bridge.py daily --out <本轮空目录>；另开干净的Terra high普通服务主调度会话，程序预装材料、规则与原图，最多四个Terra high普通服务写作者并行；主调度最终汇报结束后结算整轮。开发、验收和部署在其他会话进行，单列统计。不要把读取五个大接口作为前置，也不由主对话重抄结果')
     guide['endpoints'].update(runs='GET /api/runs',start_run='POST /api/runs')
     guide['accounting_contract']={'script':'coordinator只表示本地脚本，不能称为完整主调度0 token','codex':'本地客户端读取启动它的Codex整轮日志，包含读取、启动、等待和最终汇报；后台脚本等待task_complete后补齐caller，不调用模型','parent_model_rule':'daily入口另开全新主调度，明确指定gpt-6.1-terra、high与service_tier=default，禁用fast_mode；它与两个写作者均核对实际日志，不继承当前长对话配置；开发对话另外统计，不冒充日常回答成本','complete':'complete_usage和complete_estimated_token_cost_usd只在主对话结束且已采集时返回，未采集留空；同轮开发和其他工作原样计入，不猜测分摊，重叠时间不相加'}
     guide['media_contract']={'rule':'图、表和空间关系优先显示实际原图；显式要求看图时要读取并引用sources.media_items的真实地址，不只描述图名。简单定义不强行配图。流程可直接用Mermaid，新插图由当前Codex使用绘图工具生成后通过content/files写入，禁止引用不存在的文件。','files':'POST /api/content/files','generated_assets':'daily 写作者已启用 image_generation；实际生成后返回 path、alt 和 question_ids，客户端只接受本组目录或当前会话 generated_images 目录中的真实文件，去除元数据后上传；图像调用和耗时单列，工具未返回账单时不填费用','outline':'复杂讲解可在同一次输出附teaching_outline，不另起规划或审稿调用'}
-    guide['quiz_contract']={'display_order':'显示位置到原options下标的映射；选择题作答提交原下标，不能提交显示位置，历史选择不因位置均衡而改变','quality_flags':'脚本只标记明显的长度线索，不据此阻塞生成或自动循环修复','revise_unanswered':'POST /api/quizzes/{quiz_id}/options，提交expected_options、options、correct_index；只允许调整未作答题的干扰项，原正确答案、编号和记录保留'}
+    guide['quiz_contract']={'source':'讲解和回答里的习题共用 state.quizzes；正文和练习栏展示同一条记录，作答立即同步，汇总范围是当前项目全部有效习题','lesson_minimum':'每个讲解 part 至少一道，写回时脚本逐项检查；未覆盖的 part 返回准确编号','answer_payload':{'choice':'selected 提交原始选项下标','recall':'response 保存自行作答的原话；对照参考答案后，selected=1 表示自己核对答对，selected=0 表示还没答对，返回 self_assessed=true'},'formats':{'choice':'默认；options、correct_index、explanation、option_explanations','recall':'自行填空、简答、计算、代码或推导；reference_answer、explanation，用户对照参考答案自评，保存 response 与核对结果，不调用判分模型'},'display_order':'显示位置到原options下标的映射；选择题作答提交原下标，不能提交显示位置，历史选择不因位置均衡而改变','quality_flags':'脚本只标记明显的长度线索，不据此阻塞生成或自动循环修复','revise_unanswered':'POST /api/quizzes/{quiz_id}/options，提交expected_options、options、correct_index；只允许调整未作答题的干扰项，原正确答案、编号和记录保留'}
     current_material=material();plan=learning_payload(current_material,workspace().read(),core.read_state())
     guide['project']={'id':mid(),'title':current_material['title'],'files':[{'id':f['id'],'name':f.get('name'),'kind':f.get('kind')} for f in current_material.get('reading_files',[])],'current_chapter':next(({'id':n['id'],'title':n['title'],'number':n.get('number'),'status':n['status']} for n in plan['nodes'] if n['id']==plan['selected_id']),None)}
     guide['initial_action']='收到连接说明即接手当前项目，无需用户再次初始化；先读取本接口返回的项目、材料与当前章节。尚无学习目录时按材料建立目录并仅生成首章；已有讲解时停留当前章，优先回答统一问题池。每章先完成非中文翻译，再在同次写作中生成本章讲解、术语和练习。后续章节只在 completion.can_advance 为 true 后开始，不一次讲完整个项目，不代替用户勾选已读'
@@ -309,10 +335,24 @@ def agent_guide():
     for endpoint in ('project','lecture'):guide['endpoints'].pop(endpoint,None)
     guide['endpoints'].update(import_jobs='GET /api/import-jobs',start_import='POST /api/import-jobs',import_status='GET /api/import-jobs/{job_id}')
     guide['import_contract']={'submit':'将文件、网址或仓库提交到 /api/import-jobs，接口返回202与任务编号；解析在后台完成，可继续处理当前内容','outline_mode':'auto 默认识别目录；agent 只显示文件根节点，保留原片段、坐标和建议目录，随后由 Agent 规划学习目录','poll':'按任务编号查询，ready 后使用 file.id；error 时可显式重试，不重新生成已有讲解','translation':'导入只解析，不调用模型翻译；Agent 按本章原编号翻译所有非中文自然语言，再写回成品译文'}
-    guide['client_files']={'reader_credentials.py':'GET /api/agent/reader_credentials.py','reader_quality.py':'GET /api/agent/reader_quality.py','reader_translation.py':'GET /api/agent/reader_translation.py','reader_prompts.py':'GET /api/agent/reader_prompts.py','reader_media.py':'GET /api/agent/reader_media.py','reader_bridge.py':'GET /api/agent/reader_bridge.py','reader_worker.py':'GET /api/agent/reader_worker.py','reader_execute.py':'GET /api/agent/reader_execute.py','reader_term_names.py':'GET /api/agent/reader_term_names.py','rule':'建立连接或开始新一轮回答时，从当前项目接口下载 client_files 列出的全部当前客户端和规则模块放到同一目录；已有旧脚本也要替换，只更新程序文件，不覆盖任务输入、结果和记录；脚本下载不需要模型阅读其正文。使用已登录的本地Codex，访问令牌不写入任务文件；用户选择记住连接后，通过 --remember 保存到系统凭据库，新进程按网站和项目恢复；未选择则只留内存或环境变量'}
-    guide['reader_feedback_contract']={'writing_version':writing_guide()['version'],'input_fields':['reader_feedback_latest','confirmed_passage','confirmed_understanding'],'start_run':'POST /api/runs 可附上述字段，随任务进入各组写作输入，不改正文、笔记或已读状态','client_command':'reader_bridge.py daily --out <本轮空目录> --reader-feedback-file <本轮反馈.json或txt>','rule':'用户明确指出旧讲法哪里没懂时，保留其原话作为reader_feedback_latest；只有用户明确确认的部分进入confirmed_passage和confirmed_understanding。没有反馈就省略，不把父回答当作已掌握知识，不重新携带全部聊天历史；针对特定问题的反馈用question_ids限定本次任务','lesson':'首次讲解也采用writing.instructions；prepare --lesson 支持同一反馈文件。先通读本节，再以连续正文带读者理解。讲解 parts 登记 source_id、source_span 和 markdown，原句仅用于三栏定位，不重复放进讲解；问答 parts 登记 question_span 与 markdown，先回答该子问，再把原因与步骤接着讲清。普通段落用相互承接的句子，数学计算和代码仍可逐步展开。正文、术语和练习仍同次输出，不增加审稿或模型修复阶段'}
+    guide['client_files']={'rule': '建立连接或开始新一轮回答时，从当前项目接口下载 client_files 列出的全部当前客户端和规则模块放到同一目录；已有旧脚本也要替换，只更新程序文件，不覆盖任务输入、结果和记录；脚本下载不需要模型阅读其正文。使用已登录的本地Codex，访问令牌不写入任务文件；用户选择记住连接后，通过 --remember 保存到系统凭据库，新进程按网站和项目恢复；未选择则只留内存或环境变量'}
+    guide['reader_feedback_contract']={'writing_version':writing_guide()['version'],'input_fields':['reader_feedback_latest','confirmed_passage','confirmed_understanding'],'start_run':'POST /api/runs 可附上述字段，随任务进入各组写作输入，不改正文、笔记或已读状态','client_command':'reader_bridge.py daily --out <本轮空目录> --reader-feedback-file <本轮反馈.json或txt>','rule':'用户明确指出旧讲法哪里没懂时，保留其原话作为reader_feedback_latest；只有用户明确确认的部分进入confirmed_passage和confirmed_understanding。没有反馈就省略，不把父回答当作已掌握知识，不重新携带全部聊天历史；针对特定问题的反馈用question_ids限定本次任务','lesson':'首次讲解也采用writing.instructions；reading_context.previous带上一节实际末段，recent_reader_questions带本项目最近四条已回答的真实疑问（最多2400字，不含回答或聊天历史）；只补本节再次需要的理解缺口，不机械加长正文；evidence.transitions登记每个相邻part实际承接的前段原句，当前客户端同次校验，不另起改写；prepare --lesson 支持同一反馈文件。先通读本节，再以连续正文带读者理解。讲解 parts 登记 source_id、source_span 和 markdown，原句仅用于三栏定位，不重复放进讲解；问答 parts 登记 question_span 与 markdown，先回答该子问，再把原因与步骤接着讲清。普通段落用相互承接的句子，数学计算和代码仍可逐步展开。正文、术语和练习仍同次输出，不增加审稿或模型修复阶段'}
     guide['reading_contract']={'read':'GET /api/reading/layout','write':'POST /api/reading/layout','automatic':'导入及读取时，脚本按原编号和坐标生成展示组，不改原文、译文、问答、笔记或已读记录；多页范围由 source_range 给出','group_request':{'expected_revision':'读取时返回的 override_revision','groups':[{'kind':'paragraph / list / figure / table / heading / code / markdown / equation','passage_ids':['同一原文文件内需要合并展示的原编号']} ]},'agent_rule':'只有脚本不能判断排版时才提交分组；只决定原编号怎样成组，不重新抄写或翻译内容。未提交的编号由脚本补回，重复文字不能据此删除','explanation_rule':'一次写作直接返回 blocks，每块包含稳定 id、markdown 和 source_ranges；source_ranges 使用当前项目的 file_id、passage_id，可选 sentence_id、start、end。每块只关联实际解释的原文；整章 source_links 表示引用范围，不能当成每块都已讲解。纯独立讲解不编出处；旧稿保留原编号，能确定的页码与原句由脚本恢复定位，不能确定时保留整章范围'}
     guide['endpoints'].update(reading_layout='GET /api/reading/layout',save_reading_layout='POST /api/reading/layout')
+    guide['framework']={'version':__import__('reader_generation').VERSION,'plan':__import__('reader_generation').PLAN_CONTRACT,'practice_placement':__import__('reader_generation').PLACEMENT_CONTRACT,'generation':'同次写作返回 plan、正文、术语和练习；讲解每个 parts 有稳定 id、heading 与 unit_ids，问答保留 question_span 和原编号','validation':'脚本核对正文非空、标题、原句、编号、前置依赖、全部问题和练习位置；缺项保留原始输出并准确返回，不把部分任务记为完成','legacy':'旧记录读取时统一适配；正文、编号、笔记、作答、answer_views 与手动已读记录不改，不因展示升级将已读回答变回未读','lesson_command':'reader_bridge.py --base <网站> --material <项目> teach --out <本轮空目录>；先按 translation_queue 补齐译文，再手动运行；正文、术语、练习一次写回，只处理当前章'}
+    guide['reader_feedback_contract']['lesson']+='；同次返回轻量 plan 和每部分 heading，练习用 placement 插到对应 part 后，不预生成用户问题'
+    from reader_sequence import FRAMING_CONTRACT
+    guide['teaching_result_contract']['explanation']['framing']=FRAMING_CONTRACT
+    guide['framework']['framing']=FRAMING_CONTRACT
+    guide['framework']['writer_execution']='teach最终成稿在请求层强制tools=[]、tool_choice=none，不向写作者提供无用文件或工具枚举。必要搜索由当前Codex在准备资料时完成，用teach --research-file传入已核对事实与来源；问答daily仍保留联网搜索和实际图片生成，不为了减少工具调用删必要查证'
+    guide['client_runtime_dependencies']=['requests','zstandard']
+    guide['quiz_contract']['formats'].update(numeric='expected、可选tolerance与unit，脚本核对等价数值',ordering='items、before、reference_order，脚本逐项核对先后约束',code='仅已登记固定runner_id的练习支持隔离编译；当前为lru-arbiter-v1；其他代码仍由当前Codex使用真实环境运行，不能声称页面已经执行')
+    guide['framework']['generation']+= '；同次返回framing与parts中的短heading、独立premise与question；阅读流程复用这三项，首尾承接分开，回顾逐part对应'
+    guide['framework']['lesson_evidence']=__import__('reader_lesson_checks').EVIDENCE_CONTRACT
+    guide['framework']['generation']+='；按当前writing.version生成，相邻part登记前段正文依据；参考recent_reader_questions补本节相关的理解缺口，不另起改写或审稿调用'
+    guide['framework']['legacy']+='；旧稿仅在reading-framework.json补缺少的展示元数据与练习关联，不重写正文，新增首尾与流程不计入手动已读分母。Demo文件夹不补生成内容'
+    guide['steps']=[s.replace('最多四个Terra high普通服务写作者','最多两个Terra high普通服务写作者')for s in guide['steps']]
+    guide['client_files']={**{name:'GET /api/agent/'+name for name in CLIENT_MODULES},'rule':guide['client_files']['rule']}
     return guide
 
 class Handler(core.Handler):
@@ -332,14 +372,39 @@ class Handler(core.Handler):
         return super().json(data,status)
     def file(self,path,ctype=None):
         return super().file(path,ctype or mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
+    def project_file_response(self,path,download=False):
+        from urllib.parse import quote
+        if not path.is_file():return self.json({'error':'请选择普通文件'},400)
+        size=path.stat().st_size;start,end=0,size-1;range_header=self.headers.get('Range','')
+        if range_header:
+            match=re.fullmatch(r'bytes=(\d*)-(\d*)',range_header)
+            if not match or not any(match.groups()):return self.json({'error':'文件范围无效'},416)
+            if match[1]:start=int(match[1]);end=min(end,int(match[2])) if match[2] else end
+            else:start=max(0,size-int(match[2]))
+            if start>end or start>=size:return self.json({'error':'文件范围超出内容'},416)
+        self.send_response(206 if range_header else 200)
+        self.send_header('Content-Type',mimetypes.guess_type(path.name)[0] or 'application/octet-stream');self.send_header('Content-Length',str(max(0,end-start+1)))
+        self.send_header('Content-Disposition',('attachment' if download else 'inline')+"; filename*=UTF-8''"+quote(path.name));self.send_header('Accept-Ranges','bytes');self.send_header('Cache-Control','private, no-cache');self.send_header('X-Content-Type-Options','nosniff');self.send_header('Content-Security-Policy',"sandbox; default-src 'none'; img-src data:; style-src 'unsafe-inline'")
+        if range_header:self.send_header('Content-Range',f'bytes {start}-{end}/{size}')
+        self.end_headers()
+        if self.command=='HEAD':return
+        with path.open('rb') as source:
+            source.seek(start);remaining=end-start+1
+            while remaining>0:
+                chunk=source.read(min(262144,remaining))
+                if not chunk:break
+                self.wfile.write(chunk);remaining-=len(chunk)
     def do_GET(self):
         self.context();path=unquote(urlsplit(self.path).path)
         try:
             if path=='/':return self.file(STATIC/'index.html','text/html; charset=utf-8')
             if path in ('/settings','/statistics','/quality-review'):return self.file(STATIC/(path[1:]+'.html'),'text/html; charset=utf-8')
+            if path=='/reader-project-files.js':return self.file(STATIC/'reader-project-files.js')
+            if path=='/reader-project-files.css':return self.file(STATIC/'reader-project-files.css')
+            if path=='/reader-inline-practice.js':return self.file(STATIC/'reader-inline-practice.js')
             if path=='/quality-review.js':return self.file(STATIC/'quality-review.js')
             if path=='/vendor/math-text.js':return self.file(STATIC/'math-text.js','text/javascript; charset=utf-8')
-            if path in ('/reader-source-flow.js','/reader-source-flow.css','/workspace-ui.js','/reader-terms.js','/reader-speech.js','/reader-practice.js','/reader-imports.js','/reader-media-view.js','/app.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
+            if path in ('/reader-code-editor.js','/reader-source-flow.js','/reader-source-flow.css','/workspace-ui.js','/reader-terms.js','/reader-speech.js','/reader-practice.js','/reader-imports.js','/reader-media-view.js','/app.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
             if path.startswith('/evidence/'):
                 if os.environ.get('MANUAL_READER_PUBLIC_ORIGIN'):return self.send_error(404)
                 folder=(ROOT/'evidence').resolve();target=(ROOT/path[1:]).resolve()
@@ -367,8 +432,20 @@ class Handler(core.Handler):
                 return self.file(LIBRARY/mid()/filename,'application/pdf' if filename.endswith('.pdf') else 'application/octet-stream')
             if path.startswith('/api/') and path!='/api/session':
                 if not self.authenticated():return self.json({'error':'连接码不正确'},403)
+                # 设置和材料树不依赖当前文章的正文，先处理，避免首次打开时等待正文投影。
+                if path.startswith('/api/project-files/'):
+                    store=project_files();query=parse_qs(urlsplit(self.path).query);name=query.get('path',[''])[0]
+                    if path=='/api/project-files/tree':return self.json(store.listing(name,int(query.get('offset',['0'])[0]),int(query.get('limit',['500'])[0])))
+                    if path=='/api/project-files/preview':return self.json(store.preview(name))
+                    if path=='/api/project-files/page':
+                        image=store.page(name,int(query.get('page',['0'])[0]),float(query.get('scale',['1'])[0]));self.send_response(200);self.send_header('Content-Type','image/png');self.send_header('Content-Length',str(len(image)));self.send_header('Cache-Control','private, no-cache');self.end_headers();self.wfile.write(image);return
+                    if path=='/api/project-files/raw':return self.project_file_response(store.target(name),query.get('download')==['1'])
+                    return self.json({'error':'没有这个文件接口'},404)
+                if path=='/api/settings':return self.json({**settings(SETTINGS),'defaults':default_templates()})
+                if path=='/api/library':return self.json(library())
+                if path=='/api/library/tree':return self.json(library_tree())
                 m=material()
-                if path in ('/api/agent/reader_bridge.py','/api/agent/reader_credentials.py','/api/agent/reader_worker.py','/api/agent/reader_execute.py','/api/agent/reader_term_names.py','/api/agent/reader_prompts.py','/api/agent/reader_media.py','/api/agent/reader_quality.py','/api/agent/reader_translation.py'):return self.file(ROOT/path.split('/')[-1],'text/x-python; charset=utf-8')
+                if path in CLIENT_PATHS:return self.file(ROOT/path.split('/')[-1],'text/x-python; charset=utf-8')
                 if path=='/api/writing/rules':return self.json(public_rules())
                 if path=='/api/format/audit':return self.json(project_audit(m,core.read_state()))
                 if path=='/api/quality-review':
@@ -409,9 +486,7 @@ class Handler(core.Handler):
                     compact=parse_qs(urlsplit(self.path).query).get('summary')==['true'];value=coverage_payload(m,workspace().read_snapshot(),core.read_state(),include_missing=not compact)
                     if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
                     return self.json(value)
-                if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
-                if path=='/api/library':return self.json(library())
-                if path=='/api/library/tree':return self.json(library_tree())
+                if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'framework_version':__import__('reader_generation').VERSION,'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
                 if path=='/api/material':return self.json({**m,'material_revision':material_revision()})
                 history_match=re.fullmatch(r'/api/questions/([^/]+)/history',path)
                 if history_match:
@@ -425,7 +500,6 @@ class Handler(core.Handler):
                     if query.get('since')==[str(progress['revision'])] and all(float(query.get(key,[-1])[0])==float(value) for key,value in metadata.items()):
                         return self.json({'unchanged':True,'revision':progress['revision']})
                     return self.json(progress_payload(progress))
-                if path=='/api/settings':return self.json({**settings(SETTINGS),'defaults':default_templates()})
                 if path=='/api/work':
                     query=parse_qs(urlsplit(self.path).query)
                     records=core.read_state();stored=workspace().read()
@@ -469,7 +543,7 @@ class Handler(core.Handler):
         except (ValueError,KeyError,OSError) as error:return self.json({'error':str(error)},400)
     def do_POST(self):
         self.context();path=unquote(urlsplit(self.path).path)
-        custom=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/answer',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
+        custom=path=='/api/project-files/file' or bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/(?:answer|draft)',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',path):custom=True
         if path=='/api/learning/exclusions':custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
@@ -487,7 +561,24 @@ class Handler(core.Handler):
             if path=='/api/reading/layout':return self.json(save_reading_layout(mpath().parent,material(),data))
             if path=='/api/practice-book':return self.json(core.mutate(lambda state:practice_change(state,data,core.stamp)))
             quiz_answer=re.fullmatch(r'/api/quizzes/([^/]+)/answer',path)
-            if quiz_answer:return self.json(core.mutate(lambda state:practice_answer(state,quiz_answer[1],data.get('selected'),core.stamp)))
+            if quiz_answer:
+                identity=quiz_answer[1];prior=next((q for q in core.read_state()['quizzes']if q['id']==identity),None)
+                if prior is None:raise ValueError('没有找到这道练习')
+                graded=__import__('objective_grading').grade(prior,data.get('response'))if prior.get('type')in ('numeric','ordering','code')else None
+                def apply_answer(state):
+                    current=next((q for q in state['quizzes']if q['id']==identity),None)
+                    if graded is not None and any(current.get(k)!=prior.get(k)for k in ('type','prompt','expected','before','runner_id','reference_code')):raise ValueError('题目刚刚更新，请按新题重新核对；本次结果已保留在运行记录')
+                    return practice_answer(state,identity,data.get('selected'),core.stamp,response=data.get('response'),pregraded=graded)
+                return self.json(core.mutate(apply_answer))
+            quiz_draft=re.fullmatch(r'/api/quizzes/([^/]+)/draft',path)
+            if quiz_draft:
+                if getattr(self,'_remote_machine',False):return self.json({'error':'练习作答只由用户保存'},403)
+                def apply_draft(state):
+                    q=next((q for q in state['quizzes']if q['id']==quiz_draft[1]),None)
+                    if q is None or q.get('type')!='code':raise ValueError('这不是代码练习')
+                    if not isinstance(data.get('code'),str)or len(data['code'])>10000:raise ValueError('代码最多10000字')
+                    q['code_draft']=data['code'];return {'saved':True}
+                return self.json(core.mutate(apply_draft))
             if path=='/api/runs':
                 started=time.perf_counter();records=core.read_state();packet=compact_packet(material(),records,data.get('question_ids'),data.get('include_answered') is True);context=teaching_context(material(),workspace().read(),records)
                 packet.update(reader_context_fields(data))
@@ -499,12 +590,21 @@ class Handler(core.Handler):
             if run_result:
                 store=Runs(mpath().parent);run=store.get(run_result[1]);group=run['groups'].get(run_result[2])
                 if not group:raise ValueError('没有这个写作组')
+                if run['packet'].get('framework_version')==__import__('reader_generation').VERSION and data.get('framework_version')!=run['packet']['framework_version']:
+                    return self.json({'code':'writer_update_required','error':'本次任务需要当前写作结构，请下载 guide.client_files 的最新客户端；保留已有原稿，只补齐结构和准确缺项，不重新生成已保存内容','required_version':__import__('reader_generation').VERSION},409)
+                if data.get('framework_version')==__import__('reader_generation').VERSION:
+                    from reader_generation import normalize_output
+                    data=normalize_output(data,questions=[q for q in run['packet']['questions']if q['id']in group['question_ids']],sources=material()['passages']+run['packet']['sources'])
                 answers=data.get('answers',[])
                 if not isinstance(answers,list) or any(not isinstance(a,dict) or a.get('question_id') not in group['question_ids'] for a in answers):raise ValueError('回答必须属于当前写作组')
                 store.update(run['id'],{'group_id':group['id'],'type':'writeback_started'});saved=[];issues=[];seen_terms=set()
                 for answer in answers:
                     try:
-                        records=core.read_state();round_=next(r for r in records['rounds'] if any(q['id']==answer['question_id'] for q in r['questions']));ids={q['id'] for q in round_['questions']};payload={'answers':[answer],'terms':[],'quizzes':[]}
+                        records=core.read_state();round_=next(r for r in records['rounds'] if any(q['id']==answer['question_id'] for q in r['questions']));ids={q['id'] for q in round_['questions']};payload={'answers':[dict(answer)],'terms':[],'quizzes':[],'plan':data.get('plan'),'framework_version':data.get('framework_version')}
+                        task=next(q for q in run['packet']['questions'] if q['id']==answer['question_id'])
+                        if answer.get('question_version')!=task['question_version']:raise ValueError('返回的问题版本与本次任务不一致，请重新读取后准备任务')
+                        if run['packet'].get('revision_mode') and task.get('expected_answer_revision'):
+                            payload['answers'][0].update(revision_action='replace',expected_answer_revision=task['expected_answer_revision'])
                         for field in ('terms','quizzes'):
                             for item in data.get(field,[]):
                                 if answer['question_id'] not in item.get('question_ids',[]):continue
@@ -513,7 +613,7 @@ class Handler(core.Handler):
                                     key=item.get('term_id') or item.get('name')
                                     seen_terms.add(key)
                                 payload[field].append(value)
-                        core.mutate(lambda state:save_result(state,round_['id'],payload));saved.append(answer['question_id'])
+                        core.mutate(lambda state:save_result(state,round_['id'],payload,actor=self.lesson_actor()+' / '+run['id']+' / '+group['id']));saved.append(answer['question_id'])
                     except (ValueError,KeyError,StopIteration,TypeError) as error:issues.append({'question_id':answer.get('question_id'),'message':str(error)})
                 if set(group['question_ids'])<=set(saved):store.update(run['id'],{'group_id':group['id'],'type':'group_saved'})
                 return self.json({'saved':saved,'issues':issues,'missing_question_ids':list(set(group['question_ids'])-set(saved)),'run':Runs.public(store.get(run['id']))})
@@ -527,8 +627,17 @@ class Handler(core.Handler):
                     request_id=core.text(data.get('request_id'),'任务提交编号',80);prior=records.get('teaching_results',{}).get(request_id)
                     if prior:
                         if prior['learning_node_id']!=node_id:raise ValueError('这个提交编号已经用于其他章节')
-                        return self.json(prior)
+                        if prior.get('complete'):return self.json(prior)
+                        # 正文已保存时，只补术语和练习；同一提交不再次更新正文版本。
+                        def complete_assets(state):
+                            saved=prior['explanation'];assets=append_assets(state,data,node_id,saved['id'],saved['passage_ids'],core.stamp)
+                            receipt={**prior,**assets};state['teaching_results'][request_id]=receipt;return receipt
+                        return self.json(core.mutate(complete_assets))
                     task=resolve_task(records,node_id,self.lesson_actor(),plan['selected_id'],data.get('lesson_task_id'))
+                    if task and task.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and data.get('writing_version')!=task['writing_version']:
+                        return self.json({'code':'writer_update_required','error':'本次讲解任务需要当前写作规则；请下载 guide.client_files 的当前客户端，保留已有稿件和原编号，不需要重新配对','required_writing_version':task['writing_version']},409)
+                    if task and task.get('framework_version')==__import__('reader_generation').VERSION and data.get('framework_version')!=task['framework_version']:
+                        return self.json({'code':'writer_update_required','error':'本节任务需要当前讲解结构，请先更新 guide.client_files 的客户端；原稿保留，补齐 plan、小标题和练习位置后提交','required_version':__import__('reader_generation').VERSION},409)
                     explanation=data.get('explanation')
                     if not isinstance(explanation,dict):raise ValueError('请同时提交本节讲解、术语和练习')
                     for batch in data.get('translations',[]):
@@ -540,7 +649,11 @@ class Handler(core.Handler):
                     target_ids=set(target_node['passage_ids'])|set(target_node.get('source_range',{}).get('passage_ids',[]))|{l['passage_id']for l in target_node['effective_source_links']}
                     remaining=translation_queue(material(),{'passage_ids':target_ids})['current_source_ids']
                     if remaining:return self.json({'error':'本章关联的原文还有译文缺项，请只补齐这些原文编号后重交已有讲解，不要重新生成讲解','code':'chapter_translation_incomplete','missing_source_ids':remaining,'explanation_preserved_on_client':True},409)
-                    payload={**explanation,'learning_node_id':node_id};used={q['passage_id'] for r in records['rounds'] for q in r['questions']}|set(records.get('read_passages',{}))
+                    if data.get('framework_version')==__import__('reader_generation').VERSION:
+                        from reader_generation import normalize_output
+                        source_rows=[p for p in material()['passages']if p['id']in target_ids and p.get('content_kind')!='explanation']
+                        checked=normalize_output(data,sources=source_rows,lesson=True,required_source_ids=[p['id']for p in source_rows],reading_context=__import__('reader_sequence').reading_context(plan['nodes'],node_id,material()));data=checked;explanation=checked['explanation']
+                    payload={**explanation,'learning_node_id':node_id,**{k:data[k]for k in ('plan','framework_version','writing_version')if k in data}};used={q['passage_id'] for r in records['rounds'] for q in r['questions']}|set(records.get('read_passages',{}))
                     result=workspace().explain(payload,material(),used)
                     def finish_lesson(state):
                         assets=append_assets(state,data,node_id,result['id'],result['passage_ids'],core.stamp)
@@ -590,6 +703,7 @@ class Handler(core.Handler):
                 identity='project-'+uuid.uuid4().hex[:14];title=core.text(data.get('title'),'项目名称',300)
                 document={'id':identity,'title':title,'source':'','kind':'project','pages':{},'passages':[],'outline':[],'inventory':[],'schema_version':2,'translation_status':'not_required','coverage':{'source_coverage':1,'outline_coverage':1,'translation_coverage':1},'original_file':''}
                 target=mpath(identity);target.parent.mkdir(parents=True);target.write_text(json.dumps(document,ensure_ascii=False),'utf8')
+                project_files(identity).ensure()
                 return self.json({'id':identity,'title':title,'url':f'{public_base()}/?material={identity}'})
             if path in ('/api/content/import','/api/content/files','/api/content/explanations','/api/content/presentation'):
                 with core.LOCK:
@@ -626,6 +740,7 @@ class Handler(core.Handler):
                                 state['focus']={'passage_id':target['passage_id'],'sentence_id':target.get('sentence_id'),'revision':state['focus']['revision']+1,'view':{}}
                             core.mutate(select_content)
                 return self.json(result)
+            if path=='/api/project-files/file':return self.json(project_files().put(data))
             if path=='/api/settings':
                 with core.LOCK:result=save_settings(SETTINGS,data)
                 return self.json(result)
@@ -695,7 +810,7 @@ class Handler(core.Handler):
             if answer_match:
                 if getattr(self,'_remote_machine',False) and data.get('action')=='delete':
                     return self.json(core.mutate(lambda state:REVIEWS.confirm(state,mid(),'machine:'+self._grant['id'],answer_match[1],data,core.stamp,expected_target='answer')))
-                return self.json(core.mutate(lambda state:change_answer(state,answer_match[1],data,core.stamp)))
+                return self.json(core.mutate(lambda state:change_answer(state,answer_match[1],data,core.stamp,actor=self.lesson_actor())))
             quiz_options=re.fullmatch(r'/api/quizzes/([^/]+)/options',path)
             if quiz_options:
                 from reader_contract import revise_quiz_options

@@ -19,7 +19,8 @@
   const atom = base + '(?:[_^]' + sub + '|[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺ⁿ₀₁₂₃₄₅₆₇₈₉₋₊]+)*(?:' + par + ')?!?';
   const op = '(?:<=|>=|!=|:=|[=+*/×÷−≤≥≈≠<>∘∈∉⊂⊆⊃⊇∩∪→↦←↔≃≅≡]|-(?=[^A-Za-z]|' + letter + '(?![A-Za-z]))|\\\\(?:circ|times|cdot|div|leq?|geq?|approx|neq?|in|notin|to|mapsto|subseteq?|supseteq?|cap|cup|cong|simeq)\\b)';
   const expression = new RegExp('(?<![A-Za-z0-9_/:.\\\\])(?:' + atom + '(?:[ \\t]*' + op + '[ \\t]*' + atom + ')+|' + command + '(?:[_^]' + sub + ')*(?:' + par + ')?|' + letter + '(?:[_^]' + sub + '|[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺ⁿ₀₁₂₃₄₅₆₇₈₉₋₊]+)(?:' + par + ')?|[0-9]+!(?!=|[A-Za-z0-9_]))(?![A-Za-z0-9_/:.])', 'g');
-  const explicit = /\$\$([\s\S]+?)\$\$|(?<![\\$])\$(?!\$)([^$\n]+?)\$(?![$A-Za-z_])|(?<!\\)(\\{1,2})\(([\s\S]+?)\3\)|(?<!\\)(\\{1,2})\[([\s\S]+?)\5\]|\\begin\{(equation\*?|align\*?|aligned|alignedat|gather\*?|gathered|multline\*?|split|matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|cases|array)\}[\s\S]*?\\end\{\7\}/g;
+  const explicit = /\$\$([\s\S]+?)\$\$|(?<![\\$])\$(?!\$)([^$\n]+?)\$(?![$A-Za-z_])|(?<!\\)(\\{1,2})\(([\s\S]+?)\3\)|(?<!\\)(\\{1,2})\[([\s\S]+?)\5\]/g;
+  const environment = /\\begin\{(equation\*?|align\*?|aligned|alignedat|gather\*?|gathered|multline\*?|split|matrix|pmatrix|bmatrix|Bmatrix|vmatrix|Vmatrix|cases|array)\}[\s\S]*?\\end\{\1\}/g;
   const protectedText = /(`{3,}|~{3,})[^\n]*\n[\s\S]*?\1|(`+)(?!`)[\s\S]*?\2(?!`)|https?:\/\/[^\s<>]+|\b[A-Za-z]:[\\/][^\s<>]+|(?:^|\s)(?:\.{0,2}\/)[\w./-]+|\$\{[^}]+\}|\$(?:past|stable|rose|fell|isunknown|clog2)\b|\$[A-Z_]{2,}[A-Z0-9_]*(?![A-Za-z0-9_$=+*/^<>-])|(?<!\\)\$\d+(?:\.\d+)?(?=[\s，,；;]|$)|\b[\w-]+\.(?:py|v|sv|js|ts|json|md|pdf|png|jpr|cpp|h|html|css)\b/g;
   const unicode = { '∘': '\\circ ', '→': '\\to ', '↦': '\\mapsto ', '←': '\\leftarrow ', '↔': '\\leftrightarrow ', '∈': '\\in ', '∉': '\\notin ', '⊂': '\\subset ', '⊆': '\\subseteq ', '⊃': '\\supset ', '⊇': '\\supseteq ', '∩': '\\cap ', '∪': '\\cup ', '⋃': '\\bigcup ', '⋂': '\\bigcap ', '−': '-', '≤': '\\leq ', '≥': '\\geq ', '≠': '\\neq ', '≈': '\\approx ', '×': '\\times ', '÷': '\\div ', '≃': '\\simeq ', '≅': '\\cong ', '≡': '\\equiv ' };
   const superscripts={'⁰':'0','¹':'1','²':'2','³':'3','⁴':'4','⁵':'5','⁶':'6','⁷':'7','⁸':'8','⁹':'9','⁻':'-','⁺':'+','ᵃ':'a','ᵇ':'b','ᶜ':'c','ᵈ':'d','ᵉ':'e','ᶠ':'f','ᵍ':'g','ʰ':'h','ⁱ':'i','ʲ':'j','ᵏ':'k','ˡ':'l','ᵐ':'m','ⁿ':'n','ᵒ':'o','ᵖ':'p','ʳ':'r','ˢ':'s','ᵗ':'t','ᵘ':'u','ᵛ':'v','ʷ':'w','ˣ':'x','ʸ':'y','ᶻ':'z'};
@@ -109,10 +110,27 @@
       const protectedRanges = declared ? protectedSpans.filter(part => part.code || part.start <= start || !pathStarts.has(part.start)) : protectedSpans;
       if (!overlaps(start, end, protectedRanges) && !overlaps(start, end, found)) found.push({ start, end, source: normalize(source), display, declared });
     };
+    // 先保留读者写明的完整公式，再识别其中没有定界符的旧公式，避免内部行抢先占用范围。
     for (const match of text.matchAll(explicit)) {
-      const source = match[1] ?? match[2] ?? match[4] ?? match[6] ?? match[0];
-      add(match.index, match.index + match[0].length, source, !!(match[1] || match[6] || match[7]), true);
+      const source = match[1] ?? match[2] ?? match[4] ?? match[6];
+      add(match.index, match.index + match[0].length, source, !!(match[1] || match[6]), true);
     }
+    // 旧问题的原句有时只留下公式正文；等号续行和矩阵先整体读取，不把矩阵内部另拆成公式。
+    const mathStart=/^(?:\\(?:min|max|argmin|argmax|frac|tfrac|dfrac|sqrt|sum|prod|int|begin|left|lim)(?![A-Za-z])|[+−-]?(?:\d+(?:\.\d+)?)?[A-Za-zα-ωΑ-Ω]{1,3}(?:[_^](?:\{[^{}]*\}|[A-Za-z0-9]+))*(?:\([^()\n]*\))?\s*(?:[=+−-]|\\(?:leq?|geq?|in)\b))/;
+    const wholeMath=raw=>{
+      if(!mathStart.test(raw)||! /\\[A-Za-z]+/.test(raw)||/(?<!\\)\\[\[\]()]|\$/.test(raw))return false;
+      const visible=raw.replace(new RegExp('\\\\(?:text|textrm|texttt|operatorname)\\s*'+group,'g'),'').replace(/\\(?:begin|end)\{[^{}]+\}/g,'').replace(/\\[A-Za-z]+/g,'');
+      return !/[\u3400-\u9fff]/.test(visible)&&!/\b[A-Za-z]{4,}\b/.test(visible)&&(raw.match(/\\begin\{/g)||[]).length===(raw.match(/\\end\{/g)||[]).length;
+    };
+    for(const block of text.matchAll(/^[^\r\n]+(?:\r?\n(?![ \t]*\r?$)[^\r\n]+)*/gm)){
+      const raw=block[0].trim();
+      if(wholeMath(raw)){const start=block.index+block[0].indexOf(raw);add(start,start+raw.length,raw,true);}
+      else for(const line of block[0].matchAll(/^[^\r\n]+/gm)){
+        const raw=line[0].trim();if(!wholeMath(raw))continue;
+        const start=block.index+line.index+line[0].indexOf(raw);add(start,start+raw.length,raw,true);
+      }
+    }
+    for (const match of text.matchAll(environment)) add(match.index,match.index+match[0].length,match[0],true,true);
     // 先整体识别映射和带指标的并集，避免公式被拆成几块。
     const structured = /(?<![A-Za-z0-9_/:.\\])(?:[A-Za-zα-ωΑ-Ω]\s*:\s*[A-Za-zα-ωΑ-Ω]\s*→\s*\{[^{}\n]+\}|[A-Za-z]\s*=\s*[⋃⋂]_\{[^{}\n]+\}\s*[A-Za-z](?:_\{[^{}]+\}|_[A-Za-z0-9]+)?)/g;
     for (const match of text.matchAll(structured)) add(match.index, match.index + match[0].length, match[0]);

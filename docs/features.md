@@ -166,3 +166,19 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 图 11.1 每套同时保存浅色与深色；收藏、默认与当前使用状态分别显示
 
 </div>
+
+# 10 项目文件怎样与阅读窗口共用位置
+
+目录可分成上下两窗或三窗，分别保留学习路线、文件树和练习进度；从文件树打开的普通标签与主原文共用原文栏，点击阅读映射就返回主标签；完整接口和预览范围见[项目文件说明](project-files.md)
+
+<div align="center">
+
+<img src="assets/readme/project-files-phone.png" alt="手机上的原文主标签与可关闭文件标签，当前正在查看分页 PDF" width="390">
+
+图 10 手机在原文栏查看项目文件；截图使用自撰合成内容，主阅读映射与章节记录继续保留
+
+<img src="assets/readme/project-files-phone-tree.png" alt="手机上独立切换阅读进度、文件树和阅读练习双环的三层目录" width="390">
+
+图 11 手机目录的三层拆分；每一层可以单独切换，也可以还原单窗
+
+</div>

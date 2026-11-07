@@ -43,14 +43,21 @@ def answer_revision(question):
     return hashlib.sha256(text.encode('utf8')).hexdigest()
 
 def mark_answers_seen(state,rows,stamp):
-    """只登记用户展开过的当前回答，不修改章节已读、笔记或练习。"""
+    """登记展开时的问题或回答版本，不修改章节已读、笔记或练习。"""
     if not isinstance(rows,list) or not 1<=len(rows)<=200 or any(not isinstance(row,dict)for row in rows):raise ValueError('请提交本次展开的回答列表')
     known={q['id']:q for r in state['rounds']for q in r['questions']};seen=[];skipped=[]
     for row in rows:
         q=known.get(row.get('question_id'));revision=answer_revision(q)if q and not q.get('deleted_at')else None
-        if not revision or row.get('answer_revision')!=revision:skipped.append(row.get('question_id'));continue
+        if not q or q.get('deleted_at'):skipped.append(row.get('question_id'));continue
+        version=q.get('version',1)
+        if revision:
+            if row.get('answer_revision')!=revision:skipped.append(q['id']);continue
+            expected={'answer_revision':revision,'question_version':version}
+        else:
+            if row.get('answer_revision')or row.get('question_version')!=version:skipped.append(q['id']);continue
+            expected={'question_version':version}
         records=state.setdefault('answer_views',{});record=records.get(q['id'])
-        if not record or record.get('answer_revision')!=revision:records[q['id']]={'answer_revision':revision,'seen_at':stamp()}
+        if not record or any(record.get(k)!=v for k,v in expected.items()):records[q['id']]={**expected,'seen_at':stamp()}
         seen.append({'question_id':q['id'],**records[q['id']]})
     return {'seen':seen,'skipped':skipped}
 

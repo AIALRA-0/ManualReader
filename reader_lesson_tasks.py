@@ -8,7 +8,7 @@ def task_for(state,node_id,actor,stamp):
     tasks=state.setdefault('lesson_tasks',{})
     existing=next((t for t in reversed(list(tasks.values()))if t['learning_node_id']==node_id and t['actor']==actor and t['status']=='prepared'),None)
     if existing:return existing
-    task={'id':'lesson-task-'+uuid.uuid4().hex[:20],'learning_node_id':node_id,'actor':actor,'status':'prepared','created_at':stamp()}
+    task={'id':'lesson-task-'+uuid.uuid4().hex[:20],'learning_node_id':node_id,'actor':actor,'status':'prepared','created_at':stamp(),'framework_version':__import__('reader_generation').VERSION,'writing_version':__import__('reader_prompts').WRITING_VERSION}
     tasks[task['id']]=task
     return task
 

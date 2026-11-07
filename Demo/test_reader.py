@@ -19,7 +19,7 @@ class ReaderTests(unittest.TestCase):
  def test_repeat_review_write_is_idempotent(self):
   record_answer(self.state,'q1',0,self.stamp);s=change(self.state,{'action':'start'},self.stamp);data={'action':'answer','quiz_id':'q1','selected':1,'session_id':s['id']};change(self.state,data,self.stamp);change(self.state,data,self.stamp);self.assertEqual(len(self.state['practice_book']['attempts']),2)
  def test_edit_only_changes_notebook_copy(self):
-  original=copy.deepcopy(self.state['quizzes']);change(self.state,{'action':'edit','quiz_id':'q1','quiz':{'prompt':'改过的题','options':['丙','丁'],'correct_index':0}},self.stamp);self.assertEqual(self.state['quizzes'],original);self.assertEqual(payload(self.state)['items'][0]['prompt'],'改过的题')
+  original=copy.deepcopy(self.state['quizzes']);change(self.state,{'action':'edit','quiz_id':'q1','quiz':{'prompt':'改过的题','options':['丙','丁'],'correct_index':0,'explanation':'修改后的题目按当前选项判断；'}},self.stamp);self.assertEqual(self.state['quizzes'],original);self.assertEqual(payload(self.state)['items'][0]['prompt'],'改过的题')
  def test_delete_requires_confirmation(self):
   with self.assertRaises(ValueError):change(self.state,{'action':'remove','quiz_id':'q1'},self.stamp)
  def test_old_incorrect_selection_is_imported_without_mutation(self):

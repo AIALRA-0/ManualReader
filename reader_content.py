@@ -2,6 +2,7 @@
 import copy
 import re
 from source_parser import Document
+from reader_blocks import markdown_chunks
 
 
 def lecture_material(data, identity, previous=None):
@@ -88,8 +89,8 @@ def lecture_material(data, identity, previous=None):
         row.update(id=sid, passage_id=heading_unit['id'], section_id=sid, parent_id=parent)
         heading_unit['section_id'] = sid; heading_unit['outline_id'] = sid
         doc.current = sid; doc.stack[-1] = (level, sid)
-        # 正文按空行分段，代码块内部的空行保持原样；每段使用稳定的章节前缀
-        blocks = re.findall(r'```[\s\S]*?```|~~~[\s\S]*?~~~|(?:(?!\n\s*\n)[\s\S])+', content.strip())
+        # 普通文字按空行分段，完整公式和代码内部的空行不拆开。
+        blocks = markdown_chunks(content)
         for i, block in enumerate(blocks, 1):
             if not block.strip():
                 continue

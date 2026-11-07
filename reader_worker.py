@@ -53,7 +53,28 @@ def external_tool_usage(events):
         except ValueError:continue
         item=row.get('item',{})
         if row.get('type')=='item.completed' and item.get('type')=='web_search':calls[item.get('id')]=item.get('action',{}).get('type','other')
-    return {'web_search_calls':len(calls),'actions':{kind:list(calls.values()).count(kind) for kind in set(calls.values())}}
+    summary={'web_search_calls':len(calls),'reported_actions':{kind:list(calls.values()).count(kind) for kind in set(calls.values())},'actions_complete':False,'source':'cli_first_action_summary'}
+    identity=None
+    for line in events:
+        try:row=json.loads(line)
+        except ValueError:continue
+        if row.get('type')=='thread.started':identity=row.get('thread_id');break
+    if identity:
+        roots=[Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'sessions']
+        log=next((p for root in roots if root.exists() for p in root.rglob('*'+identity+'.jsonl')),None)
+        if log:
+            records=[]
+            for line in log.read_text('utf8',errors='replace').splitlines():
+                try:records.append(json.loads(line))
+                except ValueError:continue
+            starts=[i for i,row in enumerate(records) if row.get('payload',{}).get('type')=='task_started']
+            if starts:records=records[starts[-1]:]
+            from reader_tool_audit import argument_usage
+            actual=argument_usage(records)
+            if actual:
+                if actual['web_search_calls']!=len(calls):actual.update(actions_complete=False,summary_event_calls=len(calls))
+                return {**actual,'reported_actions':summary['reported_actions']}
+    return summary
 
 def runtime_usage(meta,coordinator=None):
     identity=meta.get('session_id')

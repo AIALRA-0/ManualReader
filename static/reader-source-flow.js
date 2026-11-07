@@ -33,8 +33,8 @@ window.ReaderSourceFlow={create(ctx){
   for(const n of painted)if(!next.has(n))n.classList.remove(cls);for(const n of next)if(!painted.has(n))n.classList.add(cls);painted.clear();for(const n of next)painted.add(n);return targets;
  }
  function reveal(root,target){if(!target||!root||root.closest('[hidden]')||!target.getClientRects().length)return;const a=target.getBoundingClientRect(),v=root.getBoundingClientRect();if(a.top<v.bottom-24&&a.bottom>v.top+24)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;root.scrollTo({top:Math.max(0,root.scrollTop+a.top-v.top-20),behavior:reduced?'instant':'smooth'})}
- async function link(target,origin='translation',{toggle=true}={}){
-  if(ui()?.isSelecting?.())return false;sync();const data=linkData(target);if(!data.ids.length&&!data.explanations.length)return false;
+ async function linkSelection(target,origin='translation',{toggle=true}={}){
+  if(ui()?.isSelecting?.())return false;ctx.main?.();sync();const data=linkData(target);if(!data.ids.length&&!data.explanations.length)return false;
   const request=++linkRequest;let serial=++linkSerial;if(toggle&&linked?.key===data.key){linked=null;localRefs=null;clearLinked();if(active)ctx.paintRefs?.([]);return true}
   await ui()?.revealLinked?.(data.ids,data.explanations);if(request!==linkRequest)return true;sync();serial=++linkSerial;linked=data;localRefs=data.refs;
   let targets=paintLinked(data);const page=data.refs.find(r=>pages.includes(r.page_id))?.page_id||data.refs[0]?.page_id;
@@ -45,16 +45,25 @@ window.ReaderSourceFlow={create(ctx){
   for(const kind of ['original','translation','explanation'])if(kind!==origin)reveal(kind==='original'?viewport:$(kind),targets[kind]?.[0]);
   document.dispatchEvent(new CustomEvent('reader-source-linked',{detail:{source_ids:data.ids,explanation_ids:data.explanations,origin}}));return true;
  }
+ let originOperation=0;
+ async function link(target,origin='translation',options={}){
+  if(['study','term','terms'].includes(origin))return false;
+  const originalText=$('original-reading'),operation=++originOperation,own=origin==='original'?(originalText?.clientHeight?originalText:viewport):origin==='question'?$('interaction'):['translation','explanation'].includes(origin)?$(origin):null,position=own?[own.scrollLeft,own.scrollTop]:null;let interrupted=false;const interrupt=()=>interrupted=true;
+  for(const type of ['wheel','touchmove','keydown'])own?.addEventListener(type,interrupt,{passive:true});
+  try{return await linkSelection(target,origin,options)}finally{
+   const restore=()=>{if(position&&own.isConnected&&!interrupted&&operation===originOperation&&(Math.abs(own.scrollTop-position[1])>1||Math.abs(own.scrollLeft-position[0])>1))own.scrollTo({left:position[0],top:position[1],behavior:'instant'})};restore();requestAnimationFrame(()=>{restore();for(const type of ['wheel','touchmove','keydown'])own?.removeEventListener(type,interrupt)})
+  }
+ }
  function restoreLinked(){if(linked)paintLinked(linked);else clearLinked()}
  // 三栏和问题的映射只由显式点击触发；滚动、悬停和输入不改变定位。
  for(const kind of ['original','translation','explanation']){
   const root=kind==='original'?viewport:$(kind);
   root.addEventListener('click',event=>{
-   if(event.button||getSelection()?.toString().trim()||event.target.closest('a:not(.term-link),button,input,textarea,summary,.inline-question,.question-composer,img,.reader-source-crop'))return;
+   if(event.button||getSelection()?.toString().trim()||event.target.closest('a,button,input,textarea,summary,.inline-question,.question-composer,img,.reader-source-crop'))return;
    if(kind==='original'&&!event.target.closest('#original-reading'))return;
    const node=event.target.closest('.reader-coherent-sentence,[data-source-ids],[data-sentence-id],article[data-passage-id]'),article=node?.closest('article[data-passage-id]');
    const pid=node?.dataset.passageId||article?.dataset.passageId;if(!pid)return;
-   if(!event.target.closest('.term-link'))event.stopImmediatePropagation();link({passage_id:pid,sentence_id:node.dataset.sentenceId,source_ids:parseIds(node.dataset.sourceIds),sentence_ids:parseIds(node.dataset.sentenceIds)},kind);
+   event.stopImmediatePropagation();link({passage_id:pid,sentence_id:node.dataset.sentenceId,source_ids:parseIds(node.dataset.sourceIds),sentence_ids:parseIds(node.dataset.sentenceIds)},kind);
   },true);
  }
  function range(){const m=model(),u=ui(),node=u?.activeNode();if(!m)return [];if(node&&!u.isBrowsing()&&ctx.scope()!=='all')return (node.source_range?.page_ids||[]).filter(id=>m.pages[id]);const fid=u?.getFile()?.id||'primary';return Object.keys(m.pages||{}).filter(id=>(m.pages[id].file_id||'primary')===fid)}

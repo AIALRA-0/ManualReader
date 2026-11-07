@@ -2,11 +2,36 @@
 import re
 import random
 
+def current_quizzes(quizzes):
+    replaced={q.get('revises_quiz_id')for q in quizzes if q.get('revises_quiz_id')}
+    return [q for q in quizzes if q['id']not in replaced and not q.get('deleted_at')]
+
+def normalize_quiz(quiz):
+    """选择题保留原选项；自行作答题保存参考答案，用同一份记录登记用户核对的结果。"""
+    if not isinstance(quiz,dict):raise ValueError('练习需要使用对象')
+    value=dict(quiz);kind=value.get('type','choice')
+    if kind in ('numeric','ordering','code'):return __import__('objective_grading').normalize(value)
+    if kind in ('recall','short_answer','fill_blank','calculation','derivation','code','open'):
+        reference=value.get('reference_answer')
+        if not isinstance(reference,str)or not reference.strip():raise ValueError('自行作答题需要 reference_answer，供读者完成后核对')
+        if len(reference)>30000:raise ValueError('参考答案超过30000字')
+        value.update(type='recall',reference_answer=reference.strip(),options=['还没答对','答对了'],correct_index=1,option_explanations=['对照参考答案中的步骤，补上自己遗漏或写错的部分','已按参考答案核对自己的作答'])
+    elif kind not in ('choice','true_false'):raise ValueError('练习 type 使用 choice、true_false 或 recall；recall 可以承载填空、计算、推导和代码练习')
+    options=value.get('options');correct=value.get('correct_index')
+    if not isinstance(value.get('prompt'),str)or not value['prompt'].strip()or not isinstance(value.get('explanation'),str)or not value['explanation'].strip():raise ValueError('练习需要题目和解析')
+    if not isinstance(options,list)or not 2<=len(options)<=6 or any(not isinstance(o,str)or not o.strip()for o in options)or len(set(options))!=len(options):raise ValueError('选择题需要二至六个不同的选项')
+    if type(correct)is not int or not 0<=correct<len(options):raise ValueError('正确选项编号不在范围内')
+    return value
+
+def quiz_fields(quiz):
+    return {k:quiz[k]for k in ('type','reference_answer','placement','expected','calculation','tolerance','unit','unit_aliases','items','before','reference_order','objective_ids','source_ids','assessment','language','runner_id','starter_code','reference_code','variant_id')if k in quiz}
+
 def option_explanations(quiz):
     values=quiz.get('option_explanations')
     return [v.strip() for v in values] if isinstance(values,list) and len(values)==len(quiz.get('options',[])) and all(isinstance(v,str) and v.strip() for v in values) else []
 
 def quiz_feedback(quiz,selected):
+    if quiz.get('type')=='recall':return str(quiz.get('explanation',''))
     reasons=option_explanations(quiz)
     common=str(quiz.get('explanation',''))
     if selected!=quiz.get('correct_index') and reasons and isinstance(selected,int) and 0<=selected<len(reasons):
@@ -22,6 +47,7 @@ def quiz_display_orders(quizzes):
     for quiz in quizzes:
         options=quiz.get('options',[]);correct=quiz.get('correct_index');n=len(options)
         if not 2<=n<=6 or not isinstance(correct,int) or not 0<=correct<n:continue
+        if quiz.get('type')=='recall':orders[quiz['id']]=list(range(n));continue
         used=counts.setdefault(n,[0]*n);rng=random.Random(quiz['id']);order=list(range(n))
         dependent=re.search(r'以上(?:[两三四五六\d]+项)?(?:都|均|皆|全)|上述(?:选项|各项)|前[两三四五六\d]+项|[A-F]\s*(?:[、和与或]\s*[A-F]|选项)|选项\s*[A-F]',quiz.get('prompt','')+'\n'+'\n'.join(options))
         if not dependent:
@@ -31,6 +57,7 @@ def quiz_display_orders(quizzes):
     return orders
 
 def quiz_quality_flags(quiz):
+    if quiz.get('type')=='recall':return []
     options=quiz.get('options',[]);correct=quiz.get('correct_index');flags=[]
     if not options or not isinstance(correct,int) or not 0<=correct<len(options):return flags
     lengths=[len(re.sub(r'\s+','',o)) for o in options];others=sorted(lengths[:correct]+lengths[correct+1:]);middle=others[len(others)//2]
@@ -92,15 +119,14 @@ def reader_context_fields(data):
 
 
 def writing_guide():
-    from reader_prompts import TEACHING_METHOD, NAMING_RULE, WRITING_VERSION
-    return {'version':WRITING_VERSION,'model':'gpt-6.1-terra','effort':'high','instructions':[TEACHING_METHOD,NAMING_RULE,
-      '先用普通话正面回答当前问题，再围绕答案解释具体对象、原因和必要前置',
-      '问答的“原文：”与“回答：”由接口各占一段显示，正文按真实子问明确作答，再补齐依据；讲解原句只存于来源映射，正文围绕本节内容连贯讲清，不重复抄写原文',
-      '本题结论先用普通话说清，所用对象、符号、指代、操作和必要术语就地解释',
-      '普通解释用相互承接的完整句子组成自然段，话题或推理阶段改变时再换段；计算、公式和代码保留分步排版。新写段末省略中文句号，段内保留正常标点；原文引用、代码、公式、网址和用户原话保持原样',
-      '每个术语必须具有中文全称和英文全称，缩写可选；术语采用缩写 中文全称（英文全称）或中文全称（英文全称），沿用已登记名称和大小写例外，不把普通词汇机械拆成术语',
-      '术语沿用专业定义与直观解释两段：定义独立说明这是什么、怎样工作，影响结论的必要条件就地说明，不依赖读者记得当前问答；直观解释以“可以想象……”等自然衔接，沿用正文已经讲清的具体对象，把对象的动作和专业含义对应起来，不只列名词或把定义换词重复一遍',
-      '先把回答讲清，再从同一次写作的正文提取术语两段，不另起审稿或术语写作轮次；已有术语优先只引用 term_id，复用其名称和含义；确需改善旧解释时明确提交 action=revise、expected_version 与两段新解释，保留同一 ID、历史和用户笔记',
-      '公式使用明确 LaTeX 标记；回答、术语和练习在同一次写作中完成，关联原问题编号，由脚本逐项保存',QUIZ_WRITING_RULE,
-      '复杂问题解释充分，简单问题简洁；不预先生成预测问题，不添加审稿代理或循环修复'],
-      'batching':'默认 Terra high；一次读取 /api/work，原句去重后最多四组并行。材料、规则和已有术语作为共同前缀；只传相关的父问题回答，不带整段 Codex 聊天历史。写作者输出结果，脚本负责保存、格式整理和用量统计，不让模型反复读文件或确认保存结果'}
+    from reader_prompts import TEACHING_METHOD,NAMING_RULE,WRITING_VERSION
+    from reader_generation import VERSION as FRAMEWORK_VERSION,PLAN_CONTRACT,PLACEMENT_CONTRACT
+    return {'version':WRITING_VERSION,'framework_version':FRAMEWORK_VERSION,'model':'gpt-6.1-terra','effort':'high','service_tier':'default',
+      'plan':PLAN_CONTRACT,'practice_placement':PLACEMENT_CONTRACT,'practice_forms':{'choice':{'type':'choice','prompt':'具体题目','options':['四个同类且合理的选项'],'correct_index':0,'explanation':'解题过程','option_explanations':['逐项解释']},'recall':{'type':'recall','prompt':'请自行写出、计算、推导或操作的题目','reference_answer':'完整参考答案，可含公式、代码和图片','explanation':'核对步骤与关键判断'}},
+      'instructions':[TEACHING_METHOD,NAMING_RULE,
+        '讲解 parts 提供稳定 id、unit_ids、heading、markdown 和真实来源编号；标题只在 heading 中写一次。回答 parts 提供稳定 id、unit_ids、question_span 与 markdown；Reader 统一显示原文与回答首部，正文不重复这两个标签。完整回答全部真实问题，不编造用户问题',
+        '新术语有中文全称和英文全称，缩写可选，采用缩写 中文全称（English Full Name）；英文默认按脚本规则大写开头，官方大小写例外明确登记。名称、定义和直观解释在同次写作中完成；新条目不编 term_id，复用才传登记表中的真实编号；改善旧定义时传 action=revise 和 expected_version，保留历史',
+        '公式使用明确 LaTeX 标记；多字母程序名用 mathtt 或 text 保留整体，数学下标用完整花括号，解释对象与每个关键计算步骤。图片、表格和原句的引用使用输入中的真实编号',
+        QUIZ_WRITING_RULE,
+        '同次输出完整 plan、正文、术语和带 placement 的练习；每个讲解 part 强制至少一题，选择优先，也允许带 reference_answer 的 recall 自行作答题，练习栏自动汇总同编号题目，不单独生成；脚本检查编号、非空正文、标题、原句、问题缺项和插入位置，格式错误最多集中补齐一次，不起审稿 Agent 或循环修复；当前章写回后处理本章提问，只有用户手动勾选完成才进入下一章'],
+      'batching':'默认 Terra high 普通服务，最多两组并行；原句和输入规则去重，只传相关父回答与术语，不携带维护聊天历史；模型返回一份成稿，脚本及时保存并记录真实耗时、token、缓存和检索调用'}

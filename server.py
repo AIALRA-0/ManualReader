@@ -2,7 +2,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
 import copy, json, os, re, secrets, sqlite3, threading, uuid
-from reader_questions import has_current_answer,update_round_status
+from reader_questions import has_current_answer,update_round_status,answer_revision
 from datetime import datetime, timezone
 
 ROOT=Path(__file__).resolve().parent
@@ -79,13 +79,16 @@ def save_result(state,rid,data):
   if q.get('deleted_at'):raise ValueError('问题已删除，请重新读取当前问题池')
   if (q.get('client_id') or a.get('question_version') is not None) and a.get('question_version')!=q.get('version',1):raise ValueError('问题已更新，请使用本次 /work 返回的 question_version 写回')
   text(a.get('text'),'回答',30000)
-  if has_current_answer(q) and q['answer']!=a['text'].strip():raise ValueError('已有回答，不能直接覆盖')
+  if has_current_answer(q) and q['answer']!=a['text'].strip():
+   if a.get('revision_action')!='replace':raise ValueError('已有回答，修订时请明确提交 revision_action=replace')
+   if not a.get('expected_answer_revision') or a['expected_answer_revision']!=answer_revision(q):raise ValueError('回答已有新版本，请读取新稿后再修订，不能覆盖后续写回')
  for t in terms:
   if t.get('term_id'):
    if not any(old['id']==t['term_id'] for old in state['terms']):raise ValueError('要复用的术语不存在')
   else:text(t.get('name'),'术语名称',500);text(t.get('definition'),'术语定义',12000)
   if any(q not in known for q in t.get('question_ids',[])):raise ValueError('术语关联的问题不属于这一轮')
  for q in quizzes:
+  q.update(__import__('reader_contract').normalize_quiz(q))
   text(q.get('prompt'),'练习题',5000);text(q.get('explanation'),'练习解析',12000)
   options=q.get('options');correct=q.get('correct_index');qids=q.get('question_ids',[])
   if not isinstance(options,list) or len(options)<2 or len(options)>6 or any(not isinstance(o,str) or not o.strip() for o in options):raise ValueError('练习题需要二至六个选项')
@@ -97,8 +100,11 @@ def save_result(state,rid,data):
   if not has_current_answer(q) and q.get('answer_parts'):
    if not q.get('answer'):q.setdefault('answer_parts_history',[]).append({'parts':copy.deepcopy(q['answer_parts']),'question_version':q.get('answered_question_version'),'saved_at':stamp(),'action':'reanswer'})
    q.pop('answer_parts',None)
+  prior_revision=answer_revision(q)
+  if has_current_answer(q) and q['answer']!=a['text'].strip():q.setdefault('answer_history',[]).append({'text':q['answer'],'question_text':q['text'],'question_version':q.get('version',1),'saved_at':stamp(),'action':'revise','answer_revision':prior_revision,'writer_source':data.get('_writer_source','reader'),**({'parts':copy.deepcopy(q['answer_parts'])}if q.get('answer_parts')else{})})
   q['answer']=a['text'].strip();q['answered_at']=q.get('answered_at') or stamp();q['answered_question_version']=q.get('version',1);q['answered_question_text']=q['text'];q.pop('answer_outdated',None)
   q.pop('answer_deleted_at',None);q.pop('answer_revision',None)
+  if prior_revision!=answer_revision(q):q.setdefault('answer_changes',[]).append({'at':stamp(),'before_revision':prior_revision,'after_revision':answer_revision(q),'writer_source':data.get('_writer_source','reader'),'action':'revise'if prior_revision else'answer'})
  for t in terms:
   name=str(t.get('name','')).strip();existing=next((x for x in state['terms'] if x['id']==t.get('term_id') or (name and x['name'].casefold()==name.casefold())),None)
   if not existing:existing={'id':'t-'+uuid.uuid4().hex[:16],'name':name,'definition':t['definition'].strip(),'question_ids':[]};state['terms'].append(existing)
@@ -106,8 +112,8 @@ def save_result(state,rid,data):
    if qid not in existing['question_ids']:existing['question_ids'].append(qid)
    if existing['id'] not in known[qid]['term_ids']:known[qid]['term_ids'].append(existing['id'])
  for quiz in quizzes:
-  existing=next((x for x in state['quizzes'] if x['round_id']==rid and x['prompt']==quiz['prompt'].strip()),None)
-  if not existing:state['quizzes'].append({'id':'z-'+uuid.uuid4().hex[:16],'round_id':rid,'prompt':quiz['prompt'].strip(),'options':quiz['options'],'correct_index':quiz['correct_index'],'explanation':quiz['explanation'].strip(),'option_explanations':__import__('reader_contract').option_explanations(quiz),'question_ids':quiz['question_ids'],'selected':None})
+  existing=next((x for x in state['quizzes'] if x['round_id']==rid and x['prompt']==quiz['prompt'].strip() and x.get('question_ids')==quiz.get('question_ids') and x.get('options')==quiz.get('options') and x.get('correct_index')==quiz.get('correct_index') and (not quiz.get('placement')or x.get('placement')==quiz['placement'])),None)
+  if not existing:state['quizzes'].append({'id':'z-'+uuid.uuid4().hex[:16],'round_id':rid,'prompt':quiz['prompt'].strip(),'options':quiz['options'],'correct_index':quiz['correct_index'],'explanation':quiz['explanation'].strip(),'option_explanations':__import__('reader_contract').option_explanations(quiz),'question_ids':quiz['question_ids'],'selected':None,**__import__('reader_contract').quiz_fields(quiz)})
  for q in r['questions']:update_round_status(state,q['id'])
  r['updated_at']=stamp();return r
 

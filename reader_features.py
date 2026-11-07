@@ -97,11 +97,13 @@ def save_settings(path,data):
         colors=copy.deepcopy(presets[active]['appearance'])
     speed=data.get('motion_speed',previous['motion_speed'])
     if isinstance(speed,bool) or not isinstance(speed,(int,float)) or not .5<=speed<=2:raise ValueError('动画速度请设为 0.5 至 2 倍')
-    target=Path(path);target.parent.mkdir(parents=True,exist_ok=True);temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps({'templates':clean,'appearance':colors,'motion_speed':speed,'custom_palettes':custom,'palette_favorites':favorites,'default_palette':default,'active_palette':active},ensure_ascii=False,indent=2),'utf8');temporary.replace(target);return settings(target)
+    root_base=data.get('project_root_base',previous.get('project_root_base',''))
+    if not isinstance(root_base,str) or len(root_base)>2000 or (root_base and not Path(root_base).expanduser().is_absolute()):raise ValueError('默认项目位置请填写当前服务器上的绝对路径，留空使用系统默认位置')
+    target=Path(path);target.parent.mkdir(parents=True,exist_ok=True);temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps({'project_root_base':root_base,'templates':clean,'appearance':colors,'motion_speed':speed,'custom_palettes':custom,'palette_favorites':favorites,'default_palette':default,'active_palette':active},ensure_ascii=False,indent=2),'utf8');temporary.replace(target);return settings(target)
 
 def reading_progress(material,state):
     passages=material['passages'];legacy=any(p.get('outline_id') for p in passages)
-    eligible=[p for p in passages if not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and (not legacy or p.get('outline_id') or p.get('file_id')!='primary' or p.get('content_kind')=='explanation') and ((p.get('zh') or p.get('en') or '').strip() or p.get('kind') in ('image','visual','page_image'))]
+    eligible=[p for p in passages if not p.get('progress_exempt') and not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and (not legacy or p.get('outline_id') or p.get('file_id')!='primary' or p.get('content_kind')=='explanation') and ((p.get('zh') or p.get('en') or '').strip() or p.get('kind') in ('image','visual','page_image'))]
     def count(items):
         total=len(items);done=sum(bool(state.get('read_passages',{}).get(p['id'])) for p in items)
         return {'done':done,'total':total,'percent':round(done/total*100) if total else 0}

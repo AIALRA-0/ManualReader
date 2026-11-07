@@ -3,7 +3,7 @@ import re
 from reader_learning import learning_payload
 
 def readable(p):
-    return not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and p.get('display_role') not in ('figure_label','figure_caption','decoration') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',p.get('zh') or p.get('en') or '')
+    return not p.get('progress_exempt') and not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and p.get('display_role') not in ('figure_label','figure_caption','decoration') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',p.get('zh') or p.get('en') or '')
 
 def completion_scope(material,stored,state,view=None,plan=None):
     plan=learning_payload(material,stored,state) if plan is None else plan;node=next((n for n in plan['nodes'] if n['id']==plan['selected_id']),None)

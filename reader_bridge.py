@@ -120,7 +120,7 @@ class Bridge:
         out=Path(out);out.mkdir(parents=True,exist_ok=True)
         (out/'work.json').write_text(json.dumps(packet,ensure_ascii=False,indent=2),'utf8')
         if lesson:
-            (out/'prompt-1.txt').write_text('按下面任务只完成当前一节，输出讲解、术语和选择题的结果 JSON；写回后等待用户，不进入下一节\n'+json.dumps(packet,ensure_ascii=False),'utf8')
+            (out/'prompt-1.txt').write_text('按下面任务只完成当前一节，输出讲解、术语和逐讲解片段至少一题的结果 JSON，优先选择题，也可用带参考答案的自行作答题；按writing.instructions接住reading_context的实际前文，并参考recent_reader_questions只补本节相关缺口；写回后继续处理本章，不进入下一节\n'+json.dumps(packet,ensure_ascii=False),'utf8')
             return {'groups':1,'model':packet['writer'],'output_directory':str(out.resolve()),'model_calls':0}
         for i,ids in enumerate(packet['groups'],1):
             questions=[q for q in packet['questions'] if q['id'] in ids]
@@ -264,8 +264,9 @@ if __name__=='__main__':
     collect=sub.add_parser('collect');collect.add_argument('--out',required=True)
     watch=sub.add_parser('watch');watch.add_argument('--out',required=True)
     caller=sub.add_parser('watch-caller');caller.add_argument('--out',required=True)
-    for name in ('run','run-compact','daily'):
+    for name in ('run','run-compact','daily','teach'):
         run=sub.add_parser(name);run.add_argument('--out',required=True);run.add_argument('--include-answered',action='store_true');run.add_argument('--reader-feedback-file')
+    sub.choices['teach'].add_argument('--research-file',help='当前Codex已经搜索核对的补充事实，JSON中notes各项提供text和url')
     args=parser.parse_args()
     if args.action=='forget':
         from reader_credentials import delete
@@ -274,9 +275,9 @@ if __name__=='__main__':
     reader_context=feedback_file(getattr(args,'reader_feedback_file',None))
     if args.action=='connect':
         guide=bridge.request('/api/guide');result={'connected':True,'material_id':guide.get('material_id'),'remembered':args.remember,'credential_source':'系统凭据库或本轮显式凭证'}
-    elif args.action in ('run','run-compact','daily'):
-        from reader_execute import execute,compact_result,daily
-        result=daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)
+    elif args.action in ('run','run-compact','daily','teach'):
+        from reader_execute import execute,compact_result,daily,teach
+        result=teach(bridge,args.out,reader_context,getattr(args,'research_file',None))if args.action=='teach'else daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)
         if args.action=='run-compact':result=compact_result(result)
     else:result=bridge.prepare(args.out,args.round,args.include_answered,args.lesson,reader_context=reader_context,question_ids=args.question_ids) if args.action=='prepare' else bridge.collect(args.out) if args.action=='collect' else bridge.watch(args.out) if args.action=='watch' else bridge.watch_caller(args.out) if args.action=='watch-caller' else bridge.apply(args.result,args.out,args.metrics)
     print(json.dumps(result,ensure_ascii=False,indent=2))

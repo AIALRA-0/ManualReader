@@ -88,7 +88,7 @@ def _static_learning(material,stored):
         node['effective_source_links']=effective_links(node,nodes,material)
         node['source_range']=reading_scope(material,node['effective_source_links'])
         visible=[p for p in body if p.get('explanation_id') in node.get('explanation_ids',[])] if node.get('explanation_ids') else body
-        visible=[p for p in visible if not p.get('display_omit') and not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',(p.get('zh') or p.get('en') or ''))]
+        visible=[p for p in visible if not p.get('progress_exempt') and not p.get('display_omit') and not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',(p.get('zh') or p.get('en') or ''))]
         node['reading_passage_ids']=[p['id'] for p in visible]
         done=sum(bool(state.get('read_passages',{}).get(p['id'])) for p in visible);total=len(visible)
         node['own_reading_progress']={'done':done,'total':total,'percent':round(done/total*100) if total else 0}
@@ -149,6 +149,8 @@ def learning_payload(material,stored,state):
     questions=[q for q in registered.values() if not q.get('deleted_at') and belongs(q)]
     qids={q['id'] for q in questions};tids={tid for q in questions for tid in q.get('term_ids',[])}
     terms=[t['id'] for t in state.get('terms',[]) if t['id'] in tids or qids.intersection(t.get('question_ids',[]))]
+    from reader_chapter_progress import chapter_progress
+    chapter_progress(material,nodes,state)
     return {'nodes':nodes,'coverage_plan':coverage_plan,'selected_id':selected,'scope_active':active,
             'context':{'material_id':material['id'],'learning_node_id':(current or {}).get('id'),'source_links':(current or {}).get('effective_source_links',[]),
                        'explanation_ids':(current or {}).get('explanation_ids',[]),'passage_ids':sorted(related),'question_ids':[q['id'] for q in questions],'term_ids':terms,'source_range':(current or {}).get('source_range',{})},

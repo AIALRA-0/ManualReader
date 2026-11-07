@@ -22,3 +22,8 @@ Demo/results/
 /assets/
 *.next
 *.next.json
+
+# 项目文件和预览缓存留在部署机器，不进入公开仓库
+project-files/
+project-files.json
+file-previews/

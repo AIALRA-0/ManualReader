@@ -52,7 +52,7 @@ class Workspace:
             return value
 
     def revision(self):
-        return self.path.stat().st_mtime_ns if self.path.exists() else 0
+        paths=[self.path,self.folder/'reading-framework.json'];return max((p.stat().st_mtime_ns for p in paths if p.exists()),default=0)
 
     def write(self,value,expected=None):
         with self.lock:return self._write(value,expected)
@@ -142,6 +142,8 @@ class Workspace:
             for p in result['passages']:
                 if p.get('content_kind')=='explanation' and p['id'] in headings and 'reading_heading'not in p:p['reading_heading']=str(headings[p['id']])[:120]
         explanation_headings(result['passages'],result['explanations'])
+        __import__('reader_framework_legacy').project(result,value,self.folder)
+        result['legacy_math_display_groups']=__import__('reader_blocks').project_legacy_math(result['passages'])
         result['learning']=learning_payload(result,value,{})
         result['association_rules']=RULES
         attach_reading_segments(result)
@@ -154,6 +156,7 @@ class Workspace:
         self.apply_visual_translations(result)
         from reader_alignment import build_alignment
         result['alignment']=build_alignment(result)
+        result['framework_version']=__import__('reader_generation').VERSION
         return result
 
     def apply_visual_translations(self,material):
@@ -244,7 +247,7 @@ class Workspace:
             markdown=data.get('markdown')
             if not isinstance(markdown,str) or not markdown.strip() or len(markdown)>200000:raise ValueError('请提交讲解 Markdown 或 blocks')
             # 按 Markdown 顶层块划分，代码和表格保留为整体；已存在的相同块沿用编号。
-            chunks=re.findall(r'```[\s\S]*?```|~~~[\s\S]*?~~~|(?:(?!\n\s*\n)[\s\S])+',markdown.strip())
+            chunks=__import__('reader_blocks').markdown_chunks(markdown)
             chunks=[c for c in chunks if not re.fullmatch(r'\s*(?:#{1,6}\s*)?(?:\*\*)?(?:原文|原句|回答)(?:\*\*)?[：:](?:\*\*)?\s*',c)]
             previous=(old or {}).get('blocks',[]);matcher=difflib.SequenceMatcher(a=[b['markdown'] for b in previous],b=chunks,autojunk=False)
             reused={j+k:previous[i+k]['id'] for i,j,n in matcher.get_matching_blocks() for k in range(n)}
@@ -257,12 +260,7 @@ class Workspace:
             ids.add(bid);pid=identity+'--'+bid
             p=doc.add(text,'markdown',translatable=False);p.update(id=pid,zh=text,en='',raw_text=text,section_id=section or identity,source_ids=[pid],precision='authored')
             # 公式、代码和表格通过块编号提问，普通文字按句分配提问框。
-            protected={}
-            def protect(match):
-                key=len(protected);protected[key]=match[0];return '\ue000'+str(key)+'\ue001'
-            safe=re.sub(r'```[\s\S]*?```|`[^`]*`|\\\([\s\S]*?\\\)|\\\[[\s\S]*?\\\]|\$\$[\s\S]*?\$\$|\$[^$\n]+\$',protect,text)
-            pieces=[safe] if re.search(r'^\s*(?:[|#>]|```|~~~)',text,re.M) else re.split(r'(?<=[。！？!?；;])\s*|(?<=[a-zA-Z])\.\s+(?=[A-Z])',safe)
-            restored=[re.sub(r'\ue000(\d+)\ue001',lambda m:protected[int(m[1])],s).strip() for s in pieces if s.strip()]
+            restored=__import__('reader_blocks').sentence_pieces(text)
             old_p=next((r for r in (old or {}).get('passages',[]) if r['id']==pid),None)
             previous_sentences=(old_p or {}).get('sentences',[])
             current_sentences=[s for s in previous_sentences if not s.get('historical')]
@@ -272,18 +270,30 @@ class Workspace:
             p['sentences'].extend({**s,'historical':True} for s in previous_sentences if s['id'] not in kept)
             mapping=validate_source_mapping(material,block)
             p.update(mapping)
+            if block.get('unit_ids'):p['unit_ids']=copy.deepcopy(block['unit_ids'])
             if block.get('source_quote'):p['source_quote']=block['source_quote']
             if 'reading_heading'in block:
                 if block['reading_heading']is not None and not isinstance(block['reading_heading'],str):raise ValueError('阅读标题需要是文字，清除时传空字符串或 null')
                 p['reading_heading']=str(block['reading_heading']or'')[:120]
             elif old_p and 'reading_heading'in old_p:p['reading_heading']=old_p['reading_heading']
-            clean.append({'id':bid,'markdown':text,**mapping,**({'reading_heading':p['reading_heading']}if 'reading_heading'in p else{}),**({'source_quote':block['source_quote']} if block.get('source_quote') else {})})
+            for key in ('heading_premise','heading_question','progress_exempt'):
+                if key in block:p[key]=copy.deepcopy(block[key])
+            clean.append({'id':bid,'markdown':text,**mapping,**({'unit_ids':copy.deepcopy(block['unit_ids'])}if block.get('unit_ids')else{}),**({'reading_heading':p['reading_heading']}if 'reading_heading'in p else{}),**({'source_quote':block['source_quote']} if block.get('source_quote') else {})})
+        for block in clean:
+            passage=next(p for p in doc.data['passages']if p['id']==identity+'--'+block['id'])
+            for key in ('heading_premise','heading_question','progress_exempt'):
+                if key in passage:block[key]=copy.deepcopy(passage[key])
         new={'id':identity,'title':title.strip(),'section_id':section,'source_links':clean_links,
              'blocks':clean,'passages':doc.data['passages'],'passage_ids':[p['id'] for p in doc.data['passages']], 'version':(old or {}).get('version',0)+1}
         new.update(validate_source_mapping(material,data))
+        for key in ('plan','writing_version','framework_version','narrative','objectives','framing','evidence'):
+            if key in data:new[key]=copy.deepcopy(data[key])
         if old and (set(used_passages or []) & set(old['passage_ids']))-set(new['passage_ids']):
             raise ValueError('已提问或已读的片段需要保留，请沿用该 blocks 编号修改')
+        first_explanation=not value['explanations']
         value['explanations']=[new if r['id']==identity else r for r in value['explanations']] if old else value['explanations']+[new]
+        if first_explanation:
+            value['presentation']={**value.get('presentation',{}),'layout':'lesson'if value['files']else'single','columns':[['original','translation'],['explanation']]if value['files']else[['explanation']],'explanation_id':identity}
         if node is not None:node['explanation_ids']=list(dict.fromkeys(node.get('explanation_ids',[])+[identity]))
         self.write(value,data.get('expected_revision'));return {**{k:v for k,v in new.items() if k!='passages'},'learning_node_ids':[n['id'] for n in value.get('learning_outline',[]) if identity in n.get('explanation_ids',[])]}
 
