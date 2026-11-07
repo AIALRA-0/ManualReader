@@ -305,7 +305,7 @@ def agent_guide():
     guide['learning_contract']['advance_rule']='只有 progress.completion.can_advance 为 true 时 Agent 才能换章；这个值只由用户手动完成按钮产生，聊天指令和 Agent 提交不能代替'
     guide['endpoints'].update(coverage='GET /api/coverage',import_source='POST /api/content/import',question_sync='POST /api/questions/sync')
     guide['answer_followups']={'save':'POST /api/questions/sync，沿用parent_question_id、client_id与递增version；source_excerpt保存所问回答片段的原话，source_segment_id以answer:开头定位父回答片段','display':'输入框放在回答各段下；父回答展开时，追问显示在对应片段下，父回答收起时汇总在父问题末尾；同一追问只显示一次，父子编号不变','read_state':'黄色表示当前版本未读，或本条问题及任一层追问仍待回答；青蓝色表示当前版本已读、整条追问链已答，但对应练习未作答；绿色表示已读、整条追问链已答且对应练习已作答；待答项优先显示黄色，不清除原阅读记录。未答问题展开时登记question_version；有回答时登记answer_revision，新回答仍回到未读，不影响章节手动进度'}
-    guide['project_files']={'tree':'GET /project-files/tree?path=相对目录','preview':'GET /project-files/preview?path=相对文件路径','read':'GET /project-files/raw?path=相对文件路径','write':'POST /project-files/file，提交 path 与 content_base64；覆盖已有文件需 expected_modified','rule':'只访问当前项目根目录，包括隐藏文件；保存文件不修改学习章节、译文和已读进度；文件树中的临时查看不切换主原文映射'}
+    guide['project_files']={'tree':'GET /project-files/tree?path=相对目录','preview':'GET /project-files/preview?path=相对文件路径','read':'GET /project-files/raw?path=相对文件路径','write':'POST /project-files/file，提交 path 与 content_base64；覆盖已有文件需 expected_modified','events':'GET /project-files/events，SSE 推送系统文件事件，不轮询目录；收到 ready 后核对当前已展开目录','actions':'POST /project-files/action；action 使用 mkdir、create、move、copy、trash-preview、trash、restore；移动和复制提交 path、destination、expected_modified；删除必须先读取 trash-preview，再用 review_id 与 confirmed=true 确认；回收站通过 GET /project-files/trash 查询','rule':'只访问当前项目根目录，包括隐藏文件；保存文件不修改学习章节、译文和已读进度；文件树中的临时查看不切换主原文映射'}
     guide['coverage_contract']={'explained_source_ids':'实际解释过的原文段落、句子或对象编号','source_ranges':'或提交 passage_id、可选 sentence_id、start、end；区间使用原文 Unicode 字符位置，左闭右开','rule':'source_links 只表示引用；未明确解释的引用不算讲解覆盖。覆盖率和进度由脚本计算，不由 Agent 填写'}
     guide['term_update_contract']['rules']='术语保留独立定义和直观解释两段；优先复用正文里已经讲清的解释。同名复用不重复生成；需要改善旧解释时提交 action=revise、expected_version，保留历史和已有编号'
     guide['term_name_contract']={'audit':'GET /api/terms/audit','normalize':'POST /api/terms/normalize','name_update':{'updates':[{'term_id':'已登记编号','expected_name':'读取到的当前名称','name':'缩写 中文全称（English Full Name）'}]},'case_rules':'未标记例外时，英文全称每个单词首字母大写；专有大小写使用 case_exceptions 文字列表，整条英文保留原样使用 english_case_exception=true；代码、网址和数学记号保持原样','repair_rule':'脚本先整理中英文顺序、重复中文、大小写和同名重复。原编号、原名历史、笔记和定义保留。仍有歧义时，本地客户端只把本轮相关名称及已有解释集中提交一次普通Terra high补齐，不审稿、不循环；未能确认的名称继续保留，已保存回答不受影响'}
@@ -399,6 +399,7 @@ class Handler(core.Handler):
         try:
             if path=='/':return self.file(STATIC/'index.html','text/html; charset=utf-8')
             if path in ('/settings','/statistics','/quality-review'):return self.file(STATIC/(path[1:]+'.html'),'text/html; charset=utf-8')
+            if path=='/reader-project-tree.js':return self.file(STATIC/'reader-project-tree.js')
             if path=='/reader-project-files.js':return self.file(STATIC/'reader-project-files.js')
             if path=='/reader-project-files.css':return self.file(STATIC/'reader-project-files.css')
             if path=='/reader-inline-practice.js':return self.file(STATIC/'reader-inline-practice.js')
@@ -435,6 +436,10 @@ class Handler(core.Handler):
                 # 设置和材料树不依赖当前文章的正文，先处理，避免首次打开时等待正文投影。
                 if path.startswith('/api/project-files/'):
                     store=project_files();query=parse_qs(urlsplit(self.path).query);name=query.get('path',[''])[0]
+                    if path=='/api/project-files/events':
+                        from reader_file_events import EVENTS
+                        return EVENTS.stream(self,store.ensure()['root'])
+                    if path=='/api/project-files/trash':return self.json(store.trash_items())
                     if path=='/api/project-files/tree':return self.json(store.listing(name,int(query.get('offset',['0'])[0]),int(query.get('limit',['500'])[0])))
                     if path=='/api/project-files/preview':return self.json(store.preview(name))
                     if path=='/api/project-files/page':
@@ -543,7 +548,7 @@ class Handler(core.Handler):
         except (ValueError,KeyError,OSError) as error:return self.json({'error':str(error)},400)
     def do_POST(self):
         self.context();path=unquote(urlsplit(self.path).path)
-        custom=path=='/api/project-files/file' or bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/(?:answer|draft)',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
+        custom=path in('/api/project-files/file','/api/project-files/action') or bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/(?:answer|draft)',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',path):custom=True
         if path=='/api/learning/exclusions':custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
@@ -740,6 +745,7 @@ class Handler(core.Handler):
                                 state['focus']={'passage_id':target['passage_id'],'sentence_id':target.get('sentence_id'),'revision':state['focus']['revision']+1,'view':{}}
                             core.mutate(select_content)
                 return self.json(result)
+            if path=='/api/project-files/action':return self.json(project_files().action(data))
             if path=='/api/project-files/file':return self.json(project_files().put(data))
             if path=='/api/settings':
                 with core.LOCK:result=save_settings(SETTINGS,data)

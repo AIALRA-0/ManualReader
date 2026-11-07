@@ -122,7 +122,7 @@ class RemoteMixin:
             if not self.project_available(grant['material_id']):self.json({'error':'当前项目已移除或不可访问'},403);return True
             self._grant_material=grant['material_id'];self._grant=grant
             readable=mapped in ('/api/writing/rules','/api/format/audit','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}',mapped)) or mapped in ('/api/runs','/api/coverage','/api/learning','/api/content','/api/guide','/api/material','/api/index','/api/progress','/api/work','/api/translations','/api/statistics','/api/samples','/original','/original.pdf') or bool(re.fullmatch(r'/api/questions/[^/]+/history|/api/(?:passages|rounds)/[^/]+|/api/runs/run-[a-f0-9]{20}(?:/(?:groups/[1-4]|reference|caller))?',mapped)) or mapped.startswith(('/page/','/asset/','/content-files/'))
-            if mapped in ('/api/project-files/tree','/api/project-files/preview','/api/project-files/raw','/api/project-files/page'):readable=True
+            if mapped in ('/api/project-files/tree','/api/project-files/preview','/api/project-files/raw','/api/project-files/page','/api/project-files/events','/api/project-files/trash'):readable=True
             if mapped in CLIENT_PATHS:readable=True
             if mapped in ('/api/terms/audit','/api/quality-review','/api/quality-review/calls'):readable=True
             if mapped=='/api/learning/exclusions':readable=True
@@ -131,7 +131,7 @@ class RemoteMixin:
             if not grant['material_id'] and grant['can_import'] and mapped in ('/api/projects','/api/library/import','/api/lectures'):writable=True
             if not grant['material_id'] and grant['can_manage'] and (mapped in ('/api/settings','/api/folders','/api/library/clear-trash') or re.fullmatch(r'/api/library/(?:folder|material)/[^/]+/(?:rename|move|trash|restore)',mapped)):writable=True
             if mapped=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',mapped):writable=True
-            if mapped=='/api/project-files/file':writable=True
+            if mapped in('/api/project-files/file','/api/project-files/action'):writable=True
             if mapped=='/api/terms/normalize':writable=True
             if mapped=='/api/learning/exclusions':writable=True
             if (method=='GET' and not readable) or (method=='POST' and not writable) or any(value!='current' for value in query.get('scope',[])):self.json({'error':'本连接没有执行此操作的权限'},403);return True

@@ -1,6 +1,6 @@
 """分别保存原文文件、译文和讲解，所有提问继续引用稳定的段落与片段编号。"""
 from pathlib import Path, PurePosixPath
-import base64, copy, difflib, json, re, uuid, threading
+import base64, copy, difflib, json, re, uuid, threading, os
 from source_parser import parse, Document, apply_translations, attach_reading_segments
 from reader_learning import learning_payload,group_pdf_figures
 from reader_coverage import validate_source_mapping
@@ -192,7 +192,14 @@ class Workspace:
     def import_source(self,data,*,allow_private_urls=False):
         """用户与 Agent 都向当前 Workspace 导入；本机路径不属于远程请求的输入。"""
         from reader_import import SourceImporter
-        return SourceImporter(self,allow_private_urls=allow_private_urls).import_source(data)
+        result=SourceImporter(self,allow_private_urls=allow_private_urls).import_source(data)
+        # 导入成功后立即补入同一项目的文件根目录，已打开的文件树通过系统事件收到变化。
+        if (self.folder/'project-files.json').exists() and (self.folder/'material.json').exists():
+            from reader_project_files import ProjectFiles
+            material=json.loads((self.folder/'material.json').read_text('utf8'))
+            settings=Path(os.environ.get('MANUAL_READER_SETTINGS',str(self.folder/'reader-settings.json')))
+            ProjectFiles(material['id'],self.folder,settings,material).ensure()
+        return result
 
     def normalize_files(self,data):
         value=self.read();wanted=data.get('file_ids');changed=[]

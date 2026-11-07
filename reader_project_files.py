@@ -1,5 +1,7 @@
 """每个项目独立保存可浏览的文件；原文编号和学习记录继续留在原处。"""
 from pathlib import Path, PurePosixPath
+from reader_file_actions import FileActions,_ACTION_LOCK
+from reader_file_events import EVENTS
 from concurrent.futures import ThreadPoolExecutor
 import base64, csv, hashlib, io, json, mimetypes, os, shutil, stat, subprocess, tempfile, threading, zipfile
 
@@ -18,7 +20,7 @@ def relative(value, empty=False):
         raise ValueError('请使用项目根目录内的相对路径')
     return PurePosixPath(name).as_posix()
 
-class ProjectFiles:
+class ProjectFiles(FileActions):
     def __init__(self, identity, folder, settings_path, original=None):
         self.identity=identity;self.folder=Path(folder).resolve();self.settings_path=Path(settings_path);self.original=original or {}
         self.config=self.folder/'project-files.json';self.cache=self.folder/'file-previews'
@@ -84,6 +86,9 @@ class ProjectFiles:
         return {'material_id':self.identity,'root':str(root),'path':name,'entries':entries,'total':total,'next_offset':offset+limit if offset+limit<total else None,'source_paths':config['sources'],'includes_hidden':True}
 
     def put(self,data):
+        with _ACTION_LOCK:return self._put(data)
+
+    def _put(self,data):
         path=self.target(data.get('path'),False)
         if relative(data.get('path')) in self.ensure()['sources'].values():raise ValueError('该文件是已登记原件，请通过材料导入保存新版本，保留原有定位')
         if path.is_symlink():raise ValueError('请直接写入普通文件，不覆盖符号链接')
@@ -91,8 +96,9 @@ class ProjectFiles:
         if len(raw)>40_000_000:raise ValueError('单次写入最大 40 MB')
         if path.exists() and str(data.get('expected_modified'))!=str(path.stat().st_mtime_ns):raise ValueError('文件已存在，覆盖前请读取并提交 expected_modified')
         path.parent.mkdir(parents=True,exist_ok=True)
-        with tempfile.NamedTemporaryFile(dir=path.parent,delete=False) as output:output.write(raw);temporary=Path(output.name)
+        with tempfile.NamedTemporaryFile(dir=path.parent,prefix=".reader-write-",delete=False) as output:output.write(raw);temporary=Path(output.name)
         os.replace(temporary,path)
+        EVENTS.publish(Path(self.ensure()['root']),{'type':'modified','paths':[relative(data['path'])]})
         return {'path':relative(data['path']),'size':len(raw),'modified':str(path.stat().st_mtime_ns)}
 
     def _key(self,path):

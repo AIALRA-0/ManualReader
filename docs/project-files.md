@@ -2,10 +2,12 @@
 
 原文栏始终保留“主原文”标签，显示当前阅读映射；从左侧文件目录打开文件，会增加普通标签，原章节、译文和讲解保持原位。点击讲解或问题里的原文映射时，会回到主原文，普通文件标签继续保留
 
-- 第一步，打开目录顶部的显示菜单，选择“文件目录”；也可以从原文栏的文件夹按钮进入，窄栏先打开“原文窗口工具”
-- 第二步，展开项目文件夹，点击文件；隐藏文件也列在目录中，大文件夹分批加载，点击“继续显示文件”可继续浏览
+- 第一步，打开目录标题的下拉菜单，选择“文件目录”；也可以从原文栏的文件夹按钮进入，窄栏先打开“原文窗口工具”
+- 第二步，展开项目文件夹，点击文件；隐藏文件也列在目录中，大文件夹分批加载，点击“继续显示文件”可继续浏览；系统把物理目录的变化推送到页面，已展开的目录会自动更新，不需要手动刷新
 - 第三步，点击标签切换，拖动标签标题调整顺序，点击标签右侧的叉号关闭；主原文没有关闭按钮
 - 第四步，需要并排保留阅读路线与文件树时，点击目录的拆分按钮；它依次切换单窗、上下两窗、上下三窗，每一窗都可独立选择阅读进度、练习进度、双环或文件目录，分隔条可以拖动
+
+文件树显示真实物理路径；右键菜单支持新建、重命名、复制、剪切、粘贴、上传、文本编辑和回收站。可以把文件或文件夹拖入树中上传，也可以把现有文件拖到其他文件夹。删除先弹窗确认，再移入项目回收站；Agent 也必须先读取删除预览，再明确确认。已登记原件继续通过材料导入保存新版本
 
 文件窗口右上角可放大，按 Escape 或还原按钮恢复；窄屏与手机通过底部栏目标签切换；标签宽度随窗口缩小，超出时可横向滚动
 
@@ -49,6 +51,9 @@ sudo apt-get install --no-install-recommends libreoffice-writer libreoffice-calc
 
 Agent 沿用当前项目的配对令牌；机器接口在 `/machine/v1` 下，浏览器接口在 `/api` 下；以下路径使用机器接口的相对路径
 
+- `GET /project-files/events`：订阅当前项目的 SSE 文件事件；收到 `ready` 后重新核对已展开目录，收到 `changes` 后只更新受影响的目录；空闲时只发送连接心跳，不扫描文件树；授权撤销后停止推送
+- `GET /project-files/trash`：读取当前项目文件回收站
+- `POST /project-files/action`：`action` 使用 `mkdir`、`create`、`move`、`copy`、`trash-preview`、`trash` 或 `restore`；移动、复制带上当前 `expected_modified`；删除先读取预览，再提交 `review_id` 与 `confirmed=true`；恢复使用 `trash_id`
 - `GET /project-files/tree?path=`：读取目录，返回 `entries`、`next_offset` 和当前项目的根目录信息；有下一批时继续传 `offset`
 - `GET /project-files/preview?path=src/example.py`：读取预览；办公文档正在转换时返回 `kind=preparing`，稍后再读同一接口
 - `GET /project-files/raw?path=src/example.py`：读取原始文件，支持字节范围；下载时追加 `download=1`
@@ -67,5 +72,7 @@ python Demo/load_project_files.py --base http://127.0.0.1:8939
 ```
 
 打开命令返回的链接；如果启动器显示了其他端口，使用它显示的端口。功能当前位于主分支，下载旧发行包时请按对应版本的说明使用
+
+实时同步使用 [watchdog 的系统文件事件](https://python-watchdog.readthedocs.io/en/stable/quickstart.html)；服务在有浏览器订阅时监听该项目，最后一个订阅退出后释放监听。窗口回到前台或连接重建时核对已展开目录，批量写入合并通知，避免反复重画整个页面
 
 English: Every project has its own file root. The pinned source tab follows reading mappings; ordinary tabs inspect files without changing the lesson. The outline supports one, two, or three vertically resizable panes. Hidden files are included, and large folders are paginated. Office layout previews use local LibreOffice; PyMuPDF renders document pages. Other files retain source, metadata, byte-preview, or download access according to their format. Project tokens remain scoped to their paired project; source versions, notes, exercise answers, and manual reading progress stay separate

@@ -175,7 +175,7 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 <img src="assets/readme/project-files-phone.png" alt="手机上的原文主标签与可关闭文件标签，当前正在查看分页 PDF" width="390">
 
-图 10 手机在原文栏查看项目文件；截图使用自撰合成内容，主阅读映射与章节记录继续保留
+图 10 手机在原文栏查看项目文件；截图使用自撰合成内容，物理路径已脱敏，主阅读映射与章节记录继续保留
 
 <img src="assets/readme/project-files-phone-tree.png" alt="手机上独立切换阅读进度、文件树和阅读练习双环的三层目录" width="390">
 

@@ -124,7 +124,7 @@ Figure 5.3 The real settings page supports multiple favorites and one default pa
 
 ### 3.6 How to browse project files without leaving your lesson
 
-Each project has an independent file root. Settings can change the default parent directory for new projects while existing projects stay in place. The shared outline can show reading progress, exercise progress, double rings, or files, in one, two, or three vertically resizable panes. Hidden files are included
+Each project has an independent file root. Settings can change the default parent directory for new projects while existing projects stay in place. The shared outline can show reading progress, exercise progress, double rings, or files, in one, two, or three vertically resizable panes. Hidden files are included and OS file events keep expanded folders up to date without directory polling. Header menus select each outline mode; context menus, drag uploads, text editing, and a recoverable trash support file management
 
 Files open in closable, draggable tabs inside the existing source pane. The pinned source tab follows reading mappings: clicking a mapping in an explanation or question returns to it and retains the other tabs. Browsing files does not change the lesson or manual reading progress. Compact panes move source tools into a menu; the viewer can expand on its own
 
@@ -135,7 +135,7 @@ Files open in closable, draggable tabs inside the existing source pane. The pinn
   <img src="docs/assets/readme/project-files-light.png" alt="The actual reader with three outline panes, a project file tree, and source tabs using self-authored sample content" width="1500">
 </picture>
 
-Figure 5.4 The file tree and learning route stay available while an ordinary tab previews a three-page PDF; captured from a synthetic project in the actual application
+Figure 5.4 The file tree and learning route stay available while an ordinary tab previews a three-page PDF; captured from a synthetic project in the actual application with the physical path redacted
 
 </div>
 
@@ -188,7 +188,7 @@ The running code reuses calculated learning data, avoids repeated translation re
 
 Deterministic checks and browser tests cover answer editing, chapter-bound writeback, restart recovery, manual completion, double-ring progress, automatic checking, and desktop/mobile layouts. Large-project measurements use a 2,271-passage exam project and an interview with dozens of saved questions. See [validation](docs/validation.md) and [performance](docs/performance.md) for actual results, conditions, and reproduction
 
-This version passes 85 deterministic tests. The paired public HTTPS benchmark uses 48 chapter changes per project per version: EXAM2 median 756 → 626 ms and P95 2037 → 1386 ms; interview median 511 → 422 ms and P95 670 → 540 ms. See [performance methodology](docs/performance.md) for maxima and conditions
+This version passes 99 deterministic tests. The earlier paired public HTTPS benchmark used 48 chapter changes per project per version: EXAM2 median 756 → 626 ms and P95 2037 → 1386 ms; interview median 511 → 422 ms and P95 670 → 540 ms. See [performance methodology](docs/performance.md) for maxima and conditions
 
 Answers and explanations share the public [writing rules](reader_prompts.py). Writers actively search authoritative sources for missing historical, naming or specification facts, then answer the actual question. See [cross-domain writing tests](docs/writing-quality.md) for timing, usage and scope
 

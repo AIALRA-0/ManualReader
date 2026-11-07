@@ -602,3 +602,6 @@ dialog .remember-connection span{min-width:0}
 .answer-followup[open]>.question-composer{margin-top:6px}
 .answer-segment-replies:empty,.question-replies:empty{display:none}
 .question-card .answer-segment-replies{margin:6px 0 12px 18px;padding-left:8px}
+
+/* 回答追问与讲解提问共用扁栏；已保存状态沿用同一个自动保存入口。 */
+.question-card .answer-followup.inline-question{margin:2px 0 6px!important;padding:0!important}.question-card .answer-followup.inline-question>summary{gap:6px;min-height:22px;height:22px;font-size:11px;font-weight:400;padding:0;margin:0}.answer-followup.inline-question>summary>.question-sync-status{margin-left:0;font-size:11px}.answer-followup.inline-question>summary>svg:first-child{width:13px;height:13px}.answer-followup.inline-question[open]>summary{margin-bottom:0}.answer-followup.inline-question>.inline-question-body{padding-top:4px}.answer-followup.inline-question>.inline-question-body>.question-composer{margin:0}
