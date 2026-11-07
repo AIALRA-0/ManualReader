@@ -1,5 +1,25 @@
 /* 文件标签只查看项目文件，不改变主原文的来源、章节或学习进度。 */
-window.ReaderProjectFiles={create(ctx){
+window.ReaderProjectFiles={
+ // 写作链接沿用项目相对路径；网址仍在浏览器打开，项目文件在原文标签中查看。
+ resolveLink(href,{origin=location.origin,project='',basePath=''}={}){
+  const raw=String(href||'').trim();if(!raw||raw.startsWith('#')||raw.startsWith('//'))return null;
+  let value,path;
+  try{value=new URL(raw,origin+'/')}catch{return null}
+  if(value.origin!==origin)return null;
+  const identity=value.searchParams.get('material');
+  if(/^\/api\/project-files\/(?:raw|preview)$/.test(value.pathname)){
+   if(identity&&identity!==project)throw Error('这个链接属于其他项目，请先打开对应项目');
+   path=value.searchParams.get('path');
+  }else if(!/^(?:[a-z][a-z0-9+.-]*:|\/|\?)/i.test(raw)){
+   const filename=raw.split(/[?#]/)[0];if(!filename)return null;
+   const parts=basePath.split('/').slice(0,-1);
+   for(const part of decodeURIComponent(filename).replace(/\\/g,'/').split('/')){if(!part||part==='.')continue;if(part==='..'){if(!parts.length)throw Error('文件链接超出了当前项目');parts.pop()}else parts.push(part)}
+   path=parts.join('/');
+  }else return null;
+  if(!path||path.startsWith('/')||/[\\:\x00-\x1f]/.test(path)||path.split('/').some(p=>!p||p==='.'||p==='..'))throw Error('文件链接需要使用项目根目录内的相对路径');
+  return {path,hash:value.hash}
+ },
+ create(ctx){
  const $=id=>document.getElementById(id),el=ReaderUI.make,original=document.querySelector('[data-pane=original]'),directory=document.querySelector('[data-pane=directory]'),head=original.querySelector('.pane-head');
  const button=(icon,label,action)=>{const b=ReaderUI.decorate(el('button','icon-btn'),icon,label);b.type='button';b.onclick=action;return b};
  const blobs=new Set();async function resource(url){const value=await ctx.file(url);if(value.startsWith('blob:'))blobs.add(value);return value}function clearResources(){for(const value of blobs)URL.revokeObjectURL(value);blobs.clear()}
@@ -23,7 +43,7 @@ window.ReaderProjectFiles={create(ctx){
  function showMain(){if(active==='main')return;saveScroll();stopMedia();active='main';request++;clearTimeout(poll);applyTab();persist()}
  function stopMedia(){for(const node of body.querySelectorAll('audio,video')){node.pause();node.removeAttribute('src');node.load()}}
  function saveScroll(){const tab=tabs.find(t=>t.path===active);if(tab)tab.scroll=body.scrollTop}
- function applyTab(scroll=true){treeUI?.paint();const oldScroll=strip.scrollLeft;original.classList.toggle('has-file-tab',active!=='main');viewer.hidden=active==='main';strip.replaceChildren();const all=[{path:'main',name:'主原文'},...tabs];for(const tab of all){const wrap=el('div','project-tab');wrap.dataset.path=tab.path;const b=el('button','project-tab-title',tab.name||tab.path.split('/').at(-1));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',String(active===tab.path));b.title=tab.path==='main'?'当前阅读映射，始终保留':tab.path;b.onclick=()=>{if(performance.now()-lastDrag>300)activate(tab.path).catch(error=>ctx.status(error.message))};b.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const i=all.indexOf(tab),next=event.key==='Home'?0:event.key==='End'?all.length-1:(i+(event.key==='ArrowLeft'?-1:1)+all.length)%all.length;activate(all[next].path);strip.querySelectorAll('[role=tab]')[next]?.focus()};wrap.append(b);if(tab.path!=='main'){wrap.append(button('close','关闭 '+tab.path.split('/').at(-1),()=>close(tab.path)));wrap.draggable=false;}strip.append(wrap)}
+ function applyTab(scroll=true){treeUI?.paint();const oldScroll=strip.scrollLeft;original.classList.toggle('has-file-tab',active!=='main');viewer.hidden=active==='main';strip.replaceChildren();const all=[{path:'main',name:'主原文'},...tabs];for(const tab of all){const wrap=el('div','project-tab');wrap.dataset.path=tab.path;const b=el('button','project-tab-title');b.append(el('span','project-tab-label',tab.name||tab.path.split('/').at(-1)));b.type='button';b.setAttribute('role','tab');b.setAttribute('aria-selected',String(active===tab.path));b.title=tab.path==='main'?'当前阅读映射，始终保留':tab.path;b.onclick=()=>{if(performance.now()-lastDrag>300)activate(tab.path).catch(error=>ctx.status(error.message))};b.onkeydown=event=>{if(!['ArrowLeft','ArrowRight','Home','End'].includes(event.key))return;event.preventDefault();const i=all.indexOf(tab),next=event.key==='Home'?0:event.key==='End'?all.length-1:(i+(event.key==='ArrowLeft'?-1:1)+all.length)%all.length;activate(all[next].path);strip.querySelectorAll('[role=tab]')[next]?.focus()};wrap.append(b);if(tab.path!=='main'){wrap.append(button('close','关闭 '+tab.path.split('/').at(-1),()=>close(tab.path)));wrap.draggable=false;}strip.append(wrap)}
   strip.scrollLeft=oldScroll;if(scroll){const tab=strip.querySelector('[aria-selected=true]'),r=tab?.getBoundingClientRect(),v=strip.getBoundingClientRect();if(r&&r.left<v.left)strip.scrollLeft+=r.left-v.left;else if(r&&r.right>v.right)strip.scrollLeft+=r.right-v.right;}
  }
  let tabDrag=null,lastDrag=-1000;strip.addEventListener('dragstart',event=>event.preventDefault());
@@ -42,7 +62,7 @@ window.ReaderProjectFiles={create(ctx){
    tab.page=Math.max(0,Math.min(data.pages-1,tab.page||0));const number=el('span','file-page-number'),image=el('img','reader-page-preview project-document-page');image.alt=data.name;image.loading='eager';image.src=await resource(url('page',tab.path,'&page='+tab.page+'&scale=1.4'));if(serial!==request||identity!==project)return;let scale=tab.scale||1;const zoom=()=>{image.style.width=(scale*100)+'%';image.style.maxWidth='none';tab.scale=scale};zoom();const prev=button('back','上一文件页',()=>{tab.page--;preview(tab);persist()}),next=button('forward','下一文件页',()=>{tab.page++;preview(tab);persist()});prev.disabled=!tab.page;next.disabled=tab.page>=data.pages-1;number.textContent=(tab.page+1)+' / '+data.pages;bar.prepend(prev,number,next,button('minus','缩小文件',()=>{scale=Math.max(.3,scale/1.2);zoom()}),button('plus','放大文件',()=>{scale=Math.min(4,scale*1.2);zoom()}),button('fit','适配文件宽度',()=>{scale=1;zoom()}));body.append(image);
   }else if(data.kind==='image'){const image=el('img','project-image');image.alt=data.name;image.src=await resource(url('raw',tab.path));if(serial!==request||identity!==project)return;body.append(image)}
   else if(data.kind==='audio'||data.kind==='video'){const media=el(data.kind);media.controls=true;media.preload='metadata';media.src=await resource(url('raw',tab.path));if(serial!==request||identity!==project)return;body.append(media)}
-  else if(data.kind==='markdown'){const block=el('div','markdown-body');ctx.rich(block,data.text);for(const n of block.querySelectorAll('img[src],a[href]')){const key=n.tagName==='IMG'?'src':'href',value=n.getAttribute(key);if(value&&!/^(?:[a-z]+:|\/|#)/i.test(value)){const path=new URL(value,'https://project.local/'+tab.path).pathname.slice(1);n.setAttribute(key,key==='src'?await resource(url('raw',decodeURIComponent(path))):url('raw',decodeURIComponent(path)))}}if(serial!==request||identity!==project||active!==tab.path)return;body.append(block);ReaderMarkdown.installSelection?.(block)}
+  else if(data.kind==='markdown'){const block=el('div','markdown-body');block.dataset.projectFileBase=tab.path;ctx.rich(block,data.text);for(const n of block.querySelectorAll('img[src],a[href]')){const key=n.tagName==='IMG'?'src':'href',value=n.getAttribute(key);if(key==='href'){const local=ReaderProjectFiles.resolveLink(value,{project,basePath:tab.path});if(local)n.setAttribute(key,url('raw',local.path)+local.hash)}else if(value&&!/^(?:[a-z]+:|[/]|#)/i.test(value)){const local=ReaderProjectFiles.resolveLink(value,{project,basePath:tab.path});if(local)n.setAttribute(key,await resource(url('raw',local.path)))}}if(serial!==request||identity!==project||active!==tab.path)return;body.append(block);ReaderMarkdown.installSelection?.(block)}
   else if(data.kind==='table'){const table=el('table','project-preview-table');for(const [i,row]of data.rows.entries()){const tr=el('tr');for(const cell of row)tr.append(el(i?'td':'th',null,cell));table.append(tr)}body.append(table)}
   else if(data.kind==='archive'){const list=el('div','project-archive-list');for(const item of data.entries){const row=el('div');row.append(el('span',null,item.name),el('small',null,item.size+' B'));list.append(row)}body.append(list)}
   else body.append(el('pre','project-file-code',data.text??data.hex??data.message??''));
@@ -50,6 +70,15 @@ window.ReaderProjectFiles={create(ctx){
  }
  function renderDirectory(){if(!ctx.material())return;top.select.value=ctx.mode();bottom.select.value=bottomMode;third.select.value=thirdMode;bottom.section.hidden=split<2;third.section.hidden=split<3;divider.hidden=split<2;divider2.hidden=split<3;ReaderUI.decorate(splitButton,split===3?'layers':split===2?'stack':'layout',split===1?'上下拆分目录':split===2?'增加第三个目录窗口':'还原单个目录窗口');splitButton.setAttribute('aria-pressed',String(split>1));applyRatio();for(const [slot,mode]of [[top,ctx.mode()],[bottom,bottomMode],[third,thirdMode]]){slot.nav.hidden=mode==='files';slot.tree.hidden=mode!=='files';if(slot.section.hidden)continue;if(mode==='files')treeUI.mount(slot);else ctx.drawOutline(slot.nav,mode)}treeUI.paint()}
  function sync(){const identity=ctx.material()?.id;if(identity===project){renderDirectory();return}project=identity;request++;clearTimeout(poll);stopMedia();clearResources();tabs=[];active='main';treeUI.sync(identity);let saved;try{saved=JSON.parse(localStorage.getItem('reader-project-files:'+project)||'{}')}catch{saved={}}tabs=(saved.tabs||[]).filter(t=>typeof t.path==='string').map(t=>({...t,name:t.path.split('/').at(-1)}));split=[1,2,3].includes(saved.split)?saved.split:1;weights=saved.weights?.length===3?saved.weights:[1,1,1];bottomMode=saved.bottomMode||'files';thirdMode=saved.thirdMode||'practice';if(modes.some(([key])=>key===saved.mode))ctx.setMode(saved.mode,false);active=tabs.some(t=>t.path===saved.active)?saved.active:'main';applyTab();if(active!=='main')preview(tabs.find(t=>t.path===active)).catch(error=>ctx.status(error.message))}
+ async function followFileLink(event){
+  const link=event.target.closest?.('.markdown-body a[href]');if(!link||link.matches('[data-reader-term],[download]')||event.button!==0||event.ctrlKey||event.metaKey||event.shiftKey||event.altKey||getSelection()?.toString().trim())return;
+  const href=link.getAttribute('href'),identity=project;let target;
+  try{target=ReaderProjectFiles.resolveLink(href,{project,basePath:link.closest('[data-project-file-base]')?.dataset.projectFileBase||''})}catch(error){event.preventDefault();event.stopPropagation();ctx.status(error.message);return}
+  let registered;try{const u=new URL(href,location.href);if(u.origin===location.origin&&(!u.searchParams.get('material')||u.searchParams.get('material')===project))registered=u.pathname.match(/^\/content-files\/([A-Za-z0-9_-]+)\/original$/)?.[1]}catch{}
+  if(!target&&!registered)return;event.preventDefault();event.stopPropagation();
+  try{if(registered){const data=await ctx.api(url('tree',''));if(identity!==project)return;const path=data.source_paths?.[registered];if(!path)throw Error('这份原件尚未登记到当前项目文件目录');target={path}}if(identity===project)await open(target.path)}catch(error){ctx.status(error.message)}
+ }
+ document.addEventListener('click',followFileLink,true);
  const originalTree=$('source-files');if(originalTree)ReaderUI.decorate(originalTree,'folder','浏览项目文件');if(originalTree)originalTree.onclick=()=>{if(toolMenu.matches(':popover-open'))toolMenu.hidePopover();ctx.setMode('files');renderDirectory();ctx.showDirectory()};
- return{sync,renderDirectory,showMain,open,close,dispose:()=>{request++;clearTimeout(poll);stopMedia();clearResources();treeUI.dispose()}};
+ return{sync,renderDirectory,showMain,open,close,dispose:()=>{document.removeEventListener('click',followFileLink,true);request++;clearTimeout(poll);stopMedia();clearResources();treeUI.dispose()}};
 }};

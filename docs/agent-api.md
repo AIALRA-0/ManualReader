@@ -121,3 +121,5 @@
 `POST /content/explanations/format` 接收 `explanation_id`、`expected_version` 与 `headings: [{block_id, reading_heading}]`；本地接口加 `/api` 前缀；传空字符串明确清除额外标题，后续省略该字段不会被旧排版文件补回；接口只改标题元数据，正文、原编号和历史保留
 
 `GET /guide` 与设置页返回当前写作规则；缺少用户需要的外部事实时主动联网查证，回答与讲解共用同一规则；客户端等待现有写作者真实完成后结算，同一运行目录不能再次派发，已完成回答逐组落盘
+
+讲解与回答中的项目文件链接使用 `[查看文件](/api/project-files/raw?path=examples/example.py)`；先用项目文件接口保存文件，再引用根目录内的相对路径，特殊字符按 URL 编码。阅读器在原文栏打开文件标签，不切换章节或改变主原文映射；外部引用继续使用真实 HTTPS 地址。`GET /guide` 的 `project_files.writing_links` 与写作接口共用这条规则

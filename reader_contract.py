@@ -119,11 +119,11 @@ def reader_context_fields(data):
 
 
 def writing_guide():
-    from reader_prompts import TEACHING_METHOD,NAMING_RULE,WRITING_VERSION
+    from reader_prompts import TEACHING_METHOD,NAMING_RULE,WRITING_VERSION,FILE_LINK_RULE
     from reader_generation import VERSION as FRAMEWORK_VERSION,PLAN_CONTRACT,PLACEMENT_CONTRACT
     return {'version':WRITING_VERSION,'framework_version':FRAMEWORK_VERSION,'model':'gpt-6.1-terra','effort':'high','service_tier':'default',
       'plan':PLAN_CONTRACT,'practice_placement':PLACEMENT_CONTRACT,'practice_forms':{'choice':{'type':'choice','prompt':'具体题目','options':['四个同类且合理的选项'],'correct_index':0,'explanation':'解题过程','option_explanations':['逐项解释']},'recall':{'type':'recall','prompt':'请自行写出、计算、推导或操作的题目','reference_answer':'完整参考答案，可含公式、代码和图片','explanation':'核对步骤与关键判断'}},
-      'instructions':[TEACHING_METHOD,NAMING_RULE,
+      'file_links':FILE_LINK_RULE,'instructions':[TEACHING_METHOD,NAMING_RULE,
         '讲解 parts 提供稳定 id、unit_ids、heading、markdown 和真实来源编号；标题只在 heading 中写一次。回答 parts 提供稳定 id、unit_ids、question_span 与 markdown；Reader 统一显示原文与回答首部，正文不重复这两个标签。完整回答全部真实问题，不编造用户问题',
         '新术语有中文全称和英文全称，缩写可选，采用缩写 中文全称（English Full Name）；英文默认按脚本规则大写开头，官方大小写例外明确登记。名称、定义和直观解释在同次写作中完成；新条目不编 term_id，复用才传登记表中的真实编号；改善旧定义时传 action=revise 和 expected_version，保留历史',
         '公式使用明确 LaTeX 标记；多字母程序名用 mathtt 或 text 保留整体，数学下标用完整花括号，解释对象与每个关键计算步骤。图片、表格和原句的引用使用输入中的真实编号',

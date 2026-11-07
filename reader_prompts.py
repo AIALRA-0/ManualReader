@@ -1,6 +1,6 @@
 """讲解、问答、连接说明和写作者共用这一份简短写作要求。"""
 
-WRITING_VERSION='reader-writing-connected-v3'
+WRITING_VERSION='reader-writing-connected-v4'
 READER_START='读者懂普通中文与四则运算；新领域的概念、符号和操作在使用处用具体对象讲明白，只有用户明确确认的内容才视为已经掌握；术语表用于回看，不替正文补逻辑'
 STYLE='像有人当面带读者弄懂这件事：先直接回答，再沿同一个对象和实例往下走；用连贯短段，每段推进一个理解步骤，前段得到的结果在后段接住。公式、代码和计算按实际步骤单独换行。新写讲解中的中文句号改用分号或自然换段，原文、用户原话、公式、代码和网址保持原样'
 TEACHING_METHOD=READER_START+'\n'+'''同一次写作先返回很小的 plan：当前要解决什么、先给什么答案、实际要讲哪些内容、各自必需的前置和讲述顺序；say 写具体内容，不写“需要解释”。每个 unit 通过 unit_ids 对应到实际正文，原句用 source_refs 登记，不另起规划调用
@@ -21,3 +21,6 @@ CONNECTED_METHOD="""讲解同一次返回framing与parts：章首的前文承接
 结尾每个part一个bullet，顺序同阅读流程；在同次输出的context、problem、claim、reason、evidence、implication各写一句，把刚才的过程自然串起来，不向读者显示六个标签。所有必要前置、原始参数与图表在正文使用处讲清；每part至少一道真正检验本段判断的练习，数值或情境有变化，正文不提前解出变式答案。原例的完整推导照常保留，不能为了省成本删除必要解释。已有题库时写作者只接收训练目标，变式答案由编排器保管，按真实编号挂回；没有题库则同次返回题目与完整解析，不额外规划或审稿。
 目录、原文、译文、讲解、问答各守自己的职责；原句只登记在真实来源映射中，讲解不重复贴原文；回答仍逐项摘出question_span再直接回答。原编号、问答关系、笔记、作答和用户手动已读保持；页面点击才联动，用户勾选完成才允许进入下一条。"""
 TEACHING_METHOD+='\n'+CONNECTED_METHOD+'\nrequired_facts中的每项参数都要在正文说明数值属于谁、单位及作用，再用evidence.facts逐字摘取已写句子；新概念用evidence.prerequisites登记正文首次解释的原句，term逐项填写正文实际出现的原词，多个概念分项登记，可共用同一句quote；证据字段不能代替正文。'
+
+FILE_LINK_RULE='项目文件可在讲解和回答中用 Markdown 链接引用，例如 [查看示例代码](/api/project-files/raw?path=examples/example.py)；path 按 URL 编码并使用当前项目根目录内已保存的相对路径，不填写开发机物理路径或令牌。点击后复用原文窗口的新文件标签，主原文映射和学习进度保持；已登记原件也可沿用输入中真实的 /content-files/文件编号/original 链接。外部资料仍使用真实 https 链接；不要为每个片段机械加文件链接，只在用户需要查看完整代码、文档或图片时引用。'
+TEACHING_METHOD+='\n'+FILE_LINK_RULE

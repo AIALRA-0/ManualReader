@@ -141,6 +141,8 @@ Figure 5.4 The file tree and learning route stay available while an ordinary tab
 
 Code, Markdown, images, tables, media, and documents have format-specific previews. Local LibreOffice provides Office layout previews; other binary files retain metadata, byte previews, and downloads. See [format support, project permissions, and Agent file APIs](docs/project-files.md)
 
+Local file links in explanations open source-panel tabs. Matching question templates appear as faint inline text: use Up/Down to switch, Tab to accept, or tap the completion hint on mobile. Questions at every nesting level share one accordion group, so only one answer is open at a time
+
 ```sh
 # Create a fresh local file-viewing Demo without calling a model
 python Demo/load_project_files.py --base http://127.0.0.1:8939

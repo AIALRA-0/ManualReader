@@ -139,6 +139,8 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 常见代码、Markdown、图片、表格、音视频和文档都有对应预览；办公原版式使用本机 LibreOffice，其他二进制可看文件信息与字节并下载；[支持范围、项目权限和 Agent 文件接口](docs/project-files.md)有完整说明
 
+讲解中的本地文件链接直接在原文栏打开标签；提问时匹配的问法以浅色后缀显示，上下键切换、Tab 接受，手机可点“补全”，不弹出下拉菜单；任意层级的问答共用互斥展开规则，同一时间只打开一道问题
+
 ```sh
 # 在已启动的本机阅读器中新建独立文件演示，不调用模型
 python Demo/load_project_files.py --base http://127.0.0.1:8939
