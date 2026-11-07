@@ -1,0 +1,42 @@
+Demo/test_project_file_links.js
+  s_1c46d58ed67333::t_90a3056a289fe7 1-20
+README.md
+  s_1c46d58ed67333::t_a5ef483a424a67 142
+  s_1c46d58ed67333::t_cb25533684da26 143
+reader_contract.py
+  s_1c46d58ed67333::t_aeaaaf6617c5e1 122,126
+reader_prompts.py
+  s_1c46d58ed67333::t_f5796a9be34883 3,24-26
+reader_server.py
+  s_1c46d58ed67333::t_1943f82d293d9d 309
+static/app.css
+  s_1c46d58ed67333::t_25cd4bb03ccf11 37-39,46,60,117,124,235,366,608-610
+static/app.js
+  s_1c46d58ed67333::t_c888f18457e997 154,170,212,221,282-284,298,301
+static/index.html
+  s_1c46d58ed67333::t_ddefa431707831 16,18-19,35
+static/reader-project-files.css
+  s_1c46d58ed67333::t_c706c137e8761a 1
+static/reader-project-files.js
+  s_1c46d58ed67333::t_998e42b36abccf 2-22,46,65,73-81,83
+static/reader-ui.js
+  s_1c46d58ed67333::t_b44f3fb1081f7c 71,78-80,99-114
+static/settings.html
+  s_1c46d58ed67333::t_b3c3a6b5da7944 2
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "af9a7229ced2a4b4fb4c614f825ec6e379fc5349",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <71060413+AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
