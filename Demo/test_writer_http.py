@@ -34,7 +34,7 @@ class WriterHTTPTests(unittest.TestCase):
                 connection=client.sock
                 received=client.getresponse();self.assertEqual(received.status,200)
                 if disconnect:
-                    connection.setsockopt(socket.SOL_SOCKET,socket.SO_LINGER,struct.pack('hh',1,0))
+                    connection.setsockopt(socket.SOL_SOCKET,socket.SO_LINGER,struct.pack('hh'if sys.platform=='win32'else'ii',1,0))
                     received.close();client.close()
                 else:received.read();client.close()
                 for _ in range(100):
