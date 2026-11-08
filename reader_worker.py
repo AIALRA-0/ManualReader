@@ -1,6 +1,6 @@
 """记录写作者和主对话的实际用量；新执行器优先逐请求回执，旧客户端保留日志读取。"""
 from pathlib import Path
-import argparse,datetime,json,os
+import argparse,datetime,json,os,re
 
 def conversation_usage(identity,turn_id=None,cursor=None,session_file=None,at=None):
     """从任务开始读到最终汇报；只提取用量，不保留或上传对话正文。"""
@@ -14,6 +14,8 @@ def conversation_usage(identity,turn_id=None,cursor=None,session_file=None,at=No
         while True:
             offset=log.tell();line=log.readline()
             if not line:break
+            # 正文与工具结果的日志行不是用量回执，统计时无需逐行解析其内容。
+            if line.endswith(b'\n')and not re.search(rb'"type"\s*:\s*"(?:event_msg|token_usage_record|turn_context)"',line[:200]):continue
             try:row=json.loads(line)
             except ValueError:
                 if not line.endswith(b'\n'):log.seek(offset);break

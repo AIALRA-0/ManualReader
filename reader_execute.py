@@ -44,7 +44,7 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
     payload['instructions']=list(dict.fromkeys(payload['instructions']))
     return '请用 '+writer_label('answer')+' 完成本组阅读回答，直接返回结果JSON\n'+style+'\n任务与原材料：\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
 
-def command(executable,folder,target,images,writer=True,role=None):
+def command(executable,folder,target,images,writer=True,role=None,allow_image_generation=True):
     profile=writer_profile(role or(WRITER_ROLE.get()if writer else'coordinator'))
     args=[executable,'exec','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json','--color','never','-m',profile['model'],'-c','model_reasoning_effort='+json.dumps(profile['effort']),'-c','service_tier="default"','-c','web_search="live"','-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
     if writer:
@@ -53,7 +53,7 @@ def command(executable,folder,target,images,writer=True,role=None):
         args+=['-c','model_instructions_file='+json.dumps(str(writer_instructions.resolve()))]
     for flag in ('apps','plugins','multi_agent','shell_tool','browser_use','computer_use','workspace_dependencies','hooks','fast_mode'):
         args+=['--disable',flag]
-    args+=['--enable','image_generation']
+    args+=['--enable'if allow_image_generation else'--disable','image_generation']
     for image in images:args+=['--image='+str(image)]
     return args+['-']
 
@@ -159,16 +159,17 @@ def normalize_terms(value,payload):
             changes.append({'model_proposed_id':identity,'name':term['name'],'action':'保留完整定义和直观解释，由阅读器分配真实编号'});term.pop('term_id')
     return changes
 
-def invoke_writer(folder,prompt,images,executable):
+def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True):
     """记录真实输入、模型输出、检索和用量；不读取维护聊天或连接凭证。"""
     from reader_worker import runtime_usage,external_tool_usage
     folder=Path(folder);folder.mkdir(exist_ok=True,parents=True);target=folder/'final.txt';events=folder/'events.jsonl'
     if events.exists():raise ValueError('本次调用已有日志，请读取原任务，不重复生成')
-    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,images)
+    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,images,allow_image_generation=allow_image_generation)
     if(folder/'output-schema.json').exists():args[-1:-1]=['--output-schema',str(folder/'output-schema.json')]
     from reader_writer_transport import Gate
     system='只根据本任务定义修正术语名称；不要重写定义或回答，只返回本任务要求的updates和unresolved。必要时可检索核对名称。'if WRITER_ROLE.get()=='term_repair'else WRITER_INSTRUCTIONS
-    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,allow_image_generation=WRITER_ROLE.get()!='term_repair').start()
+    if system_override is not None:system=system_override
+    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair').start()
     args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
     save(folder/'invocation.json',{'arguments':args,**writer_profile(WRITER_ROLE.get()),'images':[str(p)for p in images],'prompt_characters':len(prompt),'framework_version':FRAMEWORK_VERSION})
     environment=dict(os.environ)

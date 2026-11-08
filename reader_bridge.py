@@ -260,6 +260,7 @@ if __name__=='__main__':
     parser.add_argument('--remember',action='store_true',help='用户选择后，把当前项目连接保存到系统凭据库')
     sub=parser.add_subparsers(dest='action',required=True)
     sub.add_parser('connect');sub.add_parser('forget')
+    terms=sub.add_parser('terms');terms.add_argument('--out',required=True)
     prepare=sub.add_parser('prepare');prepare.add_argument('--round');prepare.add_argument('--question',action='append',dest='question_ids',help='只准备指定原问题，可多次填写');prepare.add_argument('--include-answered',action='store_true');prepare.add_argument('--lesson',action='store_true');prepare.add_argument('--out',required=True);prepare.add_argument('--reader-feedback-file')
     apply=sub.add_parser('apply');apply.add_argument('result');apply.add_argument('--out',required=True);apply.add_argument('--metrics')
     collect=sub.add_parser('collect');collect.add_argument('--out',required=True)
@@ -276,6 +277,8 @@ if __name__=='__main__':
     reader_context=feedback_file(getattr(args,'reader_feedback_file',None))
     if args.action=='connect':
         guide=bridge.request('/api/guide');result={'connected':True,'material_id':guide.get('material_id'),'remembered':args.remember,'credential_source':'系统凭据库或本轮显式凭证'}
+    elif args.action=='terms':
+        result=__import__('reader_term_maintenance').maintain(bridge,args.out)
     elif args.action in ('run','run-compact','daily','teach'):
         from reader_execute import execute,compact_result,daily,teach
         result=teach(bridge,args.out,reader_context,getattr(args,'research_file',None))if args.action=='teach'else daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)

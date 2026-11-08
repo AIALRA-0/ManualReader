@@ -114,8 +114,7 @@ def append_assets(state,data,node_id,explanation_id,passage_ids,stamp):
                         if name and (row.get('professional_definition')or row.get('definition'))and row.get('intuitive_explanation'):
                             row={**row,'model_proposed_term_id':row['term_id']};row.pop('term_id')
                         else:raise ValueError('要复用的术语不存在，请补充真实编号或完整的新术语内容')
-                    if data.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and (old is None or row.get('action')=='revise'):
-                        __import__('reader_term_quality').validate_new_terms([{**row,'term_id':old['id']if old else None}])
+                    __import__('reader_term_quality').validate_asset_terms([row],state['terms'])
                     if old is None:
                         definition=str(row.get('professional_definition') or row.get('definition') or '').strip();intuition=str(row.get('intuitive_explanation') or '').strip()
                         if not name or not definition or not intuition:raise ValueError('新术语需要名称、定义和直观解释')

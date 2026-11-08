@@ -115,10 +115,9 @@ def save_result(state,rid,data,actor='reader'):
     for term in prepared.get('terms',[]):
         if not term.get('definition') and term.get('professional_definition'):term['definition']=term['professional_definition']
         raw=term.get('name','');name=term_name(term)['name'];term['name']=name
-        existing=next((t for t in state['terms'] if name and term_key(t['name'])==term_key(name)),None)
+        existing=next((t for t in state['terms']if t['id']==term.get('term_id')),None)or next((t for t in state['terms'] if name and term_key(t['name'])==term_key(name)),None)
         if existing:term['term_id']=existing['id']
-        if prepared.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and (not existing or term.get('action')=='revise'):
-            __import__('reader_term_quality').validate_new_terms([{**term,'term_id':existing['id']if existing else None}])
+        __import__('reader_term_quality').validate_asset_terms([term],state['terms'])
         original_names.append((name,raw))
     result=BASE_SAVE_RESULT(state,rid,prepared)
     for answer in prepared.get('answers',[]):
@@ -271,7 +270,7 @@ def agent_guide():
                '回答或讲解写回时保留用户当前阅读位置；引导换章调用 /api/learning/select，/api/focus 只定位原句或图片'],
       'reading_progress_rules':'父章节按自身与全部子节的可见内容去重汇总已读比例；已读状态只能由用户在阅读页面手动勾选。Agent 和测试不得改写官网进度，机器接口已禁止修改；生成讲解、回答、跳章均不标记已读。交互测试只在隔离副本进行',
       'endpoints':{'index':'GET /api/index','work':'GET /api/work?round={round_id}','progress':'GET /api/progress',
-                   'library':'GET /api/library/tree','terms':'POST /api/terms',
+                   'library':'GET /api/library/tree','terms':'GET /api/terms?needs_revision=1；POST /api/terms',
                    'passage':'GET /api/passages/{passage_id}','round':'GET /api/rounds/{round_id}','question_batch':'POST /api/question-batches','question_edit':'POST /api/questions/{question_id}',
                    'result':'POST /api/rounds/{round_id}/result','focus':'POST /api/focus',
                    'metrics':'POST /api/rounds/{round_id}/metrics',
@@ -364,6 +363,17 @@ def agent_guide():
     guide['writer_profiles']=public_profiles()
     guide['practice_policy']=__import__('reader_practice_policy').practice_policy()
     return guide
+
+def agent_bootstrap():
+    """当前对话只读取接手所需的信息；写作者继续由客户端取得完整规则。"""
+    guide=agent_guide()
+    result={key:guide[key]for key in ('material_id','project','authorization','preferred_writer','writer_profiles','client_files','client_dependencies','initial_action')if key in guide}
+    result['view']='bootstrap'
+    result['full_guide']='/api/guide'
+    result['question_pool']=question_pool_status(core.read_state())
+    result['execution']='使用当前客户端运行 daily 或 teach；客户端读取完整规则和所需原句，当前对话只核对进度与完成回执。需要人工调查时再读取具体任务，不逐份读取全部材料。术语定向补齐使用 terms --out <独立目录>；只生成缺失字段，恢复原目录不会重新生成已保存内容。'
+    result['usage']='写作者、干净客户端调度与当前Codex对话分别记录；不要把脚本调用计为主对话零用量。'
+    return result
 
 class Handler(core.Handler):
     def lesson_actor(self):
@@ -476,6 +486,10 @@ class Handler(core.Handler):
                 job_match=re.fullmatch(r'/api/import-jobs/(import-[a-f0-9]{20})',path)
                 if job_match:return self.json(ImportJobs(mpath().parent,mid()).read(job_match[1]))
                 if path=='/api/practice-book':return self.json(practice_payload(core.read_state()))
+                if path=='/api/terms':
+                    terms=core.read_state().get('terms',[])
+                    if parse_qs(urlsplit(self.path).query).get('needs_revision')==['1']:terms=[t for t in terms if not t.get('duplicate_of')and __import__('reader_term_quality').repair_fields(t)]
+                    return self.json({'material_id':mid(),'terms':terms})
                 if path=='/api/terms/audit':
                     state=core.read_state();report=normalize_state(state,lambda:'audit_only');report['content_quality']=__import__('reader_term_quality').audit(state.get('terms',[]));return self.json(report)
                 if path=='/api/runs':return self.json({'runs':Runs(mpath().parent).list()})
@@ -549,7 +563,7 @@ class Handler(core.Handler):
                     packet=translation_packets(m,fid,wanted)
                     packet['registered_terms']=[{k:t[k] for k in ('id','name','aliases') if k in t} for t in core.read_state()['terms']]
                     return self.json({**packet,'coverage':m.get('coverage',{}),'units':[u for b in packet['batches'] for u in b['units']]})
-                if path=='/api/guide':return self.json(agent_guide())
+                if path=='/api/guide':return self.json(agent_bootstrap()if parse_qs(urlsplit(self.path).query).get('view')==['bootstrap']else agent_guide())
                 if path=='/api/reading/layout':
                     override=mpath().parent/'reading-layout-overrides.json'
                     return self.json({'material_id':mid(),**material()['reading_view'],'override_revision':json.loads(override.read_text('utf8')).get('revision',0) if override.exists() else 0})
@@ -661,6 +675,7 @@ class Handler(core.Handler):
                     explanation=data.get('explanation')
                     if not isinstance(explanation,dict):raise ValueError('请同时提交本节讲解、术语和练习')
                     __import__('reader_practice_policy').validate_practice(data.get('quizzes'))
+                    __import__('reader_term_quality').validate_asset_terms(data.get('terms',[]),records.get('terms',[]))
                     for batch in data.get('translations',[]):
                         if not isinstance(batch,dict):raise ValueError('章节译文需要按文件提交对象')
                         extra=workspace().translations({**batch,'complete':False})
@@ -789,6 +804,7 @@ class Handler(core.Handler):
                             if name['issues']:raise ValueError('术语名称仍有未解决的中英文格式问题')
                             fields['name']=name['name']
                         if not fields:raise ValueError('请提交术语名称、专业定义或直观解释')
+                        if data.get('repair_only') is True and set(fields).intersection(__import__('reader_term_quality').MINIMUMS)-set(__import__('reader_term_quality').repair_fields(known[update['term_id']])):raise ValueError('定向补齐不能重写已合格字段，请重新读取当前术语')
                         __import__('reader_term_quality').revision_fields(known[update['term_id']],update)
                         prepared.append((known[update['term_id']],fields,update.get('intuitive_source')))
                     for item,fields,source in prepared:

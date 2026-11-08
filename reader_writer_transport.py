@@ -1,7 +1,7 @@
 """写作只接收当前任务、原图和必要工具；凭证仅转发给原Codex服务。"""
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
-import copy,json,re,threading,time,requests,zstandard
+import json,re,threading,time,requests,zstandard
 
 def measured_usage(receipts,profile,session_id):
     """直接用服务端逐请求回执计量，避免读取客户端日志时阻塞已完成正文。"""
@@ -20,7 +20,7 @@ def measured_usage(receipts,profile,session_id):
             'model_started_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(receipts[0]['started_at'])),
             'model_completed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(receipts[-1]['started_at']+receipts[-1].get('seconds',0)))}
 
-WEB_DESCRIPTION='''Run raw JavaScript to access only the web research tool, with no file or shell access needed. Use text(await tools.web__run(args)) to return results. Example: text(await tools.web__run({search_query:[{q:"query"}],response_length:"short"})). Open sources with {open:[{ref_id:"https://..."}]} or previously returned reference ids. Find evidence with {find:[{ref_id:"...",pattern:"..."}]}. For PDF figures use {screenshot:[{ref_id:"...",pageno:0}]}, then emit each returned image block with image(block). Combine independent searches/opens in one call. search_query accepts up to four objects with q and optional domains/recency. response_length is short, medium or long. Results contain source ids, URLs, dates and source text; open the supporting page before citing it. text(value) returns text; image(imageContent) returns an image. No tool discovery is required.'''
+WEB_DESCRIPTION='''Run raw JavaScript to access only the web research tool, with no file or shell access needed. Use text(await tools.web__run(args)) to return results. Example: text(await tools.web__run({search_query:[{q:"query"}],response_length:"short"})). Open sources with {open:[{ref_id:"https://..."}]} or previously returned reference ids. Find evidence with {find:[{ref_id:"...",pattern:"..."}]}. For PDF figures use {screenshot:[{ref_id:"...",pageno:0}]}, then emit each returned image block with image(block). Combine independent searches/opens in one call. Search-only calls return short discovery snippets; open the source or find a specific passage for complete evidence. Open, find and screenshots retain their requested scope. search_query accepts up to four objects with q and optional domains/recency. response_length is short, medium or long. Results contain source ids, URLs, dates and source text; open the supporting page before citing it. text(value) returns text; image(imageContent) returns an image. No tool discovery is required.'''
 
 IMAGE_DESCRIPTION='\nFor a necessary new illustration, tools.image_gen__imagegen({prompt:"...",transparent_background:false,referenced_image_paths:["actual local source path"]}) generates or edits an image. For a new image omit referenced_image_paths and num_last_images_to_include; for edits provide one of them. Use generatedImage(result) to show a returned image, and preserve the real returned asset path when the tool provides it. For a long image call the exact FIRST line is // @exec: {"yield_time_ms":120000,"max_output_tokens":1000} followed by a newline. JSON is mandatory. After awaiting the tool use generatedImage(result); NEVER use text(result), JSON.stringify(result), Object.entries(result), or print image_url because it contains base64. If exec yields a running cell id, resume with functions.wait. Do not print base64 or invent paths; include generated_assets only when an actual asset was generated. Prefer original figures, use Mermaid for a simple flow, and avoid pictures for simple word definitions.'
 
@@ -75,11 +75,12 @@ class Gate:
                 if self.path!='/responses':
                     # Codex 的检索执行也走同一服务地址；不截断这条真实工具通道。
                     raw=self.rfile.read(int(self.headers.get('Content-Length',0)))
-                    with(outer.folder/'tool-routes.jsonl').open('a',encoding='utf8')as log:log.write(json.dumps({'path':self.path.split('?')[0],'bytes':len(raw)})+'\n')
+                    raw,policy=__import__('reader_research_transport').prepare(self.path,raw,outer.spec.get('compact_search_discovery',True))
+                    with(outer.folder/'tool-routes.jsonl').open('a',encoding='utf8')as log:log.write(json.dumps({'path':self.path.split('?')[0],'bytes':len(raw),'policy':policy})+'\n')
                     headers={k:v for k,v in self.headers.items()if k.lower()not in('host','content-length','connection','accept-encoding')}
                     r=requests.post('https://chatgpt.com/backend-api/codex'+self.path,data=raw,headers=headers,timeout=(30,None),allow_redirects=False)
                     self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Content-Length',str(len(r.content)));self.end_headers();self.wfile.write(r.content);return
-                began=time.perf_counter();receipt={'started_at':time.time(),'model':outer.spec['model'],'effort':outer.spec['effort'],'service_tier':'default'}
+                began=time.perf_counter();r=None;receipt={'started_at':time.time(),'model':outer.spec['model'],'effort':outer.spec['effort'],'service_tier':'default'}
                 try:
                     raw=self.rfile.read(int(self.headers.get('Content-Length',0)))
                     if self.headers.get('Content-Encoding')=='zstd':raw=zstandard.ZstdDecompressor().decompress(raw,max_output_size=32*1024*1024)
@@ -92,39 +93,44 @@ class Gate:
                     headers={k:v for k,v in self.headers.items()if k.lower()not in('host','content-length','content-encoding','connection','upgrade','accept-encoding')};headers.update({'Content-Type':'application/json','Accept-Encoding':'identity'})
                     outer.persist()
                     r=requests.post('https://chatgpt.com/backend-api/codex/responses',json=value,headers=headers,stream=True,timeout=(30,None),allow_redirects=False)
-                    receipt.update(phase='streaming',status=r.status_code,headers_seconds=round(time.perf_counter()-began,3));self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Connection','close');self.end_headers();buf=b'';calls=[];last_saved=0;public_items=set()
+                    receipt.update(phase='streaming',status=r.status_code,headers_seconds=round(time.perf_counter()-began,3));self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Connection','close');self.end_headers();calls=[];last_saved=0;public_items=set()
                     outer.persist()
-                    for chunk in r.iter_content(chunk_size=4096):
-                        if not chunk:continue
-                        receipt.setdefault('first_chunk_seconds',round(time.perf_counter()-began,3));receipt['last_progress_at']=time.time();receipt['received_bytes']=receipt.get('received_bytes',0)+len(chunk)
-                        if time.time()-last_saved>=1:outer.persist();last_saved=time.time()
-                        self.wfile.write(chunk);self.wfile.flush();buf+=chunk
-                        while b'\n'in buf:
-                            line,buf=buf.split(b'\n',1)
-                            if not line.startswith(b'data: '):continue
-                            try:event=json.loads(line[6:])
-                            except ValueError:continue
-                            if event.get('type')=='response.output_item.added':
-                                item=event.get('item',{})
-                                if item.get('type')=='message'and item.get('role')=='assistant'and item.get('channel')not in('analysis','reasoning'):
-                                    public_items.add(item.get('id'))
-                            if event.get('type')=='response.output_text.delta'and event.get('item_id')in public_items:
-                                # 只保存面向用户的正文流；检索或推理流不进入这个草稿文件。
-                                delta=event.get('delta','')
-                                if isinstance(delta,str):
-                                    with(outer.folder/('partial-output-'+str(number)+'.txt')).open('a',encoding='utf8')as draft:draft.write(delta)
-                            if event.get('type')=='response.output_item.done':
-                                item=event.get('item',{})
-                                if item.get('type')in('custom_tool_call','function_call'):calls.append({k:item.get(k)for k in('type','name','input','arguments')})
-                            if event.get('type')in('response.completed','response.failed','response.incomplete'):
-                                response=event.get('response',{});receipt['response']={k:response.get(k)for k in('model','status','service_tier','usage','error','incomplete_details')}
-                            if event.get('type')=='error':receipt['error']=event
-                    receipt['tool_calls']=calls;receipt['phase']='complete';self.close_connection=True
+                    def forwarded_chunks():
+                        nonlocal last_saved
+                        connected=True
+                        for chunk in r.iter_content(chunk_size=4096):
+                            if not chunk:continue
+                            receipt.setdefault('first_chunk_seconds',round(time.perf_counter()-began,3));receipt['last_progress_at']=time.time();receipt['received_bytes']=receipt.get('received_bytes',0)+len(chunk)
+                            if time.time()-last_saved>=1:outer.persist();last_saved=time.time()
+                            if connected:
+                                try:self.wfile.write(chunk);self.wfile.flush()
+                                except OSError:connected=False;receipt['client_disconnected']=True
+                            yield chunk
+                    for event in __import__('reader_research_transport').events(forwarded_chunks()):
+                        if event.get('type')=='response.output_item.added':
+                            item=event.get('item',{})
+                            if item.get('type')=='message'and item.get('role')=='assistant'and item.get('channel')not in('analysis','reasoning'):
+                                public_items.add(item.get('id'))
+                        if event.get('type')=='response.output_text.delta'and event.get('item_id')in public_items:
+                            # 只保存面向用户的正文流；检索或推理流不进入这个草稿文件。
+                            delta=event.get('delta','')
+                            if isinstance(delta,str):
+                                with(outer.folder/('partial-output-'+str(number)+'.txt')).open('a',encoding='utf8')as draft:draft.write(delta)
+                        if event.get('type')=='response.output_item.done':
+                            item=event.get('item',{})
+                            if item.get('type')in('custom_tool_call','function_call'):calls.append({k:item.get(k)for k in('type','name','input','arguments')})
+                        if event.get('type')in('response.completed','response.failed','response.incomplete'):
+                            response=event.get('response',{});receipt['response']={k:response.get(k)for k in('model','status','service_tier','usage','error','incomplete_details')}
+                        if event.get('type')=='error':receipt['error']=event
+                    receipt['tool_calls']=calls;receipt['phase']='complete'if receipt.get('response')else'stream_closed';r.close();self.close_connection=True
                 except Exception as e:
                     receipt.update(phase='transport_error',error_type=type(e).__name__,message=str(e))
-                    try:self.send_error(502,'Reader test transport unavailable')
+                    try:
+                        if not receipt.get('status'):self.send_error(502,'Reader transport unavailable')
+                        self.close_connection=True
                     except OSError:pass
                 finally:
+                    if r is not None:r.close()
                     receipt['seconds']=round(time.perf_counter()-began,3)
                     outer.persist()
         self.server=ThreadingHTTPServer(('127.0.0.1',0),Handler);self.port=self.server.server_address[1]

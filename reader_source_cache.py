@@ -3,6 +3,7 @@ from collections import Counter
 from pathlib import Path
 from urllib.parse import urlsplit,unquote
 import json,math,re,time,threading,os,hashlib,uuid
+from reader_web_sources import pieces,opened
 _LOCK=threading.RLock()
 
 def _text(value):
@@ -22,7 +23,8 @@ def _url(value):
 class SourceCache:
     def __init__(self,path,max_age=86400):self.path=Path(path);self.max_age=max_age
     def read(self):
-        try:rows=json.loads(self.path.read_text('utf8')).get('fragments',[])
+        try:
+            data=json.loads(self.path.read_text('utf8'));rows=data.get('fragments',[])if data.get('version',0)>=3 else[]
         except (OSError,ValueError,AttributeError):return []
         return [r for r in rows if isinstance(r,dict)and r.get('used_in_completed_generation')and time.time()-r.get('observed_at',0)<=self.max_age and r.get('url','').startswith(('https://','http://'))and r.get('text')]
     def collect(self,folders):
@@ -40,13 +42,12 @@ class SourceCache:
             calls={m.get('call_id')for m in request.get('input',[])if m.get('type')=='custom_tool_call'and re.search(r'web__run|web\.run',str(m.get('input','')))}
             for message in request.get('input',[]):
                 if message.get('type')!='custom_tool_call_output'or message.get('call_id')not in calls:continue
-                text=_text(message.get('output'));blocks=re.split(r'\n-{20,}\n',text)
+                text=_text(message.get('output'));blocks=pieces(text)
                 for block in blocks:
-                    # 搜索摘要不进入缓存；只留已打开页面的正文或查找结果。
-                    if not re.search(r'Source:\s*(?:open|find|click)\(',block):continue
-                    header=re.search(r'(?m)^([^\n]+?)\s+\((https?://[^\s)]+)\)\s*$',block)
-                    if not header:continue
-                    title,url=header[1],header[2];lines=re.findall(r'(?m)^L(\d+):\s*(.*)$',block)
+                    # 只有当前网页块自己的网址和正文可以一起进入缓存。
+                    page=opened(block)
+                    if page is None:continue
+                    title,url,lines=page['title'],page['url'],page['lines']
                     if _url(url)not in used:continue
                     if not lines:continue
                     current=[];size=0
@@ -62,7 +63,7 @@ class SourceCache:
                         if size+len(line)>850 and current:store();current=[];size=0
                         current.append((number,line));size+=len(line)
                     store()
-        self.path.parent.mkdir(parents=True,exist_ok=True);temp=self.path.with_suffix('.'+uuid.uuid4().hex+'.next');temp.write_text(json.dumps({'version':2,'fragments':existing[-2400:]},ensure_ascii=False),'utf8');temp.replace(self.path)
+        self.path.parent.mkdir(parents=True,exist_ok=True);temp=self.path.with_suffix('.'+uuid.uuid4().hex+'.next');temp.write_text(json.dumps({'version':3,'parser_version':'web-source-blocks-v1','fragments':existing[-2400:]},ensure_ascii=False),'utf8');temp.replace(self.path)
         return {'added':added,'total':len(existing),'model_calls':0}
     def select(self,packet,max_characters=12000):
         rows=self.read()
@@ -77,7 +78,8 @@ class SourceCache:
             scored=[]
             for i,terms in enumerate(index):
                 overlap=words&terms
-                if len(overlap)<2:continue
+                strong={w for w in overlap if len(w)>=5 and re.fullmatch(r'[a-z][a-z0-9_-]+',w)and df[w]<=max(3,len(rows)//10)}
+                if len(overlap)<2 and not strong:continue
                 score=sum(math.log(1+len(rows)/(1+df[w]))for w in overlap)/math.sqrt(max(1,len(terms)))
                 scored.append((score,i))
             for score,i in sorted(scored,reverse=True)[:3]:candidates[i]=max(candidates.get(i,0),score)

@@ -52,6 +52,8 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 安装与备份见[部署说明](docs/deployment.md)，PDF、网页、PPT、仓库和空项目怎样进入阅读器见[导入说明](docs/importing.md)
 
+本地稳定候选版增加了精简接手接口、只补缺段的术语维护和更完整的用量恢复；现有阅读与写回方式保持不变，使用方法和验收范围见[稳定交接说明](docs/stability-handoff.md)。候选版尚未发布，官网与历史发行版仍为 v0.4.2。
+
 ## 3 六个区域怎样配合
 
 ### 3.1 目录怎样告诉你正在学什么

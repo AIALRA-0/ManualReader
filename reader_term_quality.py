@@ -4,7 +4,7 @@ import re
 
 MINIMUMS={"professional_definition":80,"intuitive_explanation":100}
 INSTRUCTION="""每个术语仍只有定义和直观解释两个自然段，不新增小标题或展示字段。第一段讲清是什么、人为什么需要它、它怎样起作用；按对象、动作、变化与结果接清关键过程，必要前置在使用处说明；只预设普通中文与四则运算，新专业词先说含义再使用。第二段按解释对象选择场景：抽象机制用题材之外、容易想象的生活类比，明确对象、动作与结果分别对应真实机制的什么，类比中的新安排先交代目的；生物、物质等具体实体优先直接描写实际外形、行为和变化，只有解释抽象作用过程确实需要时才加类比，不把外形特征硬换成另一套物品，也不给分类对象强造用途。两段相互补充，每词脱离原文章仍能读懂，文章只确定词义，不把本项目的例子当成定义；不依赖前文，不用陌生词替换解释，不添加无用边界说明。定义至少80个非空白字符，直观解释至少100个非空白字符；用机制、前置和例子的对应关系满足下限，不重复或堆背景凑字数；用“参与”“部分”等准确措辞交代事实后，不再补一遍泛泛的“还有其他因素或过程”；每句继续提供具体知识。复杂概念可自然写长。例子里用到的数字和符号须有来由；若计算与理解这个词无关，就直接用动作讲清机制，不硬塞公式。旧术语继续复用，只有明确修订才按当前版本检查并保留历史。"""
-INDEPENDENCE=re.compile(r"如上所述|如前所述|沿用.{0,12}(?:例子|比喻)|前文(?:所述|提到|的)|(?:这个|本|该)项目|本题|本章|本图|这里跟随")
+INDEPENDENCE=re.compile(r"如上所述|如前所述|沿用.{0,12}(?:例子|比喻)|前文(?:所述|提到|的)|(?:本题|本章|本图)(?=中|内|里|的|所|要求|给出|提到|介绍|展示|规定|采用|使用|表示|说明|讨论|讲|[，。；：、\s]|$)|这里跟随")
 NONINFORMATIVE=re.compile(r"不代表|不能说明|无法说明|不能证明|不等于|无法保证|仅供参考|类比.{0,12}(?:局限|不能)")
 def length(text):
     return len(re.sub(r"\s+","",text))
@@ -80,3 +80,17 @@ def audit(terms):
                         "format_errors":report["errors"],"warnings":report["warnings"]})
     return {"version":"terms-two-paragraph-v1","minimums":dict(MINIMUMS),
             "needs_revision":sum(bool(row["repair_fields"])for row in entries),"entries":entries}
+
+def validate_asset_terms(terms,known):
+    """写入前先核对新术语或明确修订；按原编号复用旧条目时不重写解释。"""
+    if not isinstance(terms,list)or any(not isinstance(row,dict)for row in terms):raise ValueError('术语列表中的每一项都需要是对象')
+    from reader_term_names import term_key
+    by_id={item['id']:item for item in known}
+    by_name={term_key(item['name']):item for item in known if item.get('name')}
+    for row in terms:
+        existing=by_id.get(row.get('term_id'))or by_name.get(term_key(row.get('name','')))
+        if existing is not None:
+            if row.get('action')=='revise':revision_fields(existing,row)
+            continue
+        validate_new_terms([{**row,'term_id':None,'professional_definition':row.get('professional_definition')or row.get('definition')}])
+    return True

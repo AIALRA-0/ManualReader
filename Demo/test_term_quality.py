@@ -33,6 +33,15 @@ class TermQualityTests(unittest.TestCase):
     def test_only_short_half_is_selected(self):
         row=self.term();row['intuitive_explanation']='小书架'
         self.assertEqual(repair_fields(row),['intuitive_explanation'])
+    def test_book_counts_and_normal_word_parts_are_not_article_references(self):
+        for prefix in ('找回五本图书；','在样本图片中观察颜色；','按照基本章程分工；','练习基本题型；'):
+            row=self.term();row['intuitive_explanation']=prefix+INTUITION
+            self.assertTrue(inspect(row)['passed'],prefix)
+            self.assertEqual(repair_fields(row),[])
+    def test_legacy_new_terms_cannot_bypass_quality_but_reuse_still_works(self):
+        from reader_term_quality import validate_asset_terms
+        with self.assertRaises(ValueError):validate_asset_terms([{'name':'新概念（New Concept）','definition':'太短'}],[])
+        self.assertTrue(validate_asset_terms([{'term_id':'old'}],[{'id':'old','name':'旧概念（Old Concept）','definition':'历史短解释'}]))
     def test_unchanged_qualified_legacy_paragraphs_are_preserved(self):
         row=self.term();row['professional_definition']=DEFINITION+'\n\n'+DEFINITION
         fields=revision_fields(row,{'expected_version':3,'intuitive_explanation':INTUITION})

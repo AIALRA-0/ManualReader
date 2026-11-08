@@ -8,6 +8,8 @@
 
 </div>
 
+The local stability candidate adds a compact agent bootstrap, selective term completion, and recoverable usage receipts while preserving the existing reading workflow. It has not been deployed or published; the live release remains v0.4.2. See the [handoff notes](docs/stability-handoff.md) for scope and checks.
+
 <div align="center">
 
 <img src="docs/assets/readme/user-real-hardware.png" alt="An actual six-panel hardware interview reading session, with sources, translation, explanations, questions, and exercises" width="1600">
