@@ -112,6 +112,8 @@ See the [sectioned gallery](docs/features.md) for term modes, deletion confirmat
 
 Sol high writes the lesson or answers, reusable terms and placed exercises in one ordinary-service pass. Sol low handles name-only repairs and clean coordination. The client reuses relevant excerpts from pages actually opened in the same project, preserves correct content during a single field patch, and records model usage receipts including coordination. See [the generation flow and public prompt source](docs/generation-flow.md) and [generation validation](docs/generation-validation.md). Existing material, notes, practice attempts and manual reading progress remain intact.
 
+Terms retain two paragraphs: a standalone definition explaining purpose and mechanism, followed by a concrete example that maps back to the mechanism. Generation, Agent instructions, and writeback share [one quality contract](docs/term-quality.md). Existing entries keep their IDs, links, and revision history.
+
 ### 3.5 How can I save color combinations
 
 Settings include eight light/dark palettes. Save multiple favorites, choose one default, or edit seven highlight and progress colors and save a custom palette. Existing colors stay in place until you choose a combination

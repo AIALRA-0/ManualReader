@@ -135,7 +135,7 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
             if not _text(part.get('heading')or part.get('reading_heading')):raise ValueError('讲解部分缺少小标题：'+part['id'])
             resolve_images(part)
         if len({p['id']for p in parts})!=len(parts):raise ValueError('讲解部分编号重复')
-        if data.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and __import__('reader_prompts').WRITING_VERSION.endswith('coverage'):
+        if data.get('writing_version')==__import__('reader_prompts').WRITING_VERSION:
             data['source_group_audit']=apply_group_coverage(plan,parts,sources)
         headings=[re.sub(r'[^\w\u3400-\u9fff]','',_text(p.get('heading')or p.get('reading_heading'))).casefold()for p in parts]
         if len(set(headings))!=len(headings):raise ValueError('讲解小标题重复，请把每一部分实际回答的疑问写清楚')
@@ -179,6 +179,8 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
         if not isinstance(term,dict):raise ValueError('术语需要使用对象')
         if not term.get('name')and term.get('chinese')and term.get('english'):
             term['name']=(term.get('abbreviation','').strip()+' 'if term.get('abbreviation')else'')+term['chinese'].strip()+'（'+term['english'].strip()+'）'
+    if data.get('writing_version')==__import__('reader_prompts').WRITING_VERSION:
+        __import__('reader_term_quality').validate_new_terms(data['terms'])
     from reader_contract import normalize_quiz
     __import__('reader_practice_policy').validate_practice(data['quizzes'],practice_policy)
     for quiz in data['quizzes']:

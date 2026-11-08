@@ -25,7 +25,7 @@ def output_schema(packet):
     code=obj(**base,type=enum(['code']),language=S,runner_id=S,starter_code=S,reference_code=S,variant_id=S)
     recall=obj(**base,type=enum(['recall']),reference_answer=S)
     known_terms=[t['id']for t in packet.get('registered_terms',[])if t.get('id')]
-    term=obj(term_id={'anyOf':[enum(known_terms),{'type':'null'}]}if known_terms else{'type':'null'},name=S,professional_definition=S,intuitive_explanation=S,question_ids=questions,
+    term=obj(term_id={'anyOf':[enum(known_terms),{'type':'null'}]}if known_terms else{'type':'null'},name=S,professional_definition={**S,'description':'独立说清是什么、为何需要及怎样起作用；完整一个自然段','minLength':1 if known_terms else 80},intuitive_explanation={**S,'description':'完整具体场景，并把对象与动作对应回机制；独立一个自然段','minLength':1 if known_terms else 100},question_ids=questions,
              action={'anyOf':[enum(['revise']),{'type':'null'}]},expected_version={'anyOf':[I,{'type':'null'}]},case_exceptions=arr(S),english_case_exception={'type':'boolean'})
     fields={'writing_version':enum([packet.get('writing_version')or __import__('reader_prompts').WRITING_VERSION]),'plan':plan,'terms':arr(term),
             'quizzes':arr({'anyOf':[choice,numeric,ordering,code,recall]},minItems=1),'evidence_gaps':arr(S),

@@ -117,6 +117,8 @@ def save_result(state,rid,data,actor='reader'):
         raw=term.get('name','');name=term_name(term)['name'];term['name']=name
         existing=next((t for t in state['terms'] if name and term_key(t['name'])==term_key(name)),None)
         if existing:term['term_id']=existing['id']
+        if prepared.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and (not existing or term.get('action')=='revise'):
+            __import__('reader_term_quality').validate_new_terms([{**term,'term_id':existing['id']if existing else None}])
         original_names.append((name,raw))
     result=BASE_SAVE_RESULT(state,rid,prepared)
     for answer in prepared.get('answers',[]):
@@ -312,6 +314,7 @@ def agent_guide():
     guide['project_files']['writing_links']=__import__('reader_prompts').FILE_LINK_RULE
     guide['coverage_contract']={'explained_source_ids':'实际解释过的原文段落、句子或对象编号','source_ranges':'或提交 passage_id、可选 sentence_id、start、end；区间使用原文 Unicode 字符位置，左闭右开','rule':'source_links 只表示引用；未明确解释的引用不算讲解覆盖。覆盖率和进度由脚本计算，不由 Agent 填写'}
     guide['term_update_contract']['rules']='术语保留独立定义和直观解释两段；优先复用正文里已经讲清的解释。同名复用不重复生成；需要改善旧解释时提交 action=revise、expected_version，保留历史和已有编号'
+    guide['term_quality']={'version':'terms-two-paragraph-v1','paragraphs':[{'field':field,'minimum_nonwhitespace_characters':minimum}for field,minimum in __import__('reader_term_quality').MINIMUMS.items()],'instructions':__import__('reader_term_quality').INSTRUCTION,'audit':'GET /api/terms/audit 返回 content_quality；只补 repair_fields 登记的过短或不独立字段，合格条目不重新生成','revise':'POST /api/terms 的 updates 沿用 term_id，必须提供 expected_version；可同时提供 expected_definition 和 expected_intuitive_explanation 核对旧文本；只提交需改字段，旧解释自动留在历史，原关联和用户记录保持'}
     guide['term_name_contract']={'audit':'GET /api/terms/audit','normalize':'POST /api/terms/normalize','name_update':{'updates':[{'term_id':'已登记编号','expected_name':'读取到的当前名称','name':'缩写 中文全称（English Full Name）'}]},'case_rules':'未标记例外时，英文全称每个单词首字母大写；专有大小写使用 case_exceptions 文字列表，整条英文保留原样使用 english_case_exception=true；代码、网址和数学记号保持原样','repair_rule':'脚本先整理中英文顺序、重复中文、大小写和同名重复。原编号、原名历史、笔记和定义保留。仍有歧义时，本地客户端只把本轮相关名称及已有解释按 writer_profiles.term_repair 的普通服务配置集中补齐一次，不审稿、不循环；未能确认的名称继续保留，已保存回答不受影响'}
     guide['roles']=public_rules()['roles']
     guide['coverage_contract'].update({'directory':'GET /api/learning 返回 coverage_plan；每个原文单元有一个负责章节，source_links 仍可被多章引用。逐章模式把未规划原文留在 coverage_plan.deferred，完整目录模式按原目录补成待讲章节；不要用降级章节凑覆盖率，规划完整也不表示讲解完成','quote_first':'讲解用source_groups、plan.source_refs、plan.coverage和parts.source_spans登记原句与范围，脚本恢复原编号用于三栏定位；旧parts.source_span仍兼容；parts.markdown承接前文连贯解释。回答 parts.question_span 对应真实子问，parts.markdown 先明确作答，再围绕该答案说明依据','preserve':'更新内容沿用旧章节、片段、问题和术语编号，原文、旧版本、笔记与手动已读进度保留','audit':'GET /api/format/audit 分别核对目录、讲解、问答、术语、练习及笔记链接'})
@@ -474,7 +477,7 @@ class Handler(core.Handler):
                 if job_match:return self.json(ImportJobs(mpath().parent,mid()).read(job_match[1]))
                 if path=='/api/practice-book':return self.json(practice_payload(core.read_state()))
                 if path=='/api/terms/audit':
-                    state=core.read_state();report=normalize_state(state,lambda:'audit_only');return self.json(report)
+                    state=core.read_state();report=normalize_state(state,lambda:'audit_only');report['content_quality']=__import__('reader_term_quality').audit(state.get('terms',[]));return self.json(report)
                 if path=='/api/runs':return self.json({'runs':Runs(mpath().parent).list()})
                 run_match=re.fullmatch(r'/api/runs/(run-[a-f0-9]{20})(?:/(groups/[1-4]|reference|caller))?',path)
                 if run_match:
@@ -786,6 +789,7 @@ class Handler(core.Handler):
                             if name['issues']:raise ValueError('术语名称仍有未解决的中英文格式问题')
                             fields['name']=name['name']
                         if not fields:raise ValueError('请提交术语名称、专业定义或直观解释')
+                        __import__('reader_term_quality').revision_fields(known[update['term_id']],update)
                         prepared.append((known[update['term_id']],fields,update.get('intuitive_source')))
                     for item,fields,source in prepared:
                         if 'name' in fields:

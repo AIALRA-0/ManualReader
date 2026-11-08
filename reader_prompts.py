@@ -1,6 +1,7 @@
 """讲解、问答、连接说明和写作者共用这一份简短写作要求。"""
 
-WRITING_VERSION='reader-writing-connected-v7-coverage'
+from reader_term_quality import INSTRUCTION as TERMINOLOGY_METHOD
+WRITING_VERSION='reader-writing-connected-v8-term-depth'
 READER_START='读者懂普通中文与四则运算；新领域的概念、符号和操作在使用处用具体对象讲明白，只有用户明确确认的内容才视为已经掌握；术语表用于回看，不替正文补逻辑'
 STYLE='像有人当面带读者弄懂这件事：先直接回答，再沿同一个对象和实例往下走；用连贯短段，每段推进一个理解步骤，前段得到的结果在后段接住。公式、代码和计算按实际步骤单独换行。新写讲解中的中文句号改用分号或自然换段，原文、用户原话、公式、代码和网址保持原样'
 CORE_METHOD=READER_START+'\n'+'''同一次写作先返回很小的 plan：当前要解决什么、先给什么答案、实际要讲哪些内容、各自必需的前置和讲述顺序；say 写具体内容，不写“需要解释”。每个 unit 通过 unit_ids 对应到实际正文，原句用 source_refs 登记，不另起规划调用
@@ -30,7 +31,7 @@ ANSWER_METHOD='''本次是问答，只完成给定的真实问题。不同子问
 def writing_method(role='answer'):
     """让问答和讲解共用教学要求，各自只填写实际需要的结构。"""
     specific=CONNECTED_METHOD+'\n'+LESSON_EVIDENCE if role=='lesson' else ANSWER_METHOD
-    return '\n'.join((CORE_METHOD,specific,POSITIVE_KNOWLEDGE,PRACTICE_STORAGE,FILE_LINK_RULE,__import__('reader_practice_policy').INSTRUCTION))
+    return '\n'.join((CORE_METHOD,specific,POSITIVE_KNOWLEDGE,TERMINOLOGY_METHOD,PRACTICE_STORAGE,FILE_LINK_RULE,__import__('reader_practice_policy').INSTRUCTION))
 
 # 旧客户端导入此名称时仍获得完整讲解规则；新入口按角色取规则。
 TEACHING_METHOD=writing_method('lesson')
