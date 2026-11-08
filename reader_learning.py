@@ -151,7 +151,7 @@ def learning_payload(material,stored,state):
     terms=[t['id'] for t in state.get('terms',[]) if t['id'] in tids or qids.intersection(t.get('question_ids',[]))]
     from reader_chapter_progress import chapter_progress
     chapter_progress(material,nodes,state)
-    return {'nodes':nodes,'coverage_plan':coverage_plan,'selected_id':selected,'scope_active':active,
+    return {'revision':stored.get('revision',0),'nodes':nodes,'coverage_plan':coverage_plan,'selected_id':selected,'scope_active':active,
             'context':{'material_id':material['id'],'learning_node_id':(current or {}).get('id'),'source_links':(current or {}).get('effective_source_links',[]),
                        'explanation_ids':(current or {}).get('explanation_ids',[]),'passage_ids':sorted(related),'question_ids':[q['id'] for q in questions],'term_ids':terms,'source_range':(current or {}).get('source_range',{})},
             'default_directory':'learning' if stored.get('learning_outline') or material.get('reader_mode')=='authored' or material.get('kind')=='project' else 'source'}

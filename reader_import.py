@@ -290,6 +290,10 @@ class SourceImporter:
             status='needs_browser_snapshot' if any(p['status']=='needs_browser_snapshot' for p in pending) else 'partial' if pending and _readable(document) else 'pending' if pending else 'ready'
             coverage=_coverage(document,pending,files);document['coverage']=coverage;document['pending']=pending;document['import_status']=status
             row={'id':identity,'name':name,'title':data.get('title') or document['title'],'kind':document['kind'],'stored_name':stored,'original':True,'outline':document['outline'],'passage_ids':[p['id'] for p in document['passages']],'document':document,'source_kind':kind,'source_url':source_url,'final_url':final_url,'source_tree':'source','source_files':files,'source_fingerprint':fingerprint,'coverage':coverage,'pending':pending,'import_status':status,'model_calls':0,'outline_mode':outline_mode}
+            if data.get('purpose')=='illustration':
+                if document['kind']!='image':raise ValueError('讲解插图只能使用实际图片文件')
+                row['purpose']='illustration'
+                for passage in document['passages']:passage['role']='generated_illustration';passage['translatable']=False
             if renderer:row['browser_snapshot']=renderer
             provenance={k:row[k] for k in ('id','name','source_kind','source_url','final_url','source_tree','source_files','source_fingerprint','coverage','pending','import_status','model_calls')}
             (folder/'import-source.json').write_text(json.dumps(provenance,ensure_ascii=False,indent=2),'utf8')
@@ -299,6 +303,10 @@ class SourceImporter:
                 if existing:
                     if existing.get('source_fingerprint')==fingerprint:return existing
                     raise ValueError('该文件编号已经使用，请使用新编号')
+                if row.get('purpose')=='illustration':
+                    exclusions=latest.setdefault('learning_exclusions',[])
+                    for passage in document['passages']:
+                        exclusions.append({'passage_id':passage['id'],'file_id':identity,'reason':'这张图用于补充当前讲解，作为可查看的附件保留，不另建原文学习章节','original':passage.get('en')or'','media':passage.get('src')or''})
                 latest['files'].append(row);shutil.move(str(folder),str(target))
                 try:self.workspace.write(latest,latest['revision'])
                 except Exception:

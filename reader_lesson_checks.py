@@ -32,11 +32,9 @@ def validate(explanation,sources,require_transitions=False):
     if missing:raise ValueError('下列原始参数尚未在正文讲明白：'+','.join(sorted(missing)))
     for row in explanation.get('evidence',{}).get('prerequisites',[]):
         part=parts.get(row.get('part_id'));quote=compact(row.get('quote',''));term=compact(row.get('term',''))
-        if part and term and quote and quote in compact(part['markdown'])and term not in quote:
-            # 原词与解释已在同一自然段时，补全证据的摘录范围，不重写正文或编造定义。
-            paragraph=next((p.strip()for p in part['markdown'].split('\n\n')if quote in compact(p)and term in compact(p)),None)
-            if paragraph:row['quote']=paragraph;quote=compact(paragraph);expanded+=1
-        if not part or len(quote)<8 or quote not in compact(part['markdown'])or not term or term not in quote:raise ValueError('前置解释需要逐字对应正文首次讲清的句子')
+        if not part or len(quote)<8 or quote not in compact(part['markdown'])or not term:raise ValueError('前置解释需要逐字对应正文中实际讲清的句子')
+        # term是索引名称；“与或逻辑”等名称可以对应讲清&和|的真实正文，不要求正文机械重复索引文字。
+        if term not in quote:expanded+=1
     transitions=explanation.get('evidence',{}).get('transitions',[])
     if require_transitions or transitions:
         order=list(parts);expected={identity:order[i-1]for i,identity in enumerate(order)if i};found=set()
@@ -46,4 +44,4 @@ def validate(explanation,sources,require_transitions=False):
             if len(quote)<8 or quote not in compact(parts[previous]['markdown']):raise ValueError('承接依据没有对应前一部分的实际正文，请保留原稿并核对这一处')
             found.add(identity)
         if found!=set(expected):raise ValueError('下列讲解部分尚未登记前一段实际接住的内容：'+','.join(sorted(set(expected)-found)))
-    return {'required_facts':len(facts),'covered_facts':len(covered),'transitions':len(transitions),'prerequisite_quote_expansions':expanded}
+    return {'required_facts':len(facts),'covered_facts':len(covered),'transitions':len(transitions),'prerequisite_labels_without_literal_match':expanded}

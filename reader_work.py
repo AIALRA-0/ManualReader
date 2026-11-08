@@ -1,3 +1,4 @@
+from reader_writer_profiles import writer_profile,writer_label,public_profiles
 """把阅读任务整理成去重后的写作输入，页面坐标继续留在阅读器中。"""
 from reader_contract import writing_guide
 from reader_quality import QA_PART_CONTRACT
@@ -33,7 +34,7 @@ def group_packet(packet,ids):
     parents=[p for p in packet['parent_answers'] if p['id'] in parent_ids]
     terms=related_terms(packet['registered_terms'],selected,sources)
     result={**{k:packet[k] for k in ('schema_version','material_id','title','writer','instructions','reference_url','result_contract')},'sources':sources,'parent_answers':parents,'questions':selected,'registered_terms':terms}
-    for key in ('framework_version','writing_version','revision_mode','reader_feedback_latest','confirmed_passage','confirmed_understanding'):
+    for key in ('practice_policy','framework_version','writing_version','revision_mode','reader_feedback_latest','confirmed_passage','confirmed_understanding'):
         if key in packet:result[key]=packet[key]
     if 'reference_blocks' in packet:result['reference_blocks']=[p for p in packet['reference_blocks'] if source_ids.intersection(p['for_source_ids'])]
     else:result['reference_original']=packet['reference_original']
@@ -64,7 +65,7 @@ def compact_packet(material,state,question_ids=None,include_answered=False):
     for ids in sorted(grouped.values(),key=len,reverse=True):min(groups,key=len).extend(ids)
     packet['groups']=[g for g in groups if g]
     packet['instructions']=[s for s in packet['instructions'] if '已给定的完整原文' not in s and '写作者不读写文件' not in s]
-    packet['instructions'] += ['当前输入包含本组原句和附近完整段落，不等于整篇原文；必要前置、专业细节或推导需要其他材料时，从本地 reference.json 按原编号或关键词读取；不要靠缺少上下文的猜测回答',
+    packet['instructions'] += ['当前输入包含本组原句、附近完整段落和显式来源关联；按给定语境回答，补齐理解必需的前置与中间步骤；还缺决定答案的外部事实时，主动搜索并打开来源核对',
       '只把确实需要的外部检索放在本组内进行，主对话不必先集中检索再派发；不削减回答、术语或练习来换速度',
       '问题、原句和规则已写入这一个输入文件，读取一次即可；将结果直接写入指定 result JSON 文件，最终只返回文件路径和条数，主对话用脚本写回，禁止重新抄写整份结果',
       '接口会按来源自动显示“原文：”和“回答：”并分别换行；parts 内只写对应子问的正文，不重复这两个首部或原句。普通解释写成相互承接的自然段，公式、代码和计算按实际步骤单独排版，不把每句话拆成一个部分']
@@ -135,7 +136,7 @@ def work_packet(material, state, round_id=None, include_answered=False):
     if len(questions)<=3:
         groups=[[q['id'] for q in questions]]
     packet={'schema_version': 1, 'framework_version':__import__('reader_generation').VERSION,'writing_version':WRITING_VERSION, 'material_id': material['id'], 'title': material['title'],
-            'writer': {'model': 'gpt-6.1-terra', 'effort': 'high', 'service_tier':'default', 'max_parallel': 2},
+            'writer':writer_profile('answer'),
             'instructions': writing_guide()['instructions'] + [
                 '回答、术语和本组选择题在同一次写作中完成；先写完整内容，再由脚本保存和检查',
                 '只输出结果 JSON，不重复打印材料、规划说明或处理总结；写作者不读写文件，也不操作阅读器',
@@ -151,8 +152,9 @@ def work_packet(material, state, round_id=None, include_answered=False):
                                            'professional_definition': '独立说明概念是什么、怎样起作用和本题必需条件', 'intuitive_explanation': '沿用已采用的生活对象或具体例子，自然承接并解释同一个含义', 'question_ids': ['原问题编号']}],
                                 'quizzes': [{'placement':__import__('reader_generation').PLACEMENT_CONTRACT['answer'],'question_ids': ['原问题编号'], 'prompt': '题目', 'options': ['选项一', '选项二', '选项三', '选项四'],
                                             'correct_index': 0, 'explanation': '解析', 'option_explanations':['按原始选项下标，逐项具体解释对错原因']}]}}
+    packet['practice_policy']=__import__('reader_practice_policy').practice_policy()
     packet['instructions'].append('先读 sources.excerpt，它是用户实际提问的文字；id 可能是显示片段编号，不能把它冒充原文覆盖编号。explained_source_ids 只能填实际解释过的 candidate_original_ids 或 source_links 中真实原文编号；问题针对讲解且未进一步解释原文时留空，不把背景引用全算已讲解')
-    packet['dispatch']={'mode':'manual_codex_subagents','max_parallel':2,'model':'gpt-6.1-terra','effort':'high','groups':[{'id':'writer-'+str(i+1),'question_ids':ids} for i,ids in enumerate(packet['groups'])],'input_rule':'共同原文只在本任务包保存一次；用 reader_bridge.py prepare 提取各组直接写作输入。只传本组原句、父问题和相关术语，保留共同原文，不重复带整段聊天','writeback':'主对话收到一组结果后逐题写回；网页不启动模型，不等待其他组完成才保存'}
+    packet['dispatch']={'mode':'manual_codex_subagents','max_parallel':2,**writer_profile('answer'),'groups':[{'id':'writer-'+str(i+1),'question_ids':ids} for i,ids in enumerate(packet['groups'])],'input_rule':'共同原文只在本任务包保存一次；用 reader_bridge.py prepare 提取各组直接写作输入。只传本组原句、父问题和相关术语，保留共同原文，不重复带整段聊天','writeback':'主对话收到一组结果后逐题写回；网页不启动模型，不等待其他组完成才保存'}
     return annotate_questions(packet)
 
 

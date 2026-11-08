@@ -6,10 +6,12 @@ from urllib.request import Request,urlopen
 from urllib.parse import urlsplit,urljoin
 import datetime,json,os,re,shutil,subprocess,time,sys
 
-MODEL='gpt-6.1-terra'
+from reader_writer_profiles import writer_profile,writer_label,public_profiles
+MODEL=writer_profile('answer')['model']
+EFFORT=writer_profile('answer')['effort']
 from contextvars import ContextVar
-CLOSED_WRITER_PORT=ContextVar('reader_closed_writer_port',default=None)
-from reader_prompts import STYLE as WRITING_STYLE, TEACHING_METHOD, WRITER_INSTRUCTIONS, NAMING_RULE, WRITING_VERSION
+WRITER_ROLE=ContextVar('reader_writer_role',default='answer')
+from reader_prompts import STYLE as WRITING_STYLE, TEACHING_METHOD, writing_method, WRITER_INSTRUCTIONS, NAMING_RULE, WRITING_VERSION
 from reader_media import ensure_visible_sources
 from reader_quality import answer_parts
 from reader_generation import normalize_output,VERSION as FRAMEWORK_VERSION
@@ -23,15 +25,11 @@ def save(path,value):
 def build_prompt(payload,reference,style=WRITING_STYLE):
     payload=dict(payload);payload['writing_version']=WRITING_VERSION
     for key in ('output_file','publish_command','reference_file'):payload.pop(key,None)
-    files={s.get('file_id') for s in payload['sources'] if s.get('content_kind')!='explanation'}
-    files.update(l.get('file_id') for s in payload['sources'] for l in s.get('source_links',[]))
-    originals=[p for p in reference.get('passages',[]) if p.get('file_id') in files]
-    # 原件完整保留；同一原文已经出现在任务附近时，只保留一处，并继续使用原编号。
-    supplied={s['id']:[s.get('original','')] for s in payload['sources']}
-    for block in payload.get('reference_blocks',[]):supplied.setdefault(block['id'],[]).append(block.get('text',''))
-    payload['full_original_reference']=[p for p in originals if p.get('text','') not in supplied.get(p['id'],[])]
+    # 服务端已按原句及依赖准备 reference_blocks；不再按文件把整篇原文追加回来。
+    payload.pop('full_original_reference',None)
     payload['instructions']=[s for s in payload['instructions'] if not any(k in s for k in ('reference.json','result JSON 文件','本地 JSON','本地文件','最终只返回文件路径','文件路径和条数','问题、原句和规则已写入'))]
-    if TEACHING_METHOD not in payload['instructions']:payload['instructions'].append(TEACHING_METHOD)
+    payload['instructions']=[s for s in payload['instructions']if s!=TEACHING_METHOD and not s.startswith('读者懂普通中文与四则运算；')]
+    payload['instructions'].append(writing_method(payload.get('mode','answer')))
     payload['instructions']+=['原文、必要写作规则和可用原图已经放入这一次输入，不再为了读取它们调用工具',
       '直接输出最终JSON对象，包含本组全部回答、术语和本组选择题；客户端负责保存，不写文件，不输出收尾消息',
       '理解原句所必需的前置必须在回答里讲清；简单问题简洁，复杂问题充分，不限制回答字数',
@@ -44,10 +42,11 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
     if not payload.get('registered_terms'):
         payload['result_contract']={**payload['result_contract'],'terms':[{k:v for k,v in t.items() if k!='term_id'} for t in payload['result_contract']['terms']]}
     payload['instructions']=list(dict.fromkeys(payload['instructions']))
-    return '请用 Terra high 完成本组阅读回答，直接返回结果JSON\n'+style+'\n任务与原材料：\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
+    return '请用 '+writer_label('answer')+' 完成本组阅读回答，直接返回结果JSON\n'+style+'\n任务与原材料：\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
 
-def command(executable,folder,target,images,writer=True):
-    args=[executable,'exec','--ignore-user-config','--skip-git-repo-check','--json','--color','never','-m',MODEL,'-c','model_reasoning_effort="high"','-c','service_tier="default"','-c','web_search="live"','-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
+def command(executable,folder,target,images,writer=True,role=None):
+    profile=writer_profile(role or(WRITER_ROLE.get()if writer else'coordinator'))
+    args=[executable,'exec','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json','--color','never','-m',profile['model'],'-c','model_reasoning_effort='+json.dumps(profile['effort']),'-c','service_tier="default"','-c','web_search="live"','-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
     if writer:
         writer_instructions=Path(folder)/'writer-instructions.txt'
         writer_instructions.write_text(WRITER_INSTRUCTIONS,'utf8')
@@ -55,10 +54,7 @@ def command(executable,folder,target,images,writer=True):
     for flag in ('apps','plugins','multi_agent','shell_tool','browser_use','computer_use','workspace_dependencies','hooks','fast_mode'):
         args+=['--disable',flag]
     args+=['--enable','image_generation']
-    for image in images:args+=['-i',str(image)]
-    if writer and CLOSED_WRITER_PORT.get():
-        args[args.index('--enable')]='--disable'
-        args+=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(CLOSED_WRITER_PORT.get()))]
+    for image in images:args+=['--image='+str(image)]
     return args+['-']
 
 
@@ -86,10 +82,19 @@ def store_generated_assets(bridge,value,folder,session_id=None):
                 if original.width*original.height>24_000_000:raise ValueError('插图像素过多')
                 image=original.convert('RGB');output=io.BytesIO();image.save(output,format='PNG');raw=output.getvalue()
             identity='illustration-'+hashlib.sha256(raw).hexdigest()[:20]
-            receipt=bridge.request('/api/content/files',{'file_id':identity,'filename':identity+'.png','content_base64':base64.b64encode(raw).decode()})
+            receipt=bridge.request('/api/content/files',{'file_id':identity,'filename':identity+'.png','purpose':'illustration','content_base64':base64.b64encode(raw).decode()})
             url=receipt['original_url'];alt=re.sub(r'[\[\]\r\n]',' ',str(item.get('alt') or '讲解示意图'))
+            markdown='!['+alt+']('+url+')'
             for qid in item.get('question_ids',[]):
-                if qid in known:known[qid]['text']+='\n\n!['+alt+']('+url+')'
+                if qid not in known:continue
+                answer=known[qid];parts=answer.get('answer_parts')or answer.get('parts')or[]
+                part=next((p for p in parts if p.get('id')==item.get('after_part_id')),None)or(parts[-1]if parts else None)
+                if part and markdown not in part.get('markdown',''):part['markdown']=part.get('markdown','')+'\n\n'+markdown
+                if markdown not in answer.get('text',''):answer['text']=answer.get('text','')+'\n\n'+markdown
+            parts=value.get('explanation',{}).get('parts',[])
+            if parts:
+                part=next((p for p in parts if p.get('id')==item.get('after_part_id')),None)or parts[-1]
+                if markdown not in part['markdown']:part['markdown']+='\n\n'+markdown
         except (OSError,ValueError,KeyError,Image.DecompressionBombError) as error:issues.append('插图未保存：'+str(error))
     return issues
 
@@ -134,8 +139,9 @@ def source_images(bridge,payload,folder):
         path=path.with_suffix(suffix);path.write_bytes(raw);images.append(path)
     return images
 
-def result_json(raw,group,payload=None,reference=None):
+def result_json(raw,group,payload=None,reference=None,source_aliases=None):
     raw=re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip());value=json.loads(raw)
+    if source_aliases:value=__import__('reader_writer_input').restore_output(value,source_aliases)
     answers=value.get('answers',[]);expected=set(group['question_ids'])
     if len(answers)!=len(expected) or {a.get('question_id') for a in answers}!=expected:raise ValueError('回答编号存在缺项或重复，原始输出已保留')
     if not isinstance(value.get('terms'),list) or not isinstance(value.get('quizzes'),list):raise ValueError('术语和练习需要使用列表，原始输出已保留')
@@ -159,47 +165,75 @@ def invoke_writer(folder,prompt,images,executable):
     folder=Path(folder);folder.mkdir(exist_ok=True,parents=True);target=folder/'final.txt';events=folder/'events.jsonl'
     if events.exists():raise ValueError('本次调用已有日志，请读取原任务，不重复生成')
     (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,images)
-    save(folder/'invocation.json',{'arguments':args,'model':MODEL,'effort':'high','service_tier':'default','images':[str(p)for p in images],'prompt_characters':len(prompt),'framework_version':FRAMEWORK_VERSION})
+    if(folder/'output-schema.json').exists():args[-1:-1]=['--output-schema',str(folder/'output-schema.json')]
+    from reader_writer_transport import Gate
+    system='只根据本任务定义修正术语名称；不要重写定义或回答，只返回本任务要求的updates和unresolved。必要时可检索核对名称。'if WRITER_ROLE.get()=='term_repair'else WRITER_INSTRUCTIONS
+    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,allow_image_generation=WRITER_ROLE.get()!='term_repair').start()
+    args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
+    save(folder/'invocation.json',{'arguments':args,**writer_profile(WRITER_ROLE.get()),'images':[str(p)for p in images],'prompt_characters':len(prompt),'framework_version':FRAMEWORK_VERSION})
     environment=dict(os.environ)
     for key in ('CODEX_THREAD_ID','CODEX_SESSION_ID','MANUAL_READER_TOKEN','MANUAL_READER_PAIRING_CODE'):environment.pop(key,None)
     session_id=None;started=time.perf_counter()
-    with events.open('w',encoding='utf8')as log,(folder/'stderr.txt').open('w',encoding='utf8')as err:
-        process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=err,text=True,encoding='utf8',env=environment,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
-        for line in process.stdout:
-            log.write(line);log.flush()
-            try:event=json.loads(line)
-            except ValueError:continue
-            if event.get('type')=='thread.started':session_id=event.get('thread_id')
-        code=process.wait()
-    if code or not target.exists():raise RuntimeError('本次写作未完成，已生成的内容和日志保留，不重新派发其他任务')
-    usage=runtime_usage({'session_id':session_id,'configured_service_tier':'default'})
-    if not usage or(usage.get('model'),usage.get('effort'),usage.get('configured_service_tier'))!=(MODEL,'high','default'):raise RuntimeError('实际模型或用量记录不符合 Terra high 普通服务，原始结果保留')
-    usage.update(seconds=round(time.perf_counter()-started,3),writing_version=WRITING_VERSION,tool_usage=external_tool_usage(events.read_text('utf8').splitlines()))
+    try:
+        with events.open('w',encoding='utf8')as log,(folder/'stderr.txt').open('w',encoding='utf8')as err:
+            process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=err,text=True,encoding='utf8',env=environment,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
+            for line in process.stdout:
+                log.write(line);log.flush()
+                try:event=json.loads(line)
+                except ValueError:continue
+                if not isinstance(event,dict):continue
+                if event.get('type')=='thread.started':session_id=event.get('thread_id')
+            code=process.wait()
+    finally:gate.stop()
+    from reader_writer_transport import measured_usage
+    usage=measured_usage(gate.receipts,writer_profile(WRITER_ROLE.get()),session_id)or runtime_usage({'session_id':session_id,'configured_service_tier':'default'})
+    if usage:save(folder/'usage.json',usage)
+    if code or not target.exists():raise RuntimeError('本次写作未完成，已生成的内容、实际用量和日志保留，继续核对原任务')
+    expected=writer_profile(WRITER_ROLE.get())
+    if not usage or(usage.get('model'),usage.get('effort'),usage.get('configured_service_tier'))!=(expected['model'],expected['effort'],'default'):raise RuntimeError('实际模型或档位与当前写作配置不同，原始结果保留，请更新客户端后继续原任务')
+    usage.update(seconds=round(time.perf_counter()-started,3),writing_version=WRITING_VERSION,tool_usage=external_tool_usage(events.read_text('utf8').splitlines()),transport_policy='current-task-web-and-images-v1',actual_request_receipts='transport.json')
     save(folder/'usage.json',usage);return target.read_text('utf8'),usage,session_id
 
 def checked_writing(folder,prompt,images,executable,validate):
     raw,usage,session=invoke_writer(folder,prompt,images,executable)
+    original=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip()))
+    original,format_changes=__import__('reader_writer_format').normalize(original)
+    if format_changes:
+        save(folder/'format-normalization.json',format_changes)
+        raw=json.dumps(original,ensure_ascii=False)
     try:return validate(raw),usage,session
     except(ValueError,KeyError,TypeError)as error:
         save(folder/'validation.json',{'complete':False,'missing':str(error),'raw_preserved':True,'max_supplements':1})
-        prompt+='\n前次实际输出与脚本发现的缺项：\n'+raw+'\n'+str(error)+'\n这是同一写作任务唯一的一次集中补齐，不是审稿。保留正确的内容、编号和关联，只补齐上述缺项，返回完整合同 JSON；不要缩短正文，不要改变当前章节。'
-        raw2,extra,_=invoke_writer(folder/'supplement',prompt,images,executable)
+        patching=__import__('reader_writer_patch')
+        prompt+='\n'+patching.INSTRUCTION+'\n脚本发现的缺项：'+str(error)+'\n原稿JSON：\n'+json.dumps(original,ensure_ascii=False,separators=(',',':'))
+        supplement=folder/'supplement';supplement.mkdir(exist_ok=True)
+        save(supplement/'output-schema.json',patching.SCHEMA)
+        raw_patch,extra,_=invoke_writer(supplement,prompt,images,executable)
+        patch=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw_patch.strip()))
+        merged={**usage,'usage':{k:usage['usage'].get(k,0)+extra['usage'].get(k,0)for k in usage['usage']},'requests':usage.get('requests',[])+extra.get('requests',[]),'model_completed_at':extra['model_completed_at'],'seconds':usage['seconds']+extra['seconds'],'tool_usage':{'web_search_calls':usage.get('tool_usage',{}).get('web_search_calls',0)+extra.get('tool_usage',{}).get('web_search_calls',0)},'image_tools':usage.get('image_tools',[])+extra.get('image_tools',[]),'usage_complete':usage.get('usage_complete',False)and extra.get('usage_complete',False),'supplements_used':1}
+        save(folder/'combined-usage.json',merged)
+        patched=patching.apply(original,patch);save(supplement/'merged.json',patched)
+        raw2=json.dumps(patched,ensure_ascii=False)
         try:value=validate(raw2)
         except(ValueError,KeyError,TypeError)as again:
             save(folder/'validation.json',{'complete':False,'missing':str(again),'raw_preserved':True,'supplements_used':1,'next_action':'按记录中的准确缺项继续原任务，不重新生成已保存内容'})
             raise
-        merged={**usage,'usage':{k:usage['usage'].get(k,0)+extra['usage'].get(k,0)for k in usage['usage']},'requests':usage.get('requests',[])+extra.get('requests',[]),'model_completed_at':extra['model_completed_at'],'seconds':usage['seconds']+extra['seconds'],'tool_usage':{'web_search_calls':usage.get('tool_usage',{}).get('web_search_calls',0)+extra.get('tool_usage',{}).get('web_search_calls',0)},'supplements_used':1}
         save(folder/'validation.json',{'complete':True,'supplements_used':1,'review_agents':0});return value,merged,session
 
 def run_group(bridge,out,group,payload,reference,executable):
     identity=group['id'];folder=out/('writer-'+identity);folder.mkdir(exist_ok=True)
-    prompt=build_prompt(payload,reference);(folder/'input.txt').write_text(prompt,'utf8')
+    cache=__import__('reader_source_cache').for_bridge(bridge)
+    payload=__import__('reader_source_cache').augment(payload,cache)
+    packed,aliases=__import__('reader_writer_input').compact_packet(payload);save(folder/'source-aliases.json',aliases)
+    save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
+    prompt=build_prompt(packed,reference);(folder/'input.txt').write_text(prompt,'utf8')
     images=source_images(bridge,payload,folder)
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'dispatch'})
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'writer_started'})
-    value,usage,session_id=checked_writing(folder,prompt,images,executable,lambda raw:result_json(raw,group,payload,reference))
+    value,usage,session_id=checked_writing(folder,prompt,images,executable,lambda raw:result_json(raw,group,payload,reference,source_aliases=aliases))
+    save(folder/'source-cache.json',__import__('reader_source_cache').remember(cache,folder,value))
     save(out/('worker-'+identity+'.json'),{'session_id':session_id,'configured_service_tier':'default'})
-    usage.update(group_id=identity,type='usage',writing_version=WRITING_VERSION,configured_service_tier='default',model=MODEL,effort='high')
+    usage.update(group_id=identity,type='usage',writing_version=WRITING_VERSION,configured_service_tier='default',model=MODEL,effort=EFFORT)
     bridge.request('/api/runs/'+bridge.run_id+'/events',usage);save(out/('usage-'+identity+'.json'),usage)
     questions={q['id']:q for q in payload['questions']}
     for answer in value['answers']:
@@ -218,23 +252,12 @@ def repair_term_names(bridge,out,question_ids,executable):
     if not pending:return report
     folder=out/'term-name-repair';folder.mkdir(exist_ok=True);target=folder/'final.txt'
     prompt='只修正下面术语名称，返回JSON：{"updates":[{"term_id":"真实编号","name":"中文全称（English Full Name）"}],"unresolved":[]}。有缩写时使用“缩写 中文全称（English Full Name）”，中文全称也需展开缩写的含义，不得只把缩写挪到中文部分。不修改定义、问题、编号或其他内容。根据给出的定义确定中英文对应，括号里只保留英文全称，除明确标记的例外外每个英文单词首字母大写。不得重复中文、颠倒中英文、编造缩写展开。无法确认的编号放入unresolved，不猜测。只做这一次批量处理，不再添加审稿或修复循环。必要时可以检索名称，已有规则无需读取文件。\n'+json.dumps(pending,ensure_ascii=False,separators=(',',':'))
-    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,[],writer=False);environment=dict(os.environ)
-    for key in ('CODEX_THREAD_ID','CODEX_SESSION_ID','MANUAL_READER_TOKEN','MANUAL_READER_PAIRING_CODE'):environment.pop(key,None)
-    session=None;started=stamp();metadata=None
+    session=None;metadata=None;role_token=WRITER_ROLE.set('term_repair')
+    schema={'type':'object','properties':{'updates':{'type':'array','items':{'type':'object','properties':{'term_id':{'type':'string','enum':[p['term_id']for p in pending]},'name':{'type':'string'}},'required':['term_id','name'],'additionalProperties':False}},'unresolved':{'type':'array','items':{'type':'string'}}},'required':['updates','unresolved'],'additionalProperties':False}
+    save(folder/'output-schema.json',schema)
     try:
-        with (folder/'events.jsonl').open('w',encoding='utf8') as log,(folder/'stderr.txt').open('w',encoding='utf8') as err:
-            process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=err,text=True,encoding='utf8',env=environment,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
-            for line in process.stdout:
-                log.write(line);log.flush()
-                try:event=json.loads(line)
-                except ValueError:continue
-                if event.get('type')=='thread.started':session=event.get('thread_id')
-            code=process.wait()
-        metadata=runtime_usage({'session_id':session,'configured_service_tier':'default'})
-        if metadata:
-            metadata.update(state='generated',started_at=started,completed_at=stamp(),tool_usage=external_tool_usage((folder/'events.jsonl').read_text('utf8').splitlines()));bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'term_repair','repair':metadata});save(folder/'usage.json',metadata)
-            if metadata.get('model')!=MODEL or metadata.get('effort')!='high' or metadata.get('configured_service_tier')!='default':raise ValueError('术语补齐的实际配置与Terra high普通服务不一致，原始记录已保留')
-        if code or not target.exists():raise ValueError('一次术语名称补齐没有完成，原始记录保留，回答不受影响')
+        raw,metadata,session=invoke_writer(folder,prompt,[],executable)
+        bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'term_repair','repair':metadata})
         parsed=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',target.read_text('utf8').strip()));known={p['term_id']:p for p in pending};updates=[]
         from reader_term_names import analyze_name
         for row in parsed.get('updates',[]):
@@ -246,6 +269,7 @@ def repair_term_names(bridge,out,question_ids,executable):
         if updates:bridge.request('/api/terms',{'updates':updates})
         report.update(model_calls=(metadata or {}).get('usage',{}).get('model_calls'),repaired=len(updates),unresolved=[p['term_id'] for p in pending if p['term_id'] not in {u['term_id'] for u in updates}])
     except Exception as error:report.update(state='needs_attention',message=str(error),raw_output_preserved=True)
+    finally:WRITER_ROLE.reset(role_token)
     save(folder/'script-processing.json',report);return report
 
 def _execute(bridge,out,include_answered=False,reader_context=None):
@@ -310,21 +334,27 @@ def teach(bridge,out,reader_context=None,research_file=None):
         for row in research['notes']:
             if not isinstance(row,dict)or not isinstance(row.get('text'),str)or not isinstance(row.get('url'),str)or not row['url'].startswith(('https://','http://')):raise ValueError('每条检索补充都需要事实与实际来源网址')
         packet['researched_context']=research
-    packet['writing_tool_policy']='原材料、原图与主对话按需搜索的补充资料已经随输入附齐；最终成稿不调用文件、枚举或搜索工具；保留所有来源与原图，可使用Mermaid，额外新插图由主对话生成并登记后提供'
-    prompt='用 Terra high 普通服务，只完成给定当前章；先按同一次输出中的 plan 组织正文，再提取术语和练习，直接返回 result_contract 规定的 JSON。\n'+WRITING_STYLE+'\n'+json.dumps(packet,ensure_ascii=False,separators=(',',':'))
+    packet['writing_tool_policy']='直接使用随输入提供的原文、原图和规则，不为这些已有材料枚举工具或重读文件；必要事实缺失时可搜索并打开来源，用户要求配图时沿用原图或实际工具生成的图片，不编造地址；资料足够后直接成稿'
+    packet['source_groups']=__import__('reader_generation').source_groups(packet['sources'])
+    cache=__import__('reader_source_cache').for_bridge(bridge)
+    packet=__import__('reader_source_cache').augment(packet,cache)
+    packed,aliases=__import__('reader_writer_input').compact_packet(packet);save(folder/'source-aliases.json',aliases)
+    save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
+    prompt='用 '+writer_label('lesson')+' 普通服务，只完成给定当前章；先按同一次输出中的 plan 组织正文，再提取术语和练习，直接返回 result_contract 规定的 JSON。\n'+WRITING_STYLE+'\n'+json.dumps(packed,ensure_ascii=False,separators=(',',':'))
     source_rows=[s for s in packet['sources']if s.get('content_kind')!='explanation']
     def validate(raw):
-        value=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip()))
+        value=__import__('reader_writer_input').restore_output(json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip())),aliases)
         value['writing_version']=WRITING_VERSION
         value=normalize_output(value,sources=source_rows,lesson=True,required_source_ids=[s['id']for s in source_rows],reading_context=packet.get('reading_context'))
         value.update(learning_node_id=node['id'],lesson_task_id=packet['lesson_task_id'],writing_version=WRITING_VERSION)
         value['explanation'].setdefault('id','lesson-'+node['id']);value['explanation'].setdefault('title',node['title'])
         return value
-    from reader_writer_transport import Gate
-    gate=Gate(out/'writer-wire-policy.jsonl',port=0).start();policy=CLOSED_WRITER_PORT.set(gate.port)
+    role_token=WRITER_ROLE.set('lesson')
     try:result,usage,session=checked_writing(folder,prompt,images,executable,validate)
-    finally:CLOSED_WRITER_PORT.reset(policy);gate.stop()
-    changes=normalize_terms(result,packet);save(out/'script-processing.json',{'term_id_changes':changes,'body_changed':False})
+    finally:WRITER_ROLE.reset(role_token)
+    save(folder/'source-cache.json',__import__('reader_source_cache').remember(cache,folder,result))
+    asset_issues=store_generated_assets(bridge,result,folder,session)
+    changes=normalize_terms(result,packet);save(out/'script-processing.json',{'term_id_changes':changes,'generated_asset_issues':asset_issues,'body_changed':bool(result.get('generated_assets'))})
     save(out/'lesson-checked.json',result);receipt=bridge.apply(out/'lesson-checked.json',out)
     report={'state':'complete'if receipt.get('complete')else'needs_completion','learning_node_id':node['id'],'started_at':began,'seconds':round(time.perf_counter()-clock,3),'usage':usage,'receipt':receipt,'review_agents':0,'automatic_navigation':False}
     save(out/'lesson-report.json',report);return report
@@ -372,7 +402,7 @@ def compact_result(report):
     return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json',**{k:report[k] for k in ('question_pool','message') if k in report}}
 
 def daily(bridge,out,include_answered=False,reader_context=None):
-    """手动触发时另开干净的Terra high普通会话，只做本轮回答调度和汇报。"""
+    """手动触发时另开配置指定的干净会话，只做本轮回答调度和汇报。"""
     from reader_worker import conversation_usage,external_tool_usage
     import shlex
     out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True);folder=out/'coordinator';folder.mkdir()
@@ -384,7 +414,7 @@ def daily(bridge,out,include_answered=False,reader_context=None):
         context_file=out/'reader-feedback.json';save(context_file,reader_context)
         child+=['--reader-feedback-file',str(context_file)]
     shell=('& '+' '.join("'"+v.replace("'","''")+"'" for v in child)) if os.name=='nt' else shlex.join(child)
-    prompt=('你是阅读器日常回答任务的主调度，只处理当前项目的未回答问题。立即执行下面的一条命令；程序会读取问题和材料、附上原图、按已准备的分组数量，以Terra high普通服务并行生成完整回答、必要前置、术语和练习，并逐组写回。不要开发、测试、部署、读其他文件或历史，也不要自己重复写答案。程序运行期间必须等到 measured-run.json 已落盘才可汇报，Shell 返回后台会话编号不代表任务结束；工具返回仍在运行时，用write_stdin等候，单次等候可用60000毫秒，不要频繁轮询。命令完成后，用中文简短汇报实际完成的问题数、写作窗口耗时和返回的用量，明确主调度本次会话的最终用量由启动器在你汇报结束后补入。不得改模型、推理档、服务档或并行数。\n'+shell)
+    prompt=('你是阅读器日常回答任务的主调度，只处理当前项目的未回答问题。立即执行下面的一条命令；程序会读取问题和材料、附上原图、按已准备的分组数量，以'+writer_label('answer')+'普通服务并行生成完整回答、必要前置、术语和练习，并逐组写回。不要开发、测试、部署、读其他文件或历史，也不要自己重复写答案。程序运行期间必须等到 measured-run.json 已落盘才可汇报，Shell 返回后台会话编号不代表任务结束；工具返回仍在运行时，用write_stdin等候，单次等候可用60000毫秒，不要频繁轮询。命令完成后，用中文简短汇报实际完成的问题数、写作窗口耗时和返回的用量，明确主调度本次会话的最终用量由启动器在你汇报结束后补入。不得改模型、推理档、服务档或并行数。\n'+shell)
     args=command(executable,folder,target,[],writer=False);args[args.index('-s')+1]='danger-full-access'
     for flag in ('shell_tool',):
         pos=args.index(flag);del args[pos-1:pos+1]
@@ -392,32 +422,47 @@ def daily(bridge,out,include_answered=False,reader_context=None):
     env=dict(os.environ)
     for key in ('CODEX_THREAD_ID','CODEX_SESSION_ID','MANUAL_READER_PAIRING_CODE'):env.pop(key,None)
     if bridge.remote:env['MANUAL_READER_TOKEN']=bridge.headers['Authorization'].removeprefix('Bearer ')
-    began=stamp();clock=time.perf_counter();(folder/'input.txt').write_text(prompt,'utf8');save(folder/'invocation.json',{'arguments':args,'model':MODEL,'effort':'high','service_tier':'default','previous_conversation_messages':0,'began_at':began})
+    began=stamp();clock=time.perf_counter();(folder/'input.txt').write_text(prompt,'utf8');save(folder/'invocation.json',{'arguments':args,**writer_profile('coordinator'),'previous_conversation_messages':0,'began_at':began})
     session=None
-    with (folder/'events.jsonl').open('w',encoding='utf8') as events,(folder/'stderr.log').open('w',encoding='utf8') as error:
-        process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=error,text=True,encoding='utf8',env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
-        for line in process.stdout:
-            events.write(line);events.flush()
-            try:event=json.loads(line)
-            except ValueError:continue
-            if event.get('type')=='thread.started':session=event['thread_id'];save(folder/'session.json',{'session_id':session})
-        code=process.wait()
+    from reader_writer_transport import Gate,measured_usage
+    gate=Gate(writer_profile('coordinator'),prompt,'只启动并等待本轮已经授权的写作任务，依据实际完成记录简短汇报；不要重复写作、搜索或枚举工具。',folder,True,False).start()
+    args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
+    save(folder/'invocation.json',{'arguments':args,**writer_profile('coordinator'),'previous_conversation_messages':0,'began_at':began})
+    try:
+        with (folder/'events.jsonl').open('w',encoding='utf8') as events,(folder/'stderr.log').open('w',encoding='utf8') as error:
+            process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=error,text=True,encoding='utf8',env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
+            for line in process.stdout:
+                events.write(line);events.flush()
+                try:event=json.loads(line)
+                except ValueError:continue
+                if isinstance(event,dict)and event.get('type')=='thread.started':session=event['thread_id'];save(folder/'session.json',{'session_id':session})
+            code=process.wait()
+    finally:gate.stop()
+    actual_caller=measured_usage(gate.receipts,writer_profile('coordinator'),session)
+    if actual_caller:save(folder/'usage.json',actual_caller)
     # 主调度可能在 Shell 返回后台会话编号时结束；启动器仍等同一批写作者落盘。
     report=wait_for_report(out)
     if not session:raise RuntimeError('写作记录已保留，但主调度没有返回会话编号，暂不能结算主调度用量')
     caller=None
-    for attempt in range(20):
-        value=conversation_usage(session)
-        if value and value['report'] and value['report']['state']=='complete':caller=value['report'];break
-        time.sleep(.25)
+    if actual_caller and code==0:
+        caller={**actual_caller,'scope':'entire_codex_turn','state':'complete','started_at':began,'completed_at':stamp(),'total_seconds':round(time.perf_counter()-clock,3),'scope_note':'干净会话的全部逐请求回执；含读取任务、启动、等待和最终汇报'}
+        caller['requests']=[{**r,'model':caller['model'],'configured_service_tier':'default'}for r in caller['requests']]
+    else:
+        for attempt in range(20):
+            value=conversation_usage(session)
+            if value and value['report'] and value['report']['state']=='complete':caller=value['report'];break
+            time.sleep(.25)
     if not caller:raise RuntimeError('主调度已返回，但最终用量日志尚未结算，原始输出保留')
     caller['configured_service_tier']=caller.get('configured_service_tier') or 'default'
     for request in caller['requests']:request['configured_service_tier']=request.get('configured_service_tier') or 'default'
-    if (caller.get('model'),caller.get('effort'),caller['configured_service_tier'])!=(MODEL,'high','default'):raise RuntimeError('主调度实际配置不符合Terra high普通服务，日志已保留')
+    expected=writer_profile('coordinator')
+    if(caller.get('model'),caller.get('effort'),caller['configured_service_tier'])!=(expected['model'],expected['effort'],'default'):raise RuntimeError('主调度实际配置与公布的配置不同，日志已保留')
     caller.update(launch_started_at=began,launch_completed_at=stamp(),launch_to_final_seconds=round(time.perf_counter()-clock,3),tool_usage=external_tool_usage((folder/'events.jsonl').read_text('utf8').splitlines()))
     bridge.run_id=report['run']['id'];bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'caller','caller':caller})
     run=bridge.request('/api/runs/'+bridge.run_id)
     result={'run_id':bridge.run_id,'boundary':'从启动干净主调度到它完成最终汇报；包含读取问题、程序启动、两路写作、必要检索、写回与主调度等待，开发、验收和部署在另一会话记录','started_at':began,'completed_at':stamp(),'launch_to_final_seconds':round(time.perf_counter()-clock,3),'caller':caller,'run':run,'complete_usage':run['complete_usage'],'complete_token_cost_usd':run['complete_estimated_token_cost_usd'],'complete_cost_with_recorded_search_usd':None,'actual_subscription_charge':None}
-    if result['complete_token_cost_usd'] is not None:result['complete_cost_with_recorded_search_usd']=round(result['complete_token_cost_usd']+run.get('web_search_calls',0)*.01,8)
+    # 原生检索、图片没有逐项账单回执时，不能用调用次数乘固定单价冒充总费用。
+    result['external_tool_cost_usd']=run.get('estimated_external_tool_cost_usd')
+    result['complete_cost_with_recorded_search_usd']=run.get('complete_estimated_total_cost_usd')
     save(out/'daily-complete.json',result)
     return {'run_id':bridge.run_id,'question_count':len(run['question_ids']),'seconds':result['launch_to_final_seconds'],'usage':result['complete_usage'],'estimated_token_cost_usd':result['complete_token_cost_usd'],'estimated_total_cost_usd':result['complete_cost_with_recorded_search_usd'],'detail_file':str(out/'daily-complete.json')}

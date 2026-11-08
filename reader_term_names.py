@@ -39,8 +39,8 @@ def analyze_name(value,exceptions=(),preserve=False):
     chinese_core=re.sub(r'^[A-Za-z][A-Za-z0-9-]*\s+','',chinese).strip()
     if chinese_core and HAN.search(chinese_core):english=english.replace(chinese_core,'').strip(' ,，;；')
     if HAN.search(english):issues.append('chinese_inside_english')
-    suffix=re.fullmatch(r'(.+?)[,，]\s*([A-Z][A-Z0-9-]{1,12})',english)
-    if suffix:
+    suffix=re.fullmatch(r'(.+?)[,，]\s*([A-Za-z][A-Za-z0-9-]{1,12})',english)
+    if suffix and (suffix[2].isupper()or sum(c.isupper()for c in suffix[2])>=2):
         english,abbr=suffix.groups()
         if not chinese.startswith(abbr+' '):chinese=abbr+' '+chinese
     abbreviation=re.match(r'^([A-Z][A-Z0-9-]{1,12})\s+',chinese)
@@ -59,7 +59,8 @@ def analyze_name(value,exceptions=(),preserve=False):
 def term_name(term):return analyze_name(term.get('name',''),term.get('case_exceptions',[]),bool(term.get('english_case_exception')))
 
 def term_key(value):
-    name=analyze_name(value)['name'];name=re.sub(r'^[A-Z][A-Z0-9-]{1,12}\s+(?=[\u3400-\u9fff])','',name)
+    name=analyze_name(value)['name'];prefix=re.match(r'^([A-Za-z][A-Za-z0-9-]{1,12})\s+(?=[\u3400-\u9fff])',name)
+    if prefix and(prefix[1].isupper()or sum(c.isupper()for c in prefix[1])>=2):name=name[prefix.end():]
     return re.sub(r'\s+','',name).casefold()
 
 def normalize_state(state,stamp):

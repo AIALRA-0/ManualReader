@@ -27,3 +27,10 @@ Demo/results/
 project-files/
 project-files.json
 file-previews/
+
+# 当前任务的原始输入、模型输出流和来源缓存不公开
+*.jsonl
+transport.json
+sent-*.json
+partial-output-*.txt
+source-cache/

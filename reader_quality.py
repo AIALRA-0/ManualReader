@@ -181,13 +181,15 @@ def generated_scope_figures(material):
 
 def public_rules():
     from reader_generation import VERSION as FRAMEWORK_VERSION,PLAN_CONTRACT,PLACEMENT_CONTRACT
-    from reader_prompts import STYLE,TEACHING_METHOD,WRITER_INSTRUCTIONS,NAMING_RULE,WRITING_VERSION
+    from reader_prompts import STYLE,writing_method,WRITER_INSTRUCTIONS,NAMING_RULE,WRITING_VERSION
     from reader_translation import TRANSLATION_RULES
     return {'version':WRITING_VERSION,'format_version':VERSION,'framework_version':FRAMEWORK_VERSION,'plan':PLAN_CONTRACT,'practice_placement':PLACEMENT_CONTRACT,'roles':ROLES,
-      'qa':{'result_part':QA_PART_CONTRACT,'style':STYLE,'method':TEACHING_METHOD,'writer_system':WRITER_INSTRUCTIONS,'naming':NAMING_RULE},
-      'lesson':{'result_part':LESSON_PART_CONTRACT,'framing':__import__('reader_sequence').FRAMING_CONTRACT,'method':TEACHING_METHOD},'translation':TRANSLATION_RULES,
+      'qa':{'result_part':QA_PART_CONTRACT,'style':STYLE,'method':writing_method('answer'),'writer_system':WRITER_INSTRUCTIONS,'naming':NAMING_RULE},
+      'lesson':{'result_part':LESSON_PART_CONTRACT,'framing':__import__('reader_sequence').FRAMING_CONTRACT,'method':writing_method('lesson')},'translation':TRANSLATION_RULES,
       'format_checks':['问题片段必须来自真实用户提问','讲解引用只保存在来源映射中，阅读正文不重复原句','原文和回答标签各占一段','重复分隔线只显示一条','每个话题只显示一个标题；显式清空的 reading_heading 不被旧排版文件恢复','代码、公式、引用和用户原话保持原样','译文按原编号保存，完整句组可以对应多个解析碎片'],
       'testing_scope':'研究时用固定样本与其他模型做独立评价；日常写作一次输出答案、术语和练习，脚本检查，不额外审稿或循环返修'}
 
 LESSON_PART_CONTRACT=dict(LESSON_PART_CONTRACT)
 LESSON_PART_CONTRACT.update(heading='单独的短标题，建议8至16字，最多24字；不把事实和问题拼成标题',premise='读者能直接懂或前文刚讲清的具体事实，单独一段说清处境',question='单独一段接住premise刚说的对象、动作或结果，再自然问下一步；不机械重复前提，也不删除必要的因果衔接词')
+
+LESSON_PART_CONTRACT['source_spans']=[{'first_source_id':'本任务sources中实际讲到的首个编号','last_source_id':'实际讲到的末个编号；按本任务输入顺序展开，不能跨过未讲内容'}]

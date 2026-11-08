@@ -4,7 +4,9 @@ from fractions import Fraction
 
 def arithmetic(text):
     if not isinstance(text,str)or not text.strip()or len(text)>180:raise ValueError('请填写一个数值或简单分数')
-    tree=ast.parse(text.strip(),mode='eval')
+    text=unicodedata.normalize('NFKC',text).strip().replace('−','-').replace('×','*').replace('÷','/')
+    try:tree=ast.parse(text,mode='eval')
+    except SyntaxError as error:raise ValueError('请填写数值或四则运算式')from error
     def read(n):
         if isinstance(n,ast.Constant)and type(n.value)in(int,float):return Fraction(str(n.value))
         if isinstance(n,ast.UnaryOp)and isinstance(n.op,(ast.UAdd,ast.USub)):
@@ -16,9 +18,22 @@ def arithmetic(text):
             if isinstance(n.op,ast.Mult):return a*b
             if b==0:raise ValueError('分母不能为零')
             return a/b
+        if isinstance(n,ast.Call)and isinstance(n.func,ast.Name)and n.func.id in('min','max')and not n.keywords and 1<=len(n.args)<=6:
+            values=[read(v)for v in n.args];return min(values)if n.func.id=='min'else max(values)
         raise ValueError('这里只接受数字、小数、分数和四则运算')
     try:return read(tree.body)
     except(SyntaxError,ZeroDivisionError,OverflowError,TypeError)as e:raise ValueError('请检查数值或分数格式')from e
+
+def calculation(text,tolerance=Fraction(0)):
+    """核对常见的中文算式写法；等号每边都计算，不只取最后答案。"""
+    if not isinstance(text,str):raise ValueError('计算过程需要算式')
+    value=unicodedata.normalize('NFKC',text).strip().replace('−','-').replace('×','*').replace('÷','/')
+    if ':'in value:
+        label,value=value.split(':',1)
+        if not label or not re.fullmatch(r'[\u3400-\u9fffA-Za-z\s]+',label):raise ValueError('计算说明和算式没有分开')
+    values=[arithmetic(v.strip())for v in value.split('=')]
+    if not values or any(abs(v-values[0])>tolerance for v in values):raise ValueError('计算过程的等号两边不相等')
+    return values[0]
 
 def number(text,quiz):
     if not isinstance(text,str):raise ValueError('请填写数值')
@@ -43,7 +58,7 @@ def normalize(quiz):
     if kind=='numeric':
         expected=arithmetic(str(q.get('expected','')));tol=arithmetic(str(q.get('tolerance','0')))
         if tol<0:raise ValueError('允许误差不能为负数')
-        if q.get('calculation') is not None and arithmetic(q['calculation'])!=expected:raise ValueError('题目预设答案与重新计算的结果不同')
+        if q.get('calculation') is not None and abs(calculation(q['calculation'],tol)-expected)>tol:raise ValueError('题目预设答案与重新计算的结果不同')
         if not isinstance(q.get('unit_aliases',{}),dict):raise ValueError('单位换算需要对象')
         for k,v in q.get('unit_aliases',{}).items():
             if not k or arithmetic(str(v))<=0:raise ValueError('单位换算倍数需要为正数')

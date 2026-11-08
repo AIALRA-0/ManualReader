@@ -1,3 +1,4 @@
+from reader_writer_profiles import writer_profile,writer_label,public_profiles
 """在现有读写接口上增加材料隔离、定位历史和翻译覆盖校验。"""
 from reader_agent_contract import CLIENT_MODULES,CLIENT_PATHS
 from reader_project_files import ProjectFiles
@@ -32,6 +33,7 @@ from reader_performance import begin_request,server_timing,TimedRLock,timed_call
 from reader_database import DATABASES
 from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
 from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
+from reader_outline import OUTLINE_RULES,edit_nodes,protect_taught_nodes,changes_between
 from reader_reading import save_layout as save_reading_layout
 from reader_quality import answer_parts,public_rules,project_audit,QA_PART_CONTRACT,LESSON_PART_CONTRACT
 from reader_translation import packets as translation_packets,save_groups as save_translation_groups,save_visuals as save_visual_translations
@@ -193,7 +195,7 @@ def progress_payload(progress=None):
     for quiz in progress.get('quizzes',[]):quiz.update(display_order=orders.get(quiz['id'],list(range(len(quiz['options'])))),quality_flags=quiz_quality_flags(quiz))
     for row in progress['rounds']:
         from reader_generation import display_parts
-        row['questions']=[display_parts(decorate_question(m,q)) for q in row['questions']]
+        row['questions']=[display_parts(decorate_question(m,q),progress.get('quizzes',[])) for q in row['questions']]
     progress['mistake_quiz_ids']=practice_payload(progress)['quiz_ids']
     from reader_generation import practice_placements,VERSION as FRAMEWORK_VERSION
     progress['framework_version']=FRAMEWORK_VERSION
@@ -252,14 +254,14 @@ def statistics_payload(scope,include_records=False):
 
 def agent_guide():
     guide={'material_id':mid(),'description':'用户在任意 Codex 对话中手动触发，阅读器只提供读取和写回接口',
-      'preferred_writer':{'model':'gpt-6.1-terra','effort':'high','max_concurrent_groups':2},
+      'preferred_writer':{**writer_profile('answer'),'max_concurrent_groups':2},
       'association_contract_version':2,
       'writing':writing_guide(),
       'steps':['每次接手先读取 /api/content 与 /api/learning，确认材料编号、主学习章节、原文范围和已有讲解；原文件目录通过 /api/index 查阅',
                '需要安排学习路线时，用 /api/learning/outline 保存主学习目录；讲解写入 /api/content/explanations 时提供 learning_node_id，同时保存正文与章节归属',
                '尚无原件的项目可以先建立学习目录并写入讲解；不要把学习目录仅上传为普通 Markdown，也不要用原文 section_id 代替 learning_node_id',
                '从 /api/work 一次取得待回答问题、去重原句、完整原文和已登记术语',
-               '按 groups 分组，默认最多两组 Terra high 并行；把共同材料与本组问题直接放入写作消息，不再让写作者读文件；相同原句留在同一组',
+               '按 groups 分组，按 preferred_writer 指定的模型与档位，最多两组并行；把共同材料与本组问题直接放入写作消息，不再让写作者读文件；相同原句留在同一组',
                '回答、术语和练习一起输出，不让写作者操作文件或调用写回接口',
                '由脚本逐条保存并写回；只做格式、编号和缺项检查，不增加审稿 Agent 或循环修复',
                '耗时、token 和缓存从真实运行记录取得，由脚本写入本轮 metrics，不让模型猜测用量',
@@ -271,7 +273,7 @@ def agent_guide():
                    'passage':'GET /api/passages/{passage_id}','round':'GET /api/rounds/{round_id}','question_batch':'POST /api/question-batches','question_edit':'POST /api/questions/{question_id}',
                    'result':'POST /api/rounds/{round_id}/result','focus':'POST /api/focus',
                    'metrics':'POST /api/rounds/{round_id}/metrics',
-                   'learning':'GET /api/learning','learning_outline':'POST /api/learning/outline','learning_select':'POST /api/learning/select','normalize_source':'POST /api/content/normalize','content':'GET /api/content','files':'POST /api/content/files','explanation':'POST /api/content/explanations','presentation':'POST /api/content/presentation','project':'POST /api/projects','lecture':'POST /api/lectures','translation':'POST /api/translations'},
+                   'learning':'GET /api/learning','learning_outline':'POST /api/learning/outline','learning_outline_edit':'POST /api/learning/outline/edit','learning_select':'POST /api/learning/select','normalize_source':'POST /api/content/normalize','content':'GET /api/content','files':'POST /api/content/files','explanation':'POST /api/content/explanations','presentation':'POST /api/content/presentation','project':'POST /api/projects','lecture':'POST /api/lectures','translation':'POST /api/translations'},
       'term_update_contract':{'updates':[{'term_id':'已登记的术语编号','professional_definition':'准确说明它是什么、怎样起作用；需要时写明成立条件','intuitive_explanation':'用同一个具体对象承接并解释含义'}],'rules':'只更新指定术语，保留原编号、问题和笔记；旧解释保存到历史中，不生成重复的第三段'},
       'learning_contract':{
         'read':'GET /api/learning 返回所有学习节点、当前章节和 context；context 列出本章原文、讲解、旧问答与术语的实际编号，查看其他文件不会替换主目录',
@@ -298,7 +300,8 @@ def agent_guide():
     guide['explanation_headings']={'write':'新讲解每个话题只使用 reading_heading 或独立 Markdown 标题中的一种；已有独立标题时，下一正文不再显示额外标题','clear':'reading_heading 传空字符串或 null 后持续保持清除；旧排版文件不能覆盖','format':'仅修改已有标题时使用 /api/content/explanations/format，提交 explanation_id、expected_version、headings:[{block_id,reading_heading}]；不要求生成新术语或练习，不改变正文和用户记录'}
     guide['endpoints']['lesson_task']='GET /api/work?mode=lesson'
     guide['endpoints']['learning_exclusions']='GET /api/learning/exclusions；POST /api/learning/exclusions'
-    guide['learning_scope']={'exclude':{'passage_ids':['原始单元编号'],'reason':'为何不是本次学习内容','action':'exclude 或 restore','expected_revision':'可选，来自 GET 返回的 revision'},'rule':'排除只影响学习目录与学习覆盖率；原网页、原编号、翻译、问答、笔记和已读记录都保留。原内容改变时原排除不再自动生效，需重新核对','planning':'新项目按章规划：一次只新增一个首层大章，可以同时规划这个大章下的必要子节；未规划的原文留在原文目录与 deferred 清单，不冒充漏失或已学。已有完整目录沿用原编号，不重建；讲解正文仍一次只写回当前任务章节','next_chapter':'新增下一大章和进入下一节都以用户手动完成为条件；不要靠多次调用接口提前铺开所有大章'}
+    guide['outline_edit']={'endpoint':'POST /api/learning/outline/edit','read':'GET /api/learning','expected_revision':'必填，使用读取目录时返回的 revision','actions':[{'action':'add','node':{'id':'chapter-topic','parent_id':None,'title':'一个独立主题章'}},{'action':'update','id':'existing-node','changes':{'title':'调整后的标题'}},{'action':'move','id':'planned-node','parent_id':'chapter-topic','after_id':'another-child'},{'action':'delete','id':'unused-planned-node'}],'rules':OUTLINE_RULES,'atomic':'同一次修改全部验证后保存；有冲突时不保存任何一项；保留 id 与已有内容，不修改当前学习位置或用户记录'}
+    guide['learning_scope']={'exclude':{'passage_ids':['原始单元编号'],'reason':'为何不是本次学习内容','action':'exclude 或 restore','expected_revision':'可选，来自 GET 返回的 revision'},'rule':'排除只影响学习目录与学习覆盖率；原网页、原编号、翻译、问答、笔记和已读记录都保留。原内容改变时原排除不再自动生效，需重新核对','planning':'一次最多新增一个 X. 顶层主题章，可同时新增它下面多个 X.X 及更深单元；不是把整个项目当作一个 X.，再把其他独立章节降成子节。未规划原文保留在原文目录与 deferred 清单；已有目录沿用稳定 id，目录修改使用 outline_edit；正文仍一次只写回当前任务章节','next_chapter':'新增下一大章和进入下一节都以用户手动完成为条件；不要靠多次调用接口提前铺开所有大章'}
     guide['answer_revisions']={'prepare':'需要重答已答问题时，用 POST /runs 提交 question_ids 和 include_answered=true；沿用原问题，不改问题文字或版本来绕过保护','write':'任务绑定读取时的问题版本和 expected_answer_revision；新稿写回时两项都须匹配；已经更新的回答不被旧任务覆盖','history':'旧正文、片段与写入来源保留；修订会改变回答修订号，重新标为未展开；术语与排版更新不重写答案正文'}
     guide['lesson_writeback']={'prepare':'先读取 /api/work?mode=lesson，保存返回的 lesson_task_id；它把本次稿件绑定到已开始的章节，不绑定网页此刻显示的位置','submit':'POST /api/teaching/result 同时传 lesson_task_id 和 learning_node_id；写作期间用户切换页面也可保存原任务，不改变用户当前章节','recover':'409 lesson_selection_changed 表示章节状态变化，不是授权失效；保留已有稿件，不重新生成、不要求重新配对。已准备任务可直接重交；旧稿没有任务编号时先回到目标章取得任务后提交原稿','navigation':'/api/learning/select 可传 expected_selection_revision，旧页面不能覆盖已经发生的新切章；章节切换仍须遵守用户手动完成规则'}
     guide['learning_contract']['select_request']={'node_id':'下一章节编号'}
@@ -309,26 +312,26 @@ def agent_guide():
     guide['project_files']['writing_links']=__import__('reader_prompts').FILE_LINK_RULE
     guide['coverage_contract']={'explained_source_ids':'实际解释过的原文段落、句子或对象编号','source_ranges':'或提交 passage_id、可选 sentence_id、start、end；区间使用原文 Unicode 字符位置，左闭右开','rule':'source_links 只表示引用；未明确解释的引用不算讲解覆盖。覆盖率和进度由脚本计算，不由 Agent 填写'}
     guide['term_update_contract']['rules']='术语保留独立定义和直观解释两段；优先复用正文里已经讲清的解释。同名复用不重复生成；需要改善旧解释时提交 action=revise、expected_version，保留历史和已有编号'
-    guide['term_name_contract']={'audit':'GET /api/terms/audit','normalize':'POST /api/terms/normalize','name_update':{'updates':[{'term_id':'已登记编号','expected_name':'读取到的当前名称','name':'缩写 中文全称（English Full Name）'}]},'case_rules':'未标记例外时，英文全称每个单词首字母大写；专有大小写使用 case_exceptions 文字列表，整条英文保留原样使用 english_case_exception=true；代码、网址和数学记号保持原样','repair_rule':'脚本先整理中英文顺序、重复中文、大小写和同名重复。原编号、原名历史、笔记和定义保留。仍有歧义时，本地客户端只把本轮相关名称及已有解释集中提交一次普通Terra high补齐，不审稿、不循环；未能确认的名称继续保留，已保存回答不受影响'}
+    guide['term_name_contract']={'audit':'GET /api/terms/audit','normalize':'POST /api/terms/normalize','name_update':{'updates':[{'term_id':'已登记编号','expected_name':'读取到的当前名称','name':'缩写 中文全称（English Full Name）'}]},'case_rules':'未标记例外时，英文全称每个单词首字母大写；专有大小写使用 case_exceptions 文字列表，整条英文保留原样使用 english_case_exception=true；代码、网址和数学记号保持原样','repair_rule':'脚本先整理中英文顺序、重复中文、大小写和同名重复。原编号、原名历史、笔记和定义保留。仍有歧义时，本地客户端只把本轮相关名称及已有解释按 writer_profiles.term_repair 的普通服务配置集中补齐一次，不审稿、不循环；未能确认的名称继续保留，已保存回答不受影响'}
     guide['roles']=public_rules()['roles']
-    guide['coverage_contract'].update({'directory':'GET /api/learning 返回 coverage_plan；每个原文单元有一个负责章节，source_links 仍可被多章引用。未分配材料按原目录补成待讲章节，不能把规划完整算成讲解完成','quote_first':'讲解 parts.source_span 逐字登记原句，仅用于三栏定位；parts.markdown 承接前文连贯解释。回答 parts.question_span 对应真实子问，parts.markdown 先明确作答，再围绕该答案说明依据','preserve':'更新内容沿用旧章节、片段、问题和术语编号，原文、旧版本、笔记与手动已读进度保留','audit':'GET /api/format/audit 分别核对目录、讲解、问答、术语、练习及笔记链接'})
+    guide['coverage_contract'].update({'directory':'GET /api/learning 返回 coverage_plan；每个原文单元有一个负责章节，source_links 仍可被多章引用。逐章模式把未规划原文留在 coverage_plan.deferred，完整目录模式按原目录补成待讲章节；不要用降级章节凑覆盖率，规划完整也不表示讲解完成','quote_first':'讲解用source_groups、plan.source_refs、plan.coverage和parts.source_spans登记原句与范围，脚本恢复原编号用于三栏定位；旧parts.source_span仍兼容；parts.markdown承接前文连贯解释。回答 parts.question_span 对应真实子问，parts.markdown 先明确作答，再围绕该答案说明依据','preserve':'更新内容沿用旧章节、片段、问题和术语编号，原文、旧版本、笔记与手动已读进度保留','audit':'GET /api/format/audit 分别核对目录、讲解、问答、术语、练习及笔记链接'})
     guide['visual_translation']={'read':'GET /api/translations 返回 visual_units，先看原图再确认文字','write':'POST /api/translations/visuals','body':{'images':[{'image_id':'原图编号','original_signature':'读取任务时取得的原图指纹','status':'translated / text_covered_by_ids / no_text / needs_review','labels':[{'original':'原标签','translation':'对应中文'}],'source_ids':[],'unreadable':[],'evidence':{'method':'说明实际怎样核对原图'}}]},'rule':'图片无 OCR 不代表无文字；按图核对或复用已译标签，无法识别如实记录。原图坐标改变后旧核对不再生效'}
     guide['endpoints'].update(translation_groups='POST /api/translations/groups',writing_rules='GET /api/writing/rules',format_audit='GET /api/format/audit')
     guide['public_writing_rules']='GET /api/writing/rules：返回网站当前实际提示词和内容职责，可直接查看与复制；不包含访问令牌'
     guide['translation_reading_groups']='连续翻译只需通过 /api/translations/groups 提交 reading_groups，每组 segments 包含完整中文句及真实 source_ids，脚本据此计算每个原ID的覆盖，不再重复写两份正文。独立原单元也可继续通过 /api/translations 写回；旧译文版本保留。漏项或跨项目编号会明确拒绝'
-    guide['teaching_result_contract']={'request_id':'本次任务唯一编号，重试时保持不变','learning_node_id':'当前章节编号','explanation':{'id':'稳定讲解编号','title':'讲解标题','parts':[LESSON_PART_CONTRACT],'update_rule':'修改已有讲解时提供 expected_version，保留旧 blocks 的编号；只改内容，不删除已有提问来源'},'terms':'复用已有术语或提交名称、定义和直观解释的列表','quizzes':'每个讲解 part 至少一道就地练习，placement 逐项覆盖；选择题优先，也可提交 recall，需 reference_answer 和 explanation；练习栏自动汇总相同题号，无需另生成'}
+    guide['teaching_result_contract']={'request_id':'本次任务唯一编号，重试时保持不变','learning_node_id':'当前章节编号','explanation':{'id':'稳定讲解编号','title':'讲解标题','parts':[LESSON_PART_CONTRACT],'update_rule':'修改已有讲解时提供 expected_version，保留旧 blocks 的编号；只改内容，不删除已有提问来源'},'terms':'复用已有术语或提交名称、定义和直观解释的列表','quizzes':'每个讲解 part 至少一道就地练习，placement 逐项覆盖；遵守 practice_policy，默认选择题且至少四分之三可客观判分，recall 只作少量补充；练习栏自动汇总相同题号，无需另生成'}
     guide['teaching_result_contract']['translations']=[{'file_id':'原文文件编号','translations':[{'source_id':'本章每个待译原文单元的编号','text':'完整中文译文，保留原有结构'}]}]
     guide['teaching_result_contract']['translation_rule']='本章关联的所有待译原文单元必须逐项完成；接口返回缺项编号时只补译文，再提交已有讲解，不重新生成正文'
     guide.update(teaching_context(material(),workspace().read(),core.read_state()))
     guide['question_pool_rule']='GET /api/work 和 POST /api/runs 汇总当前项目全部已保存且需要回答的问题，包括首次提问和追问。问题没有回答、回答已删除，或回答只对应旧问题版本时，都重新进入待答池；只有删除问题本身才退出。按本次 question_version 写回，旧版本任务不能覆盖新问题。草稿只计数，不作为正式问题处理；include_answered=true 只扩大返回范围，不改变 pending 的含义。用户明确要求重答时，用 POST /api/runs 提交 question_ids=[原问题编号]，已经有效回答的问题另加 include_answered=true；不要因此准备全部已答问题'
     guide['question_deletion']={'preview':'POST /api/questions/{question_id}/deletion-preview','preview_body':{'target':'question 或 answer'},'confirm':'POST /api/questions/{question_id}/deletion-confirm','confirm_body':{'confirmation_id':'预览返回的原值','expected_version':'预览返回的 question_version','expected_text':'预览中的问题原话','confirmed':True},'rule':'用户要求删除后，先读取预览，Agent 自行再次核对项目、原编号、问题文字及受影响的追问，再单独提交确认；不能一拿到预览就盲目自动确认。确认5分钟内有效，仅供同一连接使用一次；问题、回答或追问变化后需要重新预览。删除问题保留回答、笔记和练习历史；删除回答会把原问题送回待答池。不要用清空问题输入块代替删除确认'}
-    guide['fast_answer_path']={'start':'POST /api/runs','client_command':'reader_bridge.py daily --out <本轮空目录>','read_group':'GET /api/runs/{run_id}/groups/{group_id}','save':'POST /api/runs/{run_id}/groups/{group_id}/result','statistics':'GET /api/runs','model':'gpt-6.1-terra','effort':'high','service_tier':'default','parallel_groups':2,'rule':'用户手动运行daily客户端；另开干净的Terra high普通服务主调度，读取问题、启动最多两路同配置写作者、等待并汇报；程序附上原图、逐组保存完整结果，最终计入主调度汇报用量；网页不调用模型，主调度不重抄答案'}
+    guide['fast_answer_path']={'start':'POST /api/runs','client_command':'reader_bridge.py daily --out <本轮空目录>','read_group':'GET /api/runs/{run_id}/groups/{group_id}','save':'POST /api/runs/{run_id}/groups/{group_id}/result','statistics':'GET /api/runs',**writer_profile('answer'),'coordinator':writer_profile('coordinator'),'parallel_groups':2,'rule':'用户手动运行daily客户端；另开 writer_profiles.coordinator 指定的干净普通服务主调度，读取问题、按 writer_profiles.answer 启动最多两路写作者、等待并汇报；程序附上原图、逐组保存完整结果，最终计入主调度汇报用量；网页不调用模型，主调度不重抄答案'}
     guide['steps']=[step.replace('每次接手先读取 /api/content 与 /api/learning','首次建立学习路线或导入材料时，按需读取 /api/content 与 /api/learning').replace('从 /api/work 一次取得待回答问题、去重原句、完整原文和已登记术语','回答任务优先用 POST /api/runs 一次准备；旧 /api/work 仅供兼容') for step in guide['steps']]
-    guide['steps'].insert(0,'用户要求回答问题时，优先手动运行 reader_bridge.py daily --out <本轮空目录>；另开干净的Terra high普通服务主调度会话，程序预装材料、规则与原图，最多四个Terra high普通服务写作者并行；主调度最终汇报结束后结算整轮。开发、验收和部署在其他会话进行，单列统计。不要把读取五个大接口作为前置，也不由主对话重抄结果')
+    guide['steps'].insert(0,'用户要求回答问题时，优先手动运行 reader_bridge.py daily --out <本轮空目录>；另开 writer_profiles.coordinator 指定的干净普通服务主调度会话，程序预装材料、规则与原图，按 writer_profiles.answer 指定的模型与档位，最多两路普通服务写作者并行；主调度最终汇报结束后结算整轮。开发、验收和部署在其他会话进行，单列统计。不要把读取五个大接口作为前置，也不由主对话重抄结果')
     guide['endpoints'].update(runs='GET /api/runs',start_run='POST /api/runs')
-    guide['accounting_contract']={'script':'coordinator只表示本地脚本，不能称为完整主调度0 token','codex':'本地客户端读取启动它的Codex整轮日志，包含读取、启动、等待和最终汇报；后台脚本等待task_complete后补齐caller，不调用模型','parent_model_rule':'daily入口另开全新主调度，明确指定gpt-6.1-terra、high与service_tier=default，禁用fast_mode；它与两个写作者均核对实际日志，不继承当前长对话配置；开发对话另外统计，不冒充日常回答成本','complete':'complete_usage和complete_estimated_token_cost_usd只在主对话结束且已采集时返回，未采集留空；同轮开发和其他工作原样计入，不猜测分摊，重叠时间不相加'}
-    guide['media_contract']={'rule':'图、表和空间关系优先显示实际原图；显式要求看图时要读取并引用sources.media_items的真实地址，不只描述图名。简单定义不强行配图。流程可直接用Mermaid，新插图由当前Codex使用绘图工具生成后通过content/files写入，禁止引用不存在的文件。','files':'POST /api/content/files','generated_assets':'daily 写作者已启用 image_generation；实际生成后返回 path、alt 和 question_ids，客户端只接受本组目录或当前会话 generated_images 目录中的真实文件，去除元数据后上传；图像调用和耗时单列，工具未返回账单时不填费用','outline':'复杂讲解可在同一次输出附teaching_outline，不另起规划或审稿调用'}
-    guide['quiz_contract']={'source':'讲解和回答里的习题共用 state.quizzes；正文和练习栏展示同一条记录，作答立即同步，汇总范围是当前项目全部有效习题','lesson_minimum':'每个讲解 part 至少一道，写回时脚本逐项检查；未覆盖的 part 返回准确编号','answer_payload':{'choice':'selected 提交原始选项下标','recall':'response 保存自行作答的原话；对照参考答案后，selected=1 表示自己核对答对，selected=0 表示还没答对，返回 self_assessed=true'},'formats':{'choice':'默认；options、correct_index、explanation、option_explanations','recall':'自行填空、简答、计算、代码或推导；reference_answer、explanation，用户对照参考答案自评，保存 response 与核对结果，不调用判分模型'},'display_order':'显示位置到原options下标的映射；选择题作答提交原下标，不能提交显示位置，历史选择不因位置均衡而改变','quality_flags':'脚本只标记明显的长度线索，不据此阻塞生成或自动循环修复','revise_unanswered':'POST /api/quizzes/{quiz_id}/options，提交expected_options、options、correct_index；只允许调整未作答题的干扰项，原正确答案、编号和记录保留'}
+    guide['accounting_contract']={'script':'coordinator只表示本地脚本，不能称为完整主调度0 token','codex':'干净主调度优先汇总全部逐请求回执，包含读取、启动、等待和最终汇报；旧客户端回退整轮日志。主调度费用另计，不能用本地脚本的零代替','parent_model_rule':'daily入口另开全新主调度，明确指定 writer_profiles.coordinator 的模型、推理档与 service_tier=default，禁用fast_mode；它与写作者分别按各自角色核对实际日志，不继承当前长对话配置；开发对话另外统计，不冒充日常回答成本','complete':'complete_usage和complete_estimated_token_cost_usd只在主对话结束且已采集时返回，未采集留空；同轮开发和其他工作原样计入，不猜测分摊，重叠时间不相加'}
+    guide['media_contract']={'rule':'图、表和空间关系优先显示实际原图；显式要求看图时要读取并引用sources.media_items的真实地址，不只描述图名。简单定义不强行配图。流程可直接用Mermaid，新插图由当前Codex使用绘图工具生成后通过content/files写入，禁止引用不存在的文件。','files':'POST /api/content/files','generated_assets':'daily 写作者已启用 image_generation；实际生成后返回 path、alt、question_ids与可选after_part_id；讲解或回答均插入实际对应part，客户端只接受本组目录或当前会话 generated_images 目录中的真实文件，去除元数据后上传；图像调用和耗时单列，工具未返回账单时不填费用','outline':'同次plan安排正文；讲解按source_groups登记覆盖，流程复用parts的标题、事实与问题，不另起规划或审稿调用'}
+    guide['quiz_contract']={'source':'讲解和回答里的习题共用 state.quizzes；正文和练习栏展示同一条记录，作答立即同步，汇总范围是当前项目全部有效习题','lesson_minimum':'每个讲解 part 至少一道，写回时脚本逐项检查；未覆盖的 part 返回准确编号','answer_payload':{'choice':'selected 提交原始选项下标','recall':'response 保存自行作答的原话；对照参考答案后，selected=1 表示自己核对答对，selected=0 表示还没答对，返回 self_assessed=true'},'formats':{'choice':'默认；options、correct_index、explanation、option_explanations','recall':'少量可选的自主复述；reference_answer、explanation，用户选择展开后对照核对；计算、排序和代码优先用各自客观判分形式'},'display_order':'显示位置到原options下标的映射；选择题作答提交原下标，不能提交显示位置，历史选择不因位置均衡而改变','quality_flags':'脚本只标记明显的长度线索，不据此阻塞生成或自动循环修复','revise_unanswered':'POST /api/quizzes/{quiz_id}/options，提交expected_options、options、correct_index；只允许调整未作答题的干扰项，原正确答案、编号和记录保留'}
     current_material=material();plan=learning_payload(current_material,workspace().read(),core.read_state())
     guide['project']={'id':mid(),'title':current_material['title'],'files':[{'id':f['id'],'name':f.get('name'),'kind':f.get('kind')} for f in current_material.get('reading_files',[])],'current_chapter':next(({'id':n['id'],'title':n['title'],'number':n.get('number'),'status':n['status']} for n in plan['nodes'] if n['id']==plan['selected_id']),None)}
     guide['initial_action']='收到连接说明即接手当前项目，无需用户再次初始化；先读取本接口返回的项目、材料与当前章节。尚无学习目录时按材料建立目录并仅生成首章；已有讲解时停留当前章，优先回答统一问题池。每章先完成非中文翻译，再在同次写作中生成本章讲解、术语和练习。后续章节只在 completion.can_advance 为 true 后开始，不一次讲完整个项目，不代替用户勾选已读'
@@ -336,6 +339,7 @@ def agent_guide():
     for endpoint in ('project','lecture'):guide['endpoints'].pop(endpoint,None)
     guide['endpoints'].update(import_jobs='GET /api/import-jobs',start_import='POST /api/import-jobs',import_status='GET /api/import-jobs/{job_id}')
     guide['import_contract']={'submit':'将文件、网址或仓库提交到 /api/import-jobs，接口返回202与任务编号；解析在后台完成，可继续处理当前内容','outline_mode':'auto 默认识别目录；agent 只显示文件根节点，保留原片段、坐标和建议目录，随后由 Agent 规划学习目录','poll':'按任务编号查询，ready 后使用 file.id；error 时可显式重试，不重新生成已有讲解','translation':'导入只解析，不调用模型翻译；Agent 按本章原编号翻译所有非中文自然语言，再写回成品译文'}
+    guide['client_dependencies']={'packages':list(__import__('reader_agent_contract').CLIENT_DEPENDENCIES),'install':'python -m pip install '+ ' '.join(__import__('reader_agent_contract').CLIENT_DEPENDENCIES),'rule':'先检查当前Python能否导入这些依赖；缺失时在当前项目的独立虚拟环境安装，复用已存在的环境，不改系统Python'}
     guide['client_files']={'rule': '建立连接或开始新一轮回答时，从当前项目接口下载 client_files 列出的全部当前客户端和规则模块放到同一目录；已有旧脚本也要替换，只更新程序文件，不覆盖任务输入、结果和记录；脚本下载不需要模型阅读其正文。使用已登录的本地Codex，访问令牌不写入任务文件；用户选择记住连接后，通过 --remember 保存到系统凭据库，新进程按网站和项目恢复；未选择则只留内存或环境变量'}
     guide['reader_feedback_contract']={'writing_version':writing_guide()['version'],'input_fields':['reader_feedback_latest','confirmed_passage','confirmed_understanding'],'start_run':'POST /api/runs 可附上述字段，随任务进入各组写作输入，不改正文、笔记或已读状态','client_command':'reader_bridge.py daily --out <本轮空目录> --reader-feedback-file <本轮反馈.json或txt>','rule':'用户明确指出旧讲法哪里没懂时，保留其原话作为reader_feedback_latest；只有用户明确确认的部分进入confirmed_passage和confirmed_understanding。没有反馈就省略，不把父回答当作已掌握知识，不重新携带全部聊天历史；针对特定问题的反馈用question_ids限定本次任务','lesson':'首次讲解也采用writing.instructions；reading_context.previous带上一节实际末段，recent_reader_questions带本项目最近四条已回答的真实疑问（最多2400字，不含回答或聊天历史）；只补本节再次需要的理解缺口，不机械加长正文；evidence.transitions登记每个相邻part实际承接的前段原句，当前客户端同次校验，不另起改写；prepare --lesson 支持同一反馈文件。先通读本节，再以连续正文带读者理解。讲解 parts 登记 source_id、source_span 和 markdown，原句仅用于三栏定位，不重复放进讲解；问答 parts 登记 question_span 与 markdown，先回答该子问，再把原因与步骤接着讲清。普通段落用相互承接的句子，数学计算和代码仍可逐步展开。正文、术语和练习仍同次输出，不增加审稿或模型修复阶段'}
     guide['reading_contract']={'read':'GET /api/reading/layout','write':'POST /api/reading/layout','automatic':'导入及读取时，脚本按原编号和坐标生成展示组，不改原文、译文、问答、笔记或已读记录；多页范围由 source_range 给出','group_request':{'expected_revision':'读取时返回的 override_revision','groups':[{'kind':'paragraph / list / figure / table / heading / code / markdown / equation','passage_ids':['同一原文文件内需要合并展示的原编号']} ]},'agent_rule':'只有脚本不能判断排版时才提交分组；只决定原编号怎样成组，不重新抄写或翻译内容。未提交的编号由脚本补回，重复文字不能据此删除','explanation_rule':'一次写作直接返回 blocks，每块包含稳定 id、markdown 和 source_ranges；source_ranges 使用当前项目的 file_id、passage_id，可选 sentence_id、start、end。每块只关联实际解释的原文；整章 source_links 表示引用范围，不能当成每块都已讲解。纯独立讲解不编出处；旧稿保留原编号，能确定的页码与原句由脚本恢复定位，不能确定时保留整章范围'}
@@ -345,15 +349,17 @@ def agent_guide():
     from reader_sequence import FRAMING_CONTRACT
     guide['teaching_result_contract']['explanation']['framing']=FRAMING_CONTRACT
     guide['framework']['framing']=FRAMING_CONTRACT
-    guide['framework']['writer_execution']='teach最终成稿在请求层强制tools=[]、tool_choice=none，不向写作者提供无用文件或工具枚举。必要搜索由当前Codex在准备资料时完成，用teach --research-file传入已核对事实与来源；问答daily仍保留联网搜索和实际图片生成，不为了减少工具调用删必要查证'
-    guide['client_runtime_dependencies']=['requests','zstandard']
+    guide['framework']['writer_execution']='teach与daily均保留当前任务所需的联网查证和实际图片生成；直接提供当前材料和原图，只缩减无关工具说明，不枚举工具。优先复用本项目已打开来源的短摘，缺口继续搜索并打开；--research-file也可提供当前Codex已核对的事实。不固定增加检索、审稿或改写调用'
+    guide['client_runtime_dependencies']=guide['client_dependencies']['packages']
     guide['quiz_contract']['formats'].update(numeric='expected、可选tolerance与unit，脚本核对等价数值',ordering='items、before、reference_order，脚本逐项核对先后约束',code='仅已登记固定runner_id的练习支持隔离编译；当前为lru-arbiter-v1；其他代码仍由当前Codex使用真实环境运行，不能声称页面已经执行')
     guide['framework']['generation']+= '；同次返回framing与parts中的短heading、独立premise与question；阅读流程复用这三项，首尾承接分开，回顾逐part对应'
     guide['framework']['lesson_evidence']=__import__('reader_lesson_checks').EVIDENCE_CONTRACT
     guide['framework']['generation']+='；按当前writing.version生成，相邻part登记前段正文依据；参考recent_reader_questions补本节相关的理解缺口，不另起改写或审稿调用'
     guide['framework']['legacy']+='；旧稿仅在reading-framework.json补缺少的展示元数据与练习关联，不重写正文，新增首尾与流程不计入手动已读分母。Demo文件夹不补生成内容'
-    guide['steps']=[s.replace('最多四个Terra high普通服务写作者','最多两个Terra high普通服务写作者')for s in guide['steps']]
+    guide['steps']=[s.replace('最多四个Terra high普通服务写作者','最多两个按 writer_profiles.answer 配置的普通服务写作者')for s in guide['steps']]
     guide['client_files']={**{name:'GET /api/agent/'+name for name in CLIENT_MODULES},'rule':guide['client_files']['rule']}
+    guide['writer_profiles']=public_profiles()
+    guide['practice_policy']=__import__('reader_practice_policy').practice_policy()
     return guide
 
 class Handler(core.Handler):
@@ -493,7 +499,7 @@ class Handler(core.Handler):
                     if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
                     return self.json(value)
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'framework_version':__import__('reader_generation').VERSION,'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
-                if path=='/api/material':return self.json({**m,'material_revision':material_revision()})
+                if path=='/api/material':return self.json({**__import__('reader_practice_text').display_lesson(m,core.read_state().get('quizzes',[])),'material_revision':material_revision()})
                 history_match=re.fullmatch(r'/api/questions/([^/]+)/history',path)
                 if history_match:
                     q=next((q for r in core.read_state()['rounds']for q in r['questions']if q['id']==history_match[1]),None)
@@ -549,9 +555,10 @@ class Handler(core.Handler):
         except (ValueError,KeyError,OSError) as error:return self.json({'error':str(error)},400)
     def do_POST(self):
         self.context();path=unquote(urlsplit(self.path).path)
-        custom=path in('/api/project-files/file','/api/project-files/action') or bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/(?:answer|draft)',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
+        custom=path in('/api/project-files/file','/api/project-files/action') or bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/(?:answer|draft)',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/outline/edit','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',path):custom=True
         if path=='/api/learning/exclusions':custom=True
+        if re.fullmatch(r'/api/rounds/[^/]+/result',path):custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
         if not self.safe_origin() or not self.authenticated():return self.json({'error':'连接码或提交来源不正确'},403)
         try:
@@ -588,19 +595,24 @@ class Handler(core.Handler):
             if path=='/api/runs':
                 started=time.perf_counter();records=core.read_state();packet=compact_packet(material(),records,data.get('question_ids'),data.get('include_answered') is True);context=teaching_context(material(),workspace().read(),records)
                 packet.update(reader_context_fields(data))
-                row=Runs(mpath().parent).create(mid(),packet);manifest={**Runs.public(row),'question_pool':packet['question_pool'],'groups':[{'id':key,'question_ids':group['question_ids'],'input_url':'/api/runs/'+row['id']+'/groups/'+key,'result_url':'/api/runs/'+row['id']+'/groups/'+key+'/result'} for key,group in row['groups'].items()],'reference_url':'/api/runs/'+row['id']+'/reference','translation_queue':context['translation_queue'],'current_task':context['current_task'],'prepare_seconds':round(time.perf_counter()-started,4),'instructions':['这次任务已经准备好，不必先再读 guide/content/learning/progress/work，也不打印整篇材料','一次把各组输入保存到本地文件，立即新建最多两位 Terra high 写作者，fork_turns=none；不要沿用旧写作者的长历史','各组自己按需查资料；完成后直接写 result JSON 文件，主对话不抄写正文，脚本逐组及时保存','只有用户勾选完成才进入下一节；这次写回不改用户位置、笔记或阅读进度']}
+                row=Runs(mpath().parent).create(mid(),packet);manifest={**Runs.public(row),'question_pool':packet['question_pool'],'groups':[{'id':key,'question_ids':group['question_ids'],'input_url':'/api/runs/'+row['id']+'/groups/'+key,'result_url':'/api/runs/'+row['id']+'/groups/'+key+'/result'} for key,group in row['groups'].items()],'reference_url':'/api/runs/'+row['id']+'/reference','translation_queue':context['translation_queue'],'current_task':context['current_task'],'prepare_seconds':round(time.perf_counter()-started,4),'instructions':['这次任务已经准备好，不必先再读 guide/content/learning/progress/work，也不打印整篇材料','一次把各组输入保存到本地文件，立即按 writer_profiles.answer 新建最多两位独立写作者，fork_turns=none；不要沿用旧写作者的长历史','各组自己按需查资料；完成后直接写 result JSON 文件，主对话不抄写正文，脚本逐组及时保存','只有用户勾选完成才进入下一节；这次写回不改用户位置、笔记或阅读进度']}
                 return self.json(manifest)
             run_event=re.fullmatch(r'/api/runs/(run-[a-f0-9]{20})/events',path)
             if run_event:return self.json(Runs.public(Runs(mpath().parent).update(run_event[1],data)))
+            legacy_result=re.fullmatch(r'/api/rounds/([^/]+)/result',path)
+            if legacy_result:
+                __import__('reader_practice_policy').validate_practice(data.get('quizzes'))
+                return self.json(core.mutate(lambda state:save_result(state,legacy_result[1],data,actor=self.lesson_actor())))
             run_result=re.fullmatch(r'/api/runs/(run-[a-f0-9]{20})/groups/([1-4])/result',path)
             if run_result:
                 store=Runs(mpath().parent);run=store.get(run_result[1]);group=run['groups'].get(run_result[2])
                 if not group:raise ValueError('没有这个写作组')
-                if run['packet'].get('framework_version')==__import__('reader_generation').VERSION and data.get('framework_version')!=run['packet']['framework_version']:
+                if __import__('reader_generation').requires_update(run['packet'],data):
                     return self.json({'code':'writer_update_required','error':'本次任务需要当前写作结构，请下载 guide.client_files 的最新客户端；保留已有原稿，只补齐结构和准确缺项，不重新生成已保存内容','required_version':__import__('reader_generation').VERSION},409)
                 if data.get('framework_version')==__import__('reader_generation').VERSION:
                     from reader_generation import normalize_output
                     data=normalize_output(data,questions=[q for q in run['packet']['questions']if q['id']in group['question_ids']],sources=material()['passages']+run['packet']['sources'])
+                __import__('reader_practice_policy').validate_practice(data.get('quizzes'))
                 answers=data.get('answers',[])
                 if not isinstance(answers,list) or any(not isinstance(a,dict) or a.get('question_id') not in group['question_ids'] for a in answers):raise ValueError('回答必须属于当前写作组')
                 store.update(run['id'],{'group_id':group['id'],'type':'writeback_started'});saved=[];issues=[];seen_terms=set()
@@ -636,16 +648,16 @@ class Handler(core.Handler):
                         if prior.get('complete'):return self.json(prior)
                         # 正文已保存时，只补术语和练习；同一提交不再次更新正文版本。
                         def complete_assets(state):
+                            __import__('reader_practice_policy').validate_practice(data.get('quizzes'))
                             saved=prior['explanation'];assets=append_assets(state,data,node_id,saved['id'],saved['passage_ids'],core.stamp)
                             receipt={**prior,**assets};state['teaching_results'][request_id]=receipt;return receipt
                         return self.json(core.mutate(complete_assets))
                     task=resolve_task(records,node_id,self.lesson_actor(),plan['selected_id'],data.get('lesson_task_id'))
-                    if task and task.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and data.get('writing_version')!=task['writing_version']:
-                        return self.json({'code':'writer_update_required','error':'本次讲解任务需要当前写作规则；请下载 guide.client_files 的当前客户端，保留已有稿件和原编号，不需要重新配对','required_writing_version':task['writing_version']},409)
-                    if task and task.get('framework_version')==__import__('reader_generation').VERSION and data.get('framework_version')!=task['framework_version']:
-                        return self.json({'code':'writer_update_required','error':'本节任务需要当前讲解结构，请先更新 guide.client_files 的客户端；原稿保留，补齐 plan、小标题和练习位置后提交','required_version':__import__('reader_generation').VERSION},409)
+                    if task and __import__('reader_generation').requires_update(task,data):
+                        return self.json({'code':'writer_update_required','error':'本节任务需要当前写作合同，请先更新 guide.client_files 中的客户端；已有原稿保留，按准确缺项补齐后提交','required_version':__import__('reader_generation').VERSION},409)
                     explanation=data.get('explanation')
                     if not isinstance(explanation,dict):raise ValueError('请同时提交本节讲解、术语和练习')
+                    __import__('reader_practice_policy').validate_practice(data.get('quizzes'))
                     for batch in data.get('translations',[]):
                         if not isinstance(batch,dict):raise ValueError('章节译文需要按文件提交对象')
                         extra=workspace().translations({**batch,'complete':False})
@@ -670,15 +682,22 @@ class Handler(core.Handler):
                     return self.json(core.mutate(finish_lesson))
             if path=='/api/content/normalize':
                 with core.LOCK:return self.json(workspace().normalize_files(data))
-            if path=='/api/learning/outline':
+            if path in ('/api/learning/outline','/api/learning/outline/edit'):
                 with core.LOCK:
                     store=workspace();value=store.read();document=material();records=core.read_state();plan=learning_payload(document,value,records)
+                    partial=path.endswith('/edit')
+                    if partial and (type(data.get('expected_revision'))is not int or data['expected_revision']!=value['revision']):raise ValueError('编辑目录前请读取 GET /api/learning，并提交它的最新 expected_revision')
+                    submitted={**data,'nodes':edit_nodes(plan['nodes'],data)}if partial else data
                     mode=data.get('planning_mode',value.get('planning_mode')or('chapterwise'if getattr(self,'_remote_machine',False)and not value.get('learning_outline')else'complete'))
+                    if partial:mode='chapterwise'
                     if mode not in('chapterwise','complete'):raise ValueError('规划模式只能是 chapterwise 或 complete')
-                    excluded,_=excluded_sources(document,value);nodes=validate_outline(data,document,excluded,mode=='chapterwise')
+                    excluded,_=excluded_sources(document,value);nodes=validate_outline(submitted,document,excluded,mode=='chapterwise')
+                    protect_taught_nodes(plan['nodes'],nodes,document)
                     if getattr(self,'_remote_machine',False)or mode=='chapterwise':chapterwise_outline_guard(value,nodes,{n['id']for n in plan['nodes']},completion_payload(document,value,records)['can_advance'])
+                    changes=changes_between(plan['nodes'],nodes)
                     value['learning_outline']=nodes;value['planning_mode']=mode;store.write(value,data.get('expected_revision'))
-                return self.json(learning_payload(material(),workspace().read(),core.read_state()))
+                    result=learning_payload(material(),store.read(),core.read_state());result['changes']=changes
+                return self.json(result)
             if path=='/api/learning/exclusions':
                 with core.LOCK:
                     store=workspace();value=store.read();before=copy.deepcopy(value.get('learning_exclusions',[]));rows=update_exclusions(material(),value,data)

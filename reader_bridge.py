@@ -1,3 +1,4 @@
+from reader_writer_profiles import writer_profile,writer_label,public_profiles
 """由用户手动运行：整理写作任务，或把模型已经输出的结果逐题写回阅读器。"""
 from pathlib import Path
 from urllib.request import Request, build_opener,HTTPRedirectHandler
@@ -99,8 +100,8 @@ class Bridge:
             for group,payload in zip(manifest['groups'],payloads):
                 identity=group['id'];target=out/('result-'+identity+'.json');payload['reference_file']=str((out/'reference.json').resolve());payload['output_file']=str((out/('result-'+identity+'.draft.json')).resolve())
                 payload['publish_command']='使用同一Python执行 reader_worker.py finish --out '+str(out.resolve())+' --group '+identity+'，脚本只检查JSON、编号与缺项，然后一次发布结果，不重新写作'
-                prompt=out/('prompt-'+identity+'.txt');prompt.write_text('使用 Terra high，只处理本组问题。先把回答讲清，再派生术语和选择题。结果只写一次到 output_file，然后执行 publish_command 交给脚本检查和发布，最终仅回复文件路径和条数，不再输出整份JSON，不增加审稿或修复循环。\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':')),'utf8')
-                tasks.append({'group_id':identity,'model':'gpt-6.1-terra','reasoning_effort':'high','fork_turns':'none','message':'先调用 reader_worker.py 的 input 动作读取一次指定输入（该动作会同时记录真实开始时间和本次会话编号）；直接完成写作并保存 output_file，最终只返回路径和条数。输入目录：'+str(out.resolve())+'；组号：'+identity,'input_file':str(prompt.resolve()),'output_file':str(target.resolve()),'worker_script':str(worker_script.resolve())})
+                prompt=out/('prompt-'+identity+'.txt');prompt.write_text('使用 '+writer_label('answer')+'，只处理本组问题。先把回答讲清，再派生术语和选择题。结果只写一次到 output_file，然后执行 publish_command 交给脚本检查和发布，最终仅回复文件路径和条数，不再输出整份JSON，不增加审稿或修复循环。\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':')),'utf8')
+                tasks.append({'group_id':identity,'model':writer_profile('answer')['model'],'reasoning_effort':writer_profile('answer')['effort'],'fork_turns':'none','message':'先调用 reader_worker.py 的 input 动作读取一次指定输入（该动作会同时记录真实开始时间和本次会话编号）；直接完成写作并保存 output_file，最终只返回路径和条数。输入目录：'+str(out.resolve())+'；组号：'+identity,'input_file':str(prompt.resolve()),'output_file':str(target.resolve()),'worker_script':str(worker_script.resolve())})
             result={'run_id':self.run_id,'questions':manifest['question_count'],'groups':len(tasks),'tasks':tasks,'script_seconds':round(time.perf_counter()-started,4),'model_calls':0,'dispatch':'现在连续派发全部tasks，不在各组之间检索、写作或等待；每组使用全新历史；生成结果后运行 reader_bridge.py collect 自动写回和提取真实日志用量'}
             environment=dict(os.environ)
             if self.remote:environment['MANUAL_READER_TOKEN']=self.headers['Authorization'].removeprefix('Bearer ')
@@ -126,7 +127,7 @@ class Bridge:
             questions=[q for q in packet['questions'] if q['id'] in ids]
             from reader_work import group_packet
             shared_text=json.dumps(group_packet(packet,ids),ensure_ascii=False,separators=(',',':'))
-            prompt=('使用 gpt-6.1-terra，high 思考档，直接完成下面的阅读回答任务。'
+            prompt=('使用 '+writer_label('answer')+'，直接完成下面的阅读回答任务。'
                     '共同材料和规范已在输入中，不再读文件、不操作阅读器、不发送进度说明。'
                     '回答、术语和练习一起输出为结果 JSON，由脚本负责逐项保存。'
                     '确实缺少外部事实时才检索；不加审稿 Agent，不循环修复。\n'

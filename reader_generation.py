@@ -2,19 +2,62 @@
 import copy,re
 
 VERSION='reader-framework-v3'
-PLAN_CONTRACT={'target':'当前要解决的事','direct_answer':'先交代的答案','units':[{'id':'u1','say':'实际要讲的内容，不写任务说明','needs':[],'source_refs':[{'source_id':'输入中的真实来源编号','quote':'原样表达'}]}],'order':['u1'],'stop_when':'已经讲清到哪里'}
+PLAN_CONTRACT={'target':'当前要解决的事','direct_answer':'先交代的答案','units':[{'id':'u1','say':'实际要讲的内容，不写任务说明','needs':[],'source_refs':[{'source_id':'输入中的真实来源编号','quote':'原样表达'}]}],'order':['u1'],'stop_when':'已经讲清到哪里','coverage':'仅讲解任务：按输入source_groups逐组填写 {组编号:{unit_id:真实单元编号,part_id:真实讲解编号,quote:本组实际讲解正文短摘句}}；问答不需要'}
 PLACEMENT_CONTRACT={'lesson':{'kind':'lesson','after_part_id':'讲解parts中的id'},'answer':{'kind':'answer','question_id':'原问题编号','after_part_id':'该回答parts中的id'}}
+
+def requires_update(task,result):
+    """只约束按新合同领取的任务；已存内容和旧任务继续按原合同读取。"""
+    writing=__import__('reader_prompts').WRITING_VERSION
+    return task.get('framework_version')==VERSION and result.get('framework_version')!=VERSION or task.get('writing_version')==writing and result.get('writing_version')!=writing
 
 def _text(value):return value.strip()if isinstance(value,str)else''
 def blank_source(source):
     return source.get('kind')in ('paragraph','text','line','whitespace')and not any(_text(source.get(k))for k in ('en','zh','original','translation','excerpt','text'))and not(source.get('src')or source.get('media_items'))
+
+def source_texts(source):
+    """文字引用核对原句；非文字原件也可用实际名称或文件名定位。"""
+    values=[str(source.get(k)or'')for k in ('en','zh','original','translation','excerpt','text')]
+    if source.get('kind')in('image','visual','page_image','scan','table','figure'):
+        values += [str(source.get(k)or'')for k in ('alt','name','caption')]
+        values += [str(m.get('alt')or m.get('name')or'')for m in source.get('media_items',[])if isinstance(m,dict)]
+        if source.get('src'):values.append(str(source['src']).split('?')[0].rsplit('/',1)[-1])
+    return values
+
+def source_groups(sources):
+    """把连续的短字幕登记为小组；代码、图表和完整长段保留原来的边界。"""
+    groups=[];current=[];size=0;previous_file=None
+    def flush():
+        nonlocal current,size
+        if current:groups.append({'id':'g'+str(len(groups)+1),'source_ids':[s['id']for s in current]});current=[];size=0
+    for source in sources:
+        if blank_source(source):continue
+        text=source.get('original')or source.get('en')or source.get('zh')or'';kind=source.get('kind');file=source.get('file_id')
+        separate=kind in('image','visual','page_image','scan','code','table','equation','formula')or len(text)>500
+        if current and (file!=previous_file or separate or size+len(text)>500):flush()
+        current.append(source);size+=len(text);previous_file=file
+        if separate:flush()
+    flush();return groups
+
+def apply_group_coverage(plan,parts,sources):
+    """每组必须指出实际讲解及其原句；只据显式登记恢复原编号。"""
+    groups=source_groups(sources);expected={g['id']:g for g in groups};coverage=plan.get('coverage');by_part={p['id']:p for p in parts};units={u['id']for u in plan['units']};quotes=set()
+    if not groups:return {'groups':0,'covered_groups':0,'source_ids':0}
+    if not isinstance(coverage,dict)or set(coverage)!=set(expected):raise ValueError('本章每个原文组都需要正文证据，缺少：'+','.join(sorted(set(expected)-set(coverage or{}))))
+    for identity,group in expected.items():
+        row=coverage[identity];part=by_part.get(row.get('part_id'));uid=row.get('unit_id');quote=_text(row.get('quote'))
+        compact=lambda text:re.sub(r'\s+|[`*]','',str(text))
+        if not part or uid not in units or uid not in part.get('unit_ids',[]):raise ValueError('原文组没有对应到实际讲解单元：'+identity)
+        if len(compact(quote))<8 or compact(quote)not in compact(part['markdown']):raise ValueError('原文组的讲解证据没有逐字出现在正文：'+identity)
+        if compact(quote)in quotes:raise ValueError('不同原文组需要摘录各自实际讲解的句子，不重复同一句凑覆盖：'+identity)
+        quotes.add(compact(quote));part['source_ids']=list(dict.fromkeys(part.get('source_ids',[])+group['source_ids']))
+    return {'groups':len(groups),'covered_groups':len(coverage),'source_ids':len({sid for g in groups for sid in g['source_ids']})}
 
 def part_id(part,index):
     identity=part.get('id')or'ap'+str(index+1)
     if not isinstance(identity,str)or not re.fullmatch(r'[A-Za-z0-9_-]{1,70}',identity):raise ValueError('内容部分的 id 需要使用字母、数字、下划线或连字符')
     return identity
 
-def display_parts(question):
+def display_parts(question,quizzes=()):
     """旧分段补齐展示字段；不改回答正文、问题版本或已读哈希。"""
     rows=question.get('answer_parts')
     if not isinstance(rows,list):return question
@@ -24,6 +67,8 @@ def display_parts(question):
         part=copy.deepcopy(row);part.setdefault('id','ap'+str(i+1));part.setdefault('unit_ids',[])
         part.setdefault('markdown','\n\n'.join(str(part.get(k)or'')for k in ('direct_answer','explanation')if part.get(k)))
         if not part['markdown']:return question
+        if quizzes:
+            part['display_markdown']=__import__('reader_practice_text').clean(part['markdown'],quizzes)[0]
         parts.append(part)
     return {**question,'answer_parts':parts}
 
@@ -37,7 +82,7 @@ def validate_plan(plan,sources=()):
     by_id={u['id']:u for u in units};known={s['id']:s for s in sources};seen=set()
     for identity in order:
         unit=by_id[identity]
-        if not _text(unit.get('say'))or not isinstance(unit.get('needs'),list)or not set(unit['needs'])<=seen:raise ValueError('每个内容单元需要具体说明，前置单元要先出现')
+        if not _text(unit.get('say'))or not isinstance(unit.get('needs'),list)or not set(unit['needs'])<=seen|{'普通中文','四则运算'}:raise ValueError('每个内容单元需要具体说明，前置单元要先出现')
         refs=unit.get('source_refs',[])
         if not isinstance(refs,list):raise ValueError('source_refs 需要是列表')
         for ref in refs:
@@ -45,16 +90,17 @@ def validate_plan(plan,sources=()):
             if not isinstance(ref,dict)or not _text(ref.get('quote')):raise ValueError('来源引用需要保留原句')
             if known:
                 source=known.get(ref.get('source_id'));quote=re.sub(r'\s+','',ref['quote'])
-                if source is None or not any(quote in re.sub(r'\s+','',str(source.get(k)or''))for k in ('en','zh','original','translation','excerpt','text')):raise ValueError('plan 引用没有对应到输入原句：'+str(ref.get('source_id')))
+                if source is None or not any(quote in re.sub(r'\s+','',text)for text in source_texts(source)):raise ValueError('plan 引用没有对应到输入原句：'+str(ref.get('source_id')))
         seen.add(identity)
     return copy.deepcopy(plan)
 
-def normalize_output(value,questions=(),sources=(),lesson=False,required_source_ids=(),reading_context=None):
+def normalize_output(value,questions=(),sources=(),lesson=False,required_source_ids=(),reading_context=None,practice_policy=None):
     """把演示和通用客户端装成同一份输出；原始模型文件由调用者另存。"""
     if not isinstance(value,dict):raise ValueError('写作结果需要是 JSON 对象')
     if lesson and not (value.get('framing')or value.get('explanation',{}).get('framing')):raise ValueError('本次新讲解需要章首承接、阅读流程、逐段前提与问题及章末回顾；请保留已有正文，只补缺失结构')
     data=__import__('reader_sequence').prepare_output(value)if lesson else copy.deepcopy(value);data['framework_version']=VERSION
     plan=validate_plan(data.get('plan'),sources);data['plan']=plan
+    unit_sources={u['id']:[r['source_id']for r in u.get('source_refs',[])]for u in plan['units']}
     blanks={s['id']for s in sources if blank_source(s)}
     if blanks:
         # 原始空行仍留在材料中；它没有可讲解的文字，不作为正文定位锚点。
@@ -62,6 +108,15 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
         data['ignored_empty_source_ids']=sorted(blanks)
     media={s['id']:s.get('src')or(s.get('media')or{}).get('src')for s in sources}
     def resolve_images(part):
+        # 逐字核对过的原句通过 unit_ids 归属于本部分，不要求模型再抄一份编号。
+        inherited=[sid for uid in part.get('unit_ids',[])for sid in unit_sources.get(uid,[])if sid not in blanks]
+        ordered=[s['id']for s in sources];positions={sid:i for i,sid in enumerate(ordered)}
+        for span in part.get('source_spans',[]):
+            first=positions.get(span.get('first_source_id'));last=positions.get(span.get('last_source_id'))
+            if first is None or last is None or first>last:raise ValueError('连续来源范围必须使用输入中顺序正确的真实首尾编号')
+            inherited.extend(ordered[first:last+1])
+        part['source_ids']=list(dict.fromkeys(part.get('source_ids',[])+inherited))
+        if sources and not set(part['source_ids'])<={s['id']for s in sources}:raise ValueError('正文来源包含输入以外的编号；外部资料应使用正文引用链接')
         def resolve(match):
             src=media.get(match[1])
             if not src:raise ValueError('引用的原图编号没有可读取图片：'+match[1])
@@ -80,6 +135,8 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
             if not _text(part.get('heading')or part.get('reading_heading')):raise ValueError('讲解部分缺少小标题：'+part['id'])
             resolve_images(part)
         if len({p['id']for p in parts})!=len(parts):raise ValueError('讲解部分编号重复')
+        if data.get('writing_version')==__import__('reader_prompts').WRITING_VERSION and __import__('reader_prompts').WRITING_VERSION.endswith('coverage'):
+            data['source_group_audit']=apply_group_coverage(plan,parts,sources)
         headings=[re.sub(r'[^\w\u3400-\u9fff]','',_text(p.get('heading')or p.get('reading_heading'))).casefold()for p in parts]
         if len(set(headings))!=len(headings):raise ValueError('讲解小标题重复，请把每一部分实际回答的疑问写清楚')
         narrative=data.get('narrative',explanation.get('narrative'))
@@ -87,6 +144,9 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
         if data.get('objectives'):explanation['objectives']=copy.deepcopy(data['objectives'])
         explanation['parts']=parts;explanation.pop('blocks',None);data['explanation']=explanation
         __import__('reader_sequence').validate_context(explanation,reading_context)
+        if not __import__('reader_lesson_checks').requirements(sources) and explanation.get('evidence',{}).get('facts'):
+            explanation['evidence']['facts']=[]
+            data.setdefault('script_processing',{})['unused_parameter_evidence_removed']=True
         __import__('reader_lesson_checks').validate(explanation,sources,require_transitions=data.get('writing_version')==__import__('reader_prompts').WRITING_VERSION)
         covered={s for p in parts for s in p.get('source_ids',[])+([p['source_id']]if p.get('source_id')else[])}
         structural={s['id']for s in sources if s.get('kind')=='heading'or s.get('heading')or blank_source(s)}
@@ -120,6 +180,10 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
         if not term.get('name')and term.get('chinese')and term.get('english'):
             term['name']=(term.get('abbreviation','').strip()+' 'if term.get('abbreviation')else'')+term['chinese'].strip()+'（'+term['english'].strip()+'）'
     from reader_contract import normalize_quiz
+    __import__('reader_practice_policy').validate_practice(data['quizzes'],practice_policy)
+    for quiz in data['quizzes']:
+        if quiz.get('type')=='numeric'and isinstance(quiz.get('unit_aliases'),list):
+            quiz['unit_aliases']={row['unit']:row['multiplier']for row in quiz['unit_aliases']}
     data['quizzes']=[normalize_quiz(q)for q in data['quizzes']]
     for quiz in data['quizzes']:
         options=quiz.get('options');index=quiz.get('correct_index');pos=quiz.get('placement')
@@ -142,6 +206,13 @@ def normalize_output(value,questions=(),sources=(),lesson=False,required_source_
         practiced={q['placement']['after_part_id']for q in data['quizzes']}
         missing=set(owners)-practiced
         if missing:raise ValueError('每个讲解片段至少需要一道就地练习；以下片段缺题：'+','.join(sorted(missing)))
+    duplicates=[]
+    for part in (parts if lesson else [p for a in answers.values()for p in a['parts']]):
+        clean,removed=__import__('reader_practice_text').clean(part['markdown'],data['quizzes'])
+        if removed:
+            if not clean:raise ValueError('本部分只有练习，没有讲解正文：'+part['id'])
+            part['markdown']=clean;duplicates.extend({'part_id':part['id'],'quiz':q}for q in removed)
+    if duplicates:data['script_processing']={'duplicate_practice_text_removed':duplicates,'quiz_records_unchanged':True}
     return data
 
 def practice_placements(state,material):

@@ -4,7 +4,7 @@ from pathlib import Path
 ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
 from reader_questions import answer_body,decorate_question
 from reader_media import annotate_questions,ensure_visible_sources,ensure_result_media
-from reader_prompts import TEACHING_METHOD
+from reader_prompts import TEACHING_METHOD,writing_method
 from reader_contract import writing_guide,canonical_term
 from reader_speech import Engine
 from reader_execute import store_generated_assets,source_images
@@ -35,7 +35,7 @@ class ReaderContracts(unittest.TestCase):
         material={'passages':[{'id':'p1','kind':'image','src':'/figure.png','alt':'电路图'}]};state={'rounds':[{'questions':[{'id':'q1','passage_id':'p1','text':'这张图是什么'}]}]};result={'answers':[{'question_id':'q1','text':'解释'}]}
         self.assertTrue(ensure_result_media(material,state,result));self.assertIn('/figure.png',result['answers'][0]['text'])
     def test_prompt_uses_one_writing_call(self):
-        self.assertIn('同一次写作',TEACHING_METHOD);self.assertEqual(writing_guide()['instructions'].count(TEACHING_METHOD),1)
+        self.assertIn('同一次写作',TEACHING_METHOD);self.assertEqual(writing_guide()['instructions'].count(writing_method('answer')),1);self.assertEqual(writing_guide('lesson')['instructions'].count(writing_method('lesson')),1)
     def test_capitalization_and_chinese_english_order(self):
         self.assertEqual(canonical_term('矩形剖分（rectangle dissection）'),'矩形剖分（Rectangle Dissection）')
     def test_ordinary_pdf_text_does_not_attach_the_whole_page(self):

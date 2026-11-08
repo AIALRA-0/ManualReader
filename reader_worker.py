@@ -1,4 +1,4 @@
-"""让写作者一次读取输入并记录实际会话；用量只从该会话日志取得。"""
+"""记录写作者和主对话的实际用量；新执行器优先逐请求回执，旧客户端保留日志读取。"""
 from pathlib import Path
 import argparse,datetime,json,os
 
@@ -18,6 +18,7 @@ def conversation_usage(identity,turn_id=None,cursor=None,session_file=None,at=No
             except ValueError:
                 if not line.endswith(b'\n'):log.seek(offset);break
                 continue
+            if not isinstance(row,dict)or not isinstance(row.get('payload',{}),dict):continue
             value=row.get('payload',{});kind=value.get('type')
             if kind=='thread_settings_applied' and 'service_tier' in value.get('thread_settings',{}):cursor['tier']=value['thread_settings']['service_tier']
             if kind=='task_started':
@@ -51,21 +52,25 @@ def external_tool_usage(events):
     for line in events:
         try:row=json.loads(line)
         except ValueError:continue
+        if not isinstance(row,dict):continue
         item=row.get('item',{})
+        if not isinstance(item,dict):continue
         if row.get('type')=='item.completed' and item.get('type')=='web_search':calls[item.get('id')]=item.get('action',{}).get('type','other')
     summary={'web_search_calls':len(calls),'reported_actions':{kind:list(calls.values()).count(kind) for kind in set(calls.values())},'actions_complete':False,'source':'cli_first_action_summary'}
     identity=None
     for line in events:
         try:row=json.loads(line)
         except ValueError:continue
-        if row.get('type')=='thread.started':identity=row.get('thread_id');break
+        if isinstance(row,dict)and row.get('type')=='thread.started':identity=row.get('thread_id');break
     if identity:
         roots=[Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'sessions']
         log=next((p for root in roots if root.exists() for p in root.rglob('*'+identity+'.jsonl')),None)
         if log:
             records=[]
             for line in log.read_text('utf8',errors='replace').splitlines():
-                try:records.append(json.loads(line))
+                try:
+                    item=json.loads(line)
+                    if isinstance(item,dict)and isinstance(item.get('payload',{}),dict):records.append(item)
                 except ValueError:continue
             starts=[i for i,row in enumerate(records) if row.get('payload',{}).get('type')=='task_started']
             if starts:records=records[starts[-1]:]
@@ -84,7 +89,9 @@ def runtime_usage(meta,coordinator=None):
     if not log:return None
     rows=[]
     for line in log.read_text('utf8',errors='replace').splitlines():
-        try:rows.append(json.loads(line))
+        try:
+            item=json.loads(line)
+            if isinstance(item,dict)and isinstance(item.get('payload',{}),dict):rows.append(item)
         except ValueError:continue
     starts=[i for i,row in enumerate(rows) if row.get('payload',{}).get('type')=='task_started']
     if not starts:return None

@@ -110,6 +110,8 @@ Figure 5.2 Exercises from the current chapter; optional automatic checking evalu
 
 See the [sectioned gallery](docs/features.md) for term modes, deletion confirmation, autosave, and loading states
 
+Sol high writes the lesson or answers, reusable terms and placed exercises in one ordinary-service pass. Sol low handles name-only repairs and clean coordination. The client reuses relevant excerpts from pages actually opened in the same project, preserves correct content during a single field patch, and records model usage receipts including coordination. See [the generation flow and public prompt source](docs/generation-flow.md) and [generation validation](docs/generation-validation.md). Existing material, notes, practice attempts and manual reading progress remain intact.
+
 ### 3.5 How can I save color combinations
 
 Settings include eight light/dark palettes. Save multiple favorites, choose one default, or edit seven highlight and progress colors and save a custom palette. Existing colors stay in place until you choose a combination
@@ -190,7 +192,7 @@ The running code reuses calculated learning data, avoids repeated translation re
 
 Deterministic checks and browser tests cover answer editing, chapter-bound writeback, restart recovery, manual completion, double-ring progress, automatic checking, and desktop/mobile layouts. Large-project measurements use a 2,271-passage exam project and an interview with dozens of saved questions. See [validation](docs/validation.md) and [performance](docs/performance.md) for actual results, conditions, and reproduction
 
-This version passes 99 deterministic tests. The earlier paired public HTTPS benchmark used 48 chapter changes per project per version: EXAM2 median 756 → 626 ms and P95 2037 → 1386 ms; interview median 511 → 422 ms and P95 670 → 540 ms. See [performance methodology](docs/performance.md) for maxima and conditions
+This version passes 114 deterministic tests. The earlier paired public HTTPS benchmark used 48 chapter changes per project per version: EXAM2 median 756 → 626 ms and P95 2037 → 1386 ms; interview median 511 → 422 ms and P95 670 → 540 ms. See [performance methodology](docs/performance.md) for maxima and conditions
 
 Answers and explanations share the public [writing rules](reader_prompts.py). Writers actively search authoritative sources for missing historical, naming or specification facts, then answer the actual question. See [cross-domain writing tests](docs/writing-quality.md) for timing, usage and scope
 

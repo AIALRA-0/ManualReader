@@ -21,7 +21,7 @@ class SearchContract(unittest.TestCase):
             self.assertIn('web_search="live"',args)
             self.assertIn('service_tier="default"',args)
             self.assertIn('model_reasoning_effort="high"',args)
-            self.assertEqual(args[args.index('-m')+1],'gpt-6.1-terra')
+            self.assertEqual(args[args.index('-m')+1],'gpt-6.1-sol')
             self.assertNotIn('web_search', [args[i+1]for i,x in enumerate(args)if x=='--disable'])
 
 if __name__=='__main__':unittest.main()
