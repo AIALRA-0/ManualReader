@@ -8,7 +8,7 @@
 
 </div>
 
-The local stability candidate adds a compact agent bootstrap, selective term completion, and recoverable usage receipts while preserving the existing reading workflow. It has not been deployed or published; the live release remains v0.4.2. See the [handoff notes](docs/stability-handoff.md) for scope and checks.
+Version 0.4.3 adds a compact agent bootstrap, selective term completion, and recoverable usage receipts while preserving the existing reading workflow. Keep your existing databases, source files, and settings when upgrading; old content is not regenerated automatically. See the [handoff notes](docs/stability-handoff.md) for scope and checks.
 
 <div align="center">
 
