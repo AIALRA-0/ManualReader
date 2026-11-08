@@ -1,0 +1,25 @@
+CHANGELOG.md
+  s_1c46d58ed67333::t_144576517f13d8 1
+README.en.md
+  s_1c46d58ed67333::t_144576517f13d8 11
+README.md
+  s_1c46d58ed67333::t_4c7f91faf94e88 55,115
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_94e812422a7573 3,7,9,19,21,23,27,29,31,35,37,46
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "98403c09ee206b11b21836c4d9c8dfa55c0a0679",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
