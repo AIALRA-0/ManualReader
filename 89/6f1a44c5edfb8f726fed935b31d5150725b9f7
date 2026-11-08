@@ -1,0 +1,54 @@
+reader_term_quality.py
+  s_1c46d58ed67333::t_0d62ea20006028 1-55,61-82
+  s_1c46d58ed67333::t_5c476404c16481 56-60
+docs/term-quality.md
+  s_1c46d58ed67333::t_e52ebc3fa2ce8d 1-21
+static/remote-ui.js
+  s_1c46d58ed67333::t_cb9666599bd95a 7
+static/app.js
+  s_1c46d58ed67333::t_cb9666599bd95a 43
+reader_server.py
+  s_1c46d58ed67333::t_cb9666599bd95a 120-121,317,480,792
+static/index.html
+  s_1c46d58ed67333::t_cb9666599bd95a 18,35
+Demo/test_term_quality.py
+  s_1c46d58ed67333::t_e4b1c1d8f5a898 1-57,67-103
+  s_1c46d58ed67333::t_518236cc39915a 58-66
+reader_generation.py
+  s_1c46d58ed67333::t_6bc25334d917e0 138
+  s_1c46d58ed67333::t_e8decdd71c3ae0 182-183
+CHANGELOG.md
+  s_1c46d58ed67333::t_b79483097a9708 1-7
+README.en.md
+  s_1c46d58ed67333::t_5a570636d2312d 115-116
+README.md
+  s_1c46d58ed67333::t_32381ca5e60158 113-114
+docs/agent-api.md
+  s_1c46d58ed67333::t_30c60e3f3af43f 47,55-56
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_43b98eec302b8a 70-73
+reader_agent_contract.py
+  s_1c46d58ed67333::t_4123a9d09a509a 2
+reader_prompts.py
+  s_1c46d58ed67333::t_5d6f342d59aa36 3-4,34
+reader_teaching.py
+  s_1c46d58ed67333::t_e22d645050ff36 117-118
+reader_writer_schema.py
+  s_1c46d58ed67333::t_e47e34a163d9e5 28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "896f1a44c5edfb8f726fed935b31d5150725b9f7",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
