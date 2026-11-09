@@ -1,0 +1,64 @@
+Demo/test_reading_lookup.py
+  s_1c46d58ed67333::t_a930148a9d1aee 1-31
+docs/deployment.md
+  s_1c46d58ed67333::t_34614694d0ee42 45-57
+reader_performance.py
+  s_1c46d58ed67333::t_db1da10c0f0556 55,61-62
+  s_1c46d58ed67333::t_6bbfebb9395a38 17,27-29,32,34
+  s_1c46d58ed67333::t_a03ee7d1213ef5 50-54,56-60,63-66
+server.py
+  s_1c46d58ed67333::t_f3a870fb2a6713 38
+  s_1c46d58ed67333::t_a03ee7d1213ef5 29,31-37
+CHANGELOG.md
+  s_1c46d58ed67333::t_07552e21661775 1-9
+README.en.md
+  s_1c46d58ed67333::t_07552e21661775 11
+reader_server.py
+  s_1c46d58ed67333::t_fe9f96a540095c 198-199
+  s_1c46d58ed67333::t_db1da10c0f0556 863-865,902
+  s_1c46d58ed67333::t_cd3c2fe4620050 44-46,398,1062
+  s_1c46d58ed67333::t_2fe894a9912dcc 33,42-43,60,820,852,855,860
+Demo/test_web_worker.py
+  s_1c46d58ed67333::t_0d9e1735ea9ce1 2,43
+  s_1c46d58ed67333::t_6f04a076ecc245 1,3-42,44-63
+README.md
+  s_1c46d58ed67333::t_07552e21661775 55
+reader_web_worker.py
+  s_1c46d58ed67333::t_cd3c2fe4620050 1-53
+reader_learning.py
+  s_1c46d58ed67333::t_2fe894a9912dcc 110,113,117-139
+  s_1c46d58ed67333::t_fe9f96a540095c 115
+Demo/test_request_isolation.py
+  s_1c46d58ed67333::t_6bbfebb9395a38 8-15
+  s_1c46d58ed67333::t_7d3c7dd3695b7e 1-7,16-61
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_07552e21661775 3-13
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_34614694d0ee42 95-100
+reader_workspace.py
+  s_1c46d58ed67333::t_4b4f16a7f5e62a 86-88
+  s_1c46d58ed67333::t_fe9f96a540095c 77,166-168
+  s_1c46d58ed67333::t_cd3c2fe4620050 53-54
+reader_reading.py
+  s_1c46d58ed67333::t_cd3c2fe4620050 4,17-22
+  s_1c46d58ed67333::t_a930148a9d1aee 6,9,23-25,119-120,126,161,189
+Demo/test_learning_cache_lifetime.py
+  s_1c46d58ed67333::t_fe9f96a540095c 29-36
+  s_1c46d58ed67333::t_7d3c7dd3695b7e 44-62
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "6864c09b4c55a4c9402b88300ef94fc7c1fb952f",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
