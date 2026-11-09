@@ -50,7 +50,8 @@ class Workspace:
                 if cached and cached[0]==signature:return cached[1]
             value=self.read()
             with _WORKSPACE_LOCKS_GUARD:
-                if len(_WORKSPACE_SNAPSHOTS)>=2:_WORKSPACE_SNAPSHOTS.pop(next(iter(_WORKSPACE_SNAPSHOTS)))
+                limit=1 if os.environ.get('MANUAL_READER_ROLE')=='web'else 2
+                if len(_WORKSPACE_SNAPSHOTS)>=limit:_WORKSPACE_SNAPSHOTS.pop(next(iter(_WORKSPACE_SNAPSHOTS)))
                 _WORKSPACE_SNAPSHOTS[key]=(signature,value)
             return value
 
@@ -73,7 +74,7 @@ class Workspace:
         return value
 
     def project(self, original):
-        value=self.read();result=copy.deepcopy(original)
+        value=self.read();result=MaterialSnapshot(copy.deepcopy(original))
         primary={'id':'primary','name':original.get('original_name') or original['title'], 'kind':original.get('kind'),
                  'outline':copy.deepcopy(original['outline']), 'passage_ids':[p['id'] for p in original['passages']],
                  'original':bool(original.get('original_file') or original.get('kind')=='pdf'), 'primary':True}
@@ -82,7 +83,9 @@ class Workspace:
             p.setdefault('file_id','primary')
         files=([primary] if original['passages'] else [])+[{k:v for k,v in row.items() if k!='document'} for row in value['files']]
         for row in value['files']:
-            document=copy.deepcopy(row['document'])
+            # read 已取得本次独占的工作区对象；直接使用它的正文，不再复制一整份大型代码项目。
+            # 辅助快照仍保持只读，project 不从 read_snapshot 取可修改的数据。
+            document={key:row['document'][key]for key in ('passages','pages')}
             for p in document['passages']:
                 p.update(content_kind='source',file_id=row['id'])
                 if p.get('caption_id'):
@@ -160,7 +163,9 @@ class Workspace:
         from reader_alignment import build_alignment
         result['alignment']=build_alignment(result)
         result['framework_version']=__import__('reader_generation').VERSION
-        return MaterialSnapshot(result)
+        # 进度只读取目录与排除规则，不再为这些小字段重新解析一整份多文件工作区。
+        result.reading_metadata={key:value[key]for key in ('revision','learning_outline','learning_exclusions','planning_mode')if key in value}
+        return result
 
     def apply_visual_translations(self,material):
         """只把已核对原图的结果用于展示；原图变化后保留为未核对。"""

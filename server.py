@@ -26,12 +26,16 @@ def initial():return {'revision':1,'focus':default_focus(),'drafts':{},'rounds':
 def db():
  conn=sqlite3.connect(DB,timeout=15,factory=RequestConnection);conn.execute('PRAGMA journal_mode=WAL');conn.execute('CREATE TABLE IF NOT EXISTS reader_state (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)');return conn
 def read_state(with_snapshot=False):
- with LOCK,db() as c:
+ with db() as c:
   row=c.execute('SELECT value FROM reader_state WHERE id=1').fetchone()
-  if row:state=json.loads(row[0]);serialized=row[0]
-  else:
-   state=initial();serialized=json.dumps(state,ensure_ascii=False);c.execute('INSERT INTO reader_state VALUES(1,?)',(serialized,))
-  return ReadSnapshot(state,serialized) if with_snapshot else state
+ if row:serialized=row[0];state=json.loads(serialized)
+ else:
+  with LOCK,db() as c:
+   c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT value FROM reader_state WHERE id=1').fetchone()
+   if row:serialized=row[0];state=json.loads(serialized)
+   else:
+    state=initial();serialized=json.dumps(state,ensure_ascii=False);c.execute('INSERT INTO reader_state VALUES(1,?)',(serialized,))
+ return ReadSnapshot(state,serialized) if with_snapshot else state
 
 def mutate(fn,snapshot=None):
  with LOCK,db() as c:

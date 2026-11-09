@@ -1,11 +1,12 @@
 """为原材料建立可恢复的展示分组；文字、编号、坐标和用户状态保持原样。"""
 from pathlib import Path
 from collections import Counter,defaultdict
-import copy,json,re,threading
+import copy,json,re,os,tempfile
 from reader_translation import active_groups,legacy_segments
+from reader_performance import ScopedRLock
 
 VERSION=8
-_LOCK=threading.RLock()
+_LOCK=ScopedRLock(lambda:'layout')
 
 def _text(p):return p.get('zh') or p.get('en') or ''
 def _box(p,page=None):
@@ -13,9 +14,15 @@ def _box(p,page=None):
     return [min(r[0] for r in refs),min(r[1] for r in refs),max(r[2] for r in refs),max(r[3] for r in refs)] if refs else None
 def _inside(box,region):return box and region[0]-2<=(box[0]+box[2])/2<=region[2]+2 and region[1]-2<=(box[1]+box[3])/2<=region[3]+2
 def _save(path,value):
-    path=Path(path);path.parent.mkdir(parents=True,exist_ok=True);temporary=path.with_suffix('.next.json');temporary.write_text(json.dumps(value,ensure_ascii=False),'utf8');temporary.replace(path)
-def page_ids(material,ids):
-    selected=set(ids);found={r['page_id'] for p in material['passages'] if p['id'] in selected for r in p.get('refs',[]) if r.get('page_id') in material.get('pages',{})}
+    path=Path(path);path.parent.mkdir(parents=True,exist_ok=True)
+    fd,name=tempfile.mkstemp(prefix=path.name+'.',suffix='.next',dir=path.parent);temporary=Path(name)
+    try:
+        with os.fdopen(fd,'w',encoding='utf8')as output:json.dump(value,output,ensure_ascii=False)
+        temporary.replace(path)
+    finally:temporary.unlink(missing_ok=True)
+def page_ids(material,ids,pages_for=None):
+    selected=set(ids)
+    found=set().union(*(pages_for.get(identity,set())for identity in selected))if pages_for is not None else {r['page_id'] for p in material['passages'] if p['id'] in selected for r in p.get('refs',[]) if r.get('page_id') in material.get('pages',{})}
     return [pid for pid in material.get('pages',{}) if pid in found]
 def scope(material,links):
     sources={p['id']:p for p in material['passages'] if p.get('content_kind')!='explanation'}
@@ -109,12 +116,14 @@ def _kind(p):
 
 def groups(material,geometries,overrides=()):
     sources=[p for p in material['passages'] if p.get('content_kind')!='explanation'];by_id={p['id']:p for p in sources};positions={p['id']:i for i,p in enumerate(sources)};owned=set();result=[];issues=[]
+    pages_for=defaultdict(set)
+    for p in material['passages']:pages_for[p['id']].update(r['page_id']for r in p.get('refs',[])if r.get('page_id')in material.get('pages',{}))
     def add(ids,kind,**extra):
         ids=list(dict.fromkeys(i for i in ids if i in by_id and i not in owned))
         if not ids:return
         fids={by_id[i].get('file_id','primary') for i in ids}
         if len(fids)!=1:return
-        owned.update(ids);result.append({'id':ids[0]+'-reading-block','file_id':next(iter(fids)),'kind':kind,'passage_ids':ids,'page_ids':page_ids(material,ids),**extra})
+        owned.update(ids);result.append({'id':ids[0]+'-reading-block','file_id':next(iter(fids)),'kind':kind,'passage_ids':ids,'page_ids':page_ids(material,ids,pages_for),**extra})
     for row in overrides:
         ids=row.get('passage_ids',[])
         if not isinstance(ids,list) or not ids or any(i not in by_id or i in owned for i in ids):issues.append({'code':'invalid_override','id':row.get('id')});continue
@@ -149,7 +158,7 @@ def groups(material,geometries,overrides=()):
     previous=None
     for p in sources:
         if p['id'] in owned:previous=None;continue
-        kind=_kind(p);fid=p.get('file_id','primary');pages=page_ids(material,[p['id']]);b=_box(p,pages[0]) if pages else None
+        kind=_kind(p);fid=p.get('file_id','primary');pages=page_ids(material,[p['id']],pages_for);b=_box(p,pages[0]) if pages else None
         merge=False
         if previous and previous['kind']==kind and kind in ('paragraph','list') and previous['file_id']==fid and previous['page_ids']==pages:
             old=by_id[previous['passage_ids'][-1]];a=_box(old,pages[0]) if pages else None
@@ -177,7 +186,7 @@ def groups(material,geometries,overrides=()):
 def prepare(material,folder,original,files):
     folder=Path(folder);cache=folder/'reading-layout.json';override=folder/'reading-layout-overrides.json'
     signature=[[p.name,p.stat().st_mtime_ns,p.stat().st_size] for p in [folder/'material.json',folder/'reading-workspace.json',override,folder/'translation-groups.json',folder/'reading-visual-language.json'] if p.exists()]
-    with _LOCK:
+    with _LOCK.for_scope(str(folder.resolve())):
         if cache.exists():
             cached=json.loads(cache.read_text('utf8'))
             if cached.get('version')==VERSION and cached.get('signature')==signature:return cached

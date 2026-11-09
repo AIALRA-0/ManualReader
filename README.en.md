@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.6 builds on startup and source-link caching with explicit transaction cleanup, verified snapshot reuse during chapter changes, encoded material responses that do not retain duplicate display objects, overlapping startup requests, and projection work that no longer holds the state transaction lock. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
+Version 0.4.7 can run page reads separately from background imports and Agent writes, preventing their interpreter and garbage-collection pauses from blocking the page process. It builds page-reference indexes once, reads committed database snapshots without waiting for long writes, and removes redundant copies. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
 
 <div align="center">
 

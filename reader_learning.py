@@ -107,27 +107,36 @@ def _static_learning(material,stored):
     return nodes,coverage_plan
 
 
-_PLAN_CACHE={}
+_PLAN_CACHE={};_PLAN_PENDING={}
 _PLAN_LOCK=__import__('threading').RLock()
 
-def learning_payload(material,stored,state):
-    import copy
+def _plan_snapshot(material,stored):
     key=(id(material),stored.get('revision'))
-    cacheable=bool(material.get('alignment'))and isinstance(stored.get('revision'),int)
-    try:reference=weakref.ref(material)if cacheable else None
+    try:reference=weakref.ref(material)if isinstance(stored.get('revision'),int)else None
     except TypeError:reference=None
-    cacheable=reference is not None
-    with _PLAN_LOCK:
-        for stale in [k for k,v in _PLAN_CACHE.items()if v[0]()is None]:_PLAN_CACHE.pop(stale,None)
-        cached=_PLAN_CACHE.get(key)if cacheable else None
-    if cached and cached[0]()is material:
-        nodes=[{**n,'own_reading_progress':dict(n['own_reading_progress']),'reading_progress':dict(n['reading_progress'])}for n in cached[1][0]];coverage_plan=cached[1][1]
-    else:
-        nodes,coverage_plan=_static_learning(material,stored)
-        if cacheable:
-            with _PLAN_LOCK:
-                if len(_PLAN_CACHE)>=2:_PLAN_CACHE.pop(next(iter(_PLAN_CACHE)))
-                _PLAN_CACHE[key]=(reference,copy.deepcopy((nodes,coverage_plan)))
+    if reference is None:return _static_learning(material,stored)
+    while True:
+        with _PLAN_LOCK:
+            for stale in [k for k,v in _PLAN_CACHE.items()if v[0]()is None]:_PLAN_CACHE.pop(stale,None)
+            cached=_PLAN_CACHE.get(key)
+            if cached and cached[0]()is material:return cached[1]
+            event=_PLAN_PENDING.get(key)
+            if event is None:
+                event=__import__('threading').Event();_PLAN_PENDING[key]=event;break
+        event.wait()
+    try:
+        snapshot=_static_learning(material,stored)
+        with _PLAN_LOCK:
+            if len(_PLAN_CACHE)>=2:_PLAN_CACHE.pop(next(iter(_PLAN_CACHE)))
+            _PLAN_CACHE[key]=(reference,snapshot)
+        return snapshot
+    finally:
+        with _PLAN_LOCK:_PLAN_PENDING.pop(key,None);event.set()
+
+def learning_payload(material,stored,state):
+    static,coverage_plan=_plan_snapshot(material,stored)
+    # 只复制本次要修改的进度字段；目录关系和来源范围保持只读，不再复制整棵目录。
+    nodes=[{**n,'own_reading_progress':dict(n['own_reading_progress']),'reading_progress':dict(n['reading_progress'])}for n in static]
     passages=material['passages'];read=state.get('read_passages',{})
     for node in nodes:
         for field,ids in [('own_reading_progress',node['reading_passage_ids']),('reading_progress',node.pop('_subtree_reading_ids'))]:

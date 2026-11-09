@@ -30,7 +30,7 @@ from reader_remote import RemoteMixin,public_base
 from reader_learning import learning_payload,validate_outline
 from reader_term_names import analyze_name,term_name,term_key,normalize_state,display_state
 from reader_teaching import TEACHING_RULES,teaching_context,lesson_task,append_assets,wait_for_user,translation_queue
-from reader_performance import begin_request,server_timing,TimedRLock,timed_call,ReadCache
+from reader_performance import begin_request,server_timing,TimedRLock,ScopedRLock,timed_call,ReadCache
 from reader_database import DATABASES,RequestConnection
 from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
 from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
@@ -39,10 +39,11 @@ from reader_reading import save_layout as save_reading_layout
 from reader_quality import answer_parts,public_rules,project_audit,QA_PART_CONTRACT,LESSON_PART_CONTRACT
 from reader_translation import packets as translation_packets,save_groups as save_translation_groups,save_visuals as save_visual_translations
 
-core.LOCK=TimedRLock()
-ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict();PROJECT_CACHE=ReadCache(2)
-DISPLAY_CACHE=ReadCache(2)
-COVERAGE_CACHE=ReadCache(2)
+core.LOCK=ScopedRLock(lambda:mid())
+CACHE_LOCK=TimedRLock();CATALOG_LOCK=TimedRLock();SETTINGS_LOCK=TimedRLock()
+ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict()
+READ_PROJECTS=1 if os.environ.get('MANUAL_READER_ROLE')=='web'else 2
+PROJECT_CACHE=ReadCache(READ_PROJECTS);DISPLAY_CACHE=ReadCache(READ_PROJECTS);COVERAGE_CACHE=ReadCache(READ_PROJECTS)
 DEFAULT_MATERIAL=Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json')))
 STATIC=Path(os.environ.get('MANUAL_READER_STATIC',str(ROOT/'static')))
 LIBRARY=Path(os.environ.get('MANUAL_READER_LIBRARY',str(ROOT/'library')))
@@ -56,7 +57,7 @@ def raw_material(identity=None):
     identity=identity or mid();path=mpath(identity)
     if not path.exists():raise ValueError('没有找到这份材料')
     version=path.stat().st_mtime_ns
-    with core.LOCK:
+    with CACHE_LOCK:
         if identity not in CACHE or CACHE[identity][0]!=version:CACHE[identity]=(version,json.loads(path.read_text('utf8')))
         CACHE.move_to_end(identity)
         while len(CACHE)>2:CACHE.popitem(last=False)
@@ -194,7 +195,8 @@ def progress_payload(progress=None):
     return DISPLAY_CACHE.get(('progress',mid()),version,lambda:timed_call('project',_progress_payload,raw))
 
 def _progress_payload(raw):
-    m=material();stored=workspace().read_snapshot()
+    m=material();stored=getattr(m,'reading_metadata',None)
+    if stored is None:stored=workspace().read_snapshot()
     # 正常阅读只传当前内容；完整历史继续保存在数据库，按需单独读取。
     progress={**{k:v for k,v in raw.items()if k not in ('lesson_tasks','learning_selection_events')},'rounds':[{**r,'questions':[{**{k:v for k,v in q.items()if k not in ('answer_history','answer_parts_history')},'answer_revision':answer_revision(q)}for q in r['questions']]}for r in raw['rounds']],
               'terms':[{k:v for k,v in t.items()if k not in ('definition_history','name_history')}for t in raw.get('terms',[])]}
@@ -393,6 +395,7 @@ class Handler(core.Handler):
     def lesson_actor(self):
         return 'agent:'+str(self._grant['id']) if getattr(self,'_remote_machine',False) else 'reader'
     def end_headers(self):
+        if getattr(self,'_forwarded_response',False):return super().end_headers()
         started=getattr(self,'_request_started',time.perf_counter());admit=max(0.,started-getattr(self,'_remote_started',started))*1000;proxy=getattr(self,'_proxy_started',None)
         fields=server_timing(started,proxy)+f', admit;dur={admit:.2f}, dispatch;dur={getattr(self,"_dispatch_ms",0.):.2f}, receive;dur={max(0.,getattr(self,"_remote_started",started)-getattr(self,"_receive_started",started))*1000:.2f}'
         if proxy is not None:fields+=f', proxy_wait;dur={max(0.,getattr(self,"_remote_started",started)-proxy)*1000:.2f}'
@@ -814,7 +817,7 @@ class Handler(core.Handler):
             if path=='/api/project-files/action':return self.json(project_files().action(data))
             if path=='/api/project-files/file':return self.json(project_files().put(data))
             if path=='/api/settings':
-                with core.LOCK:result=save_settings(SETTINGS,data)
+                with SETTINGS_LOCK:result=save_settings(SETTINGS,data)
                 return self.json(result)
             if path=='/api/terms/normalize':return self.json(core.mutate(lambda state:normalize_state(state,core.stamp)))
             if path=='/api/terms':
@@ -846,18 +849,20 @@ class Handler(core.Handler):
                     return {'updated':len(prepared)}
                 return self.json(core.mutate(update_terms))
             if path=='/api/folders':
-                with core.LOCK:result=reader_library.change(LIBRARY/'library-index.json',library_sources(True),'folder',None,'create',data)
+                with CATALOG_LOCK:result=reader_library.change(LIBRARY/'library-index.json',library_sources(True),'folder',None,'create',data)
                 return self.json(result)
             if path=='/api/library/clear-trash':
-                with core.LOCK:result=reader_library.clear_trash(LIBRARY/'library-index.json',library_sources(True),data.get('confirmed'))
+                with CATALOG_LOCK:result=reader_library.clear_trash(LIBRARY/'library-index.json',library_sources(True),data.get('confirmed'))
                 return self.json(result)
             library_match=re.fullmatch(r'/api/library/(folder|material)/([A-Za-z0-9_-]+)/(rename|move|trash|restore)',path)
             if library_match:
                 kind,identity,action=library_match.groups()
-                with core.LOCK:
+                with CATALOG_LOCK:
                     result=reader_library.change(LIBRARY/'library-index.json',library_sources(True),kind,identity,action,data)
                     if kind=='material' and action=='rename':
-                        document=copy.deepcopy(material(identity));document['title']=result['name'];target=mpath(identity);versions=target.parent/'versions';versions.mkdir(exist_ok=True);(versions/(target.stem+'-'+str(target.stat().st_mtime_ns)+'.json')).write_bytes(target.read_bytes());temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps(document,ensure_ascii=False,indent=2),'utf8');temporary.replace(target);CACHE.pop(identity,None)
+                        with core.LOCK.for_scope(identity):
+                            document=copy.deepcopy(material(identity));document['title']=result['name'];target=mpath(identity);versions=target.parent/'versions';versions.mkdir(exist_ok=True);(versions/(target.stem+'-'+str(target.stat().st_mtime_ns)+'.json')).write_bytes(target.read_bytes());temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps(document,ensure_ascii=False,indent=2),'utf8');temporary.replace(target)
+                            with CACHE_LOCK:CACHE.pop(identity,None)
                 return self.json(result)
             if path=='/api/read':
                 if getattr(self,'_remote_machine',False) or data.get('read_origin')!='manual_ui' or self.headers.get('Sec-Fetch-Site')!='same-origin' or self.headers.get('Sec-Fetch-Mode') not in ('cors','same-origin'):
@@ -894,7 +899,7 @@ class Handler(core.Handler):
                 if not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',identity) or identity==DEFAULT:raise ValueError('讲解材料编号无效，不能覆盖当前原件')
                 path_to_material=mpath(identity);previous=material(identity) if path_to_material.exists() else None
                 if previous and previous.get('reader_mode')!='authored':raise ValueError('只能更新讲解材料，不能覆盖已导入的原件')
-                with core.LOCK:
+                with core.LOCK.for_scope(identity):
                     updated=lecture_material(data,identity,previous)
                     if previous:
                         existing=stored_state(identity);used={r['passage_id'] for r in existing.get('rounds',[])}|set(existing.get('read_passages',{}))
@@ -1054,6 +1059,7 @@ class ProductionHandler(RemoteMixin,Handler):
             elapsed=time.time()-float(self.headers.get('X-Reader-Proxy-Started'))
             if 0<=elapsed<=120:self._proxy_started=self._remote_started-elapsed
         except (TypeError,ValueError):pass
+        if __import__('reader_web_worker').use_worker(self,method):return True
         return super().begin_remote(method)
     def project_available(self,identity):
         if not isinstance(identity,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',identity) or not mpath(identity).exists():return False

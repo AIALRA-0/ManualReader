@@ -14,7 +14,7 @@ def json_bytes(value):
 from collections import deque
 _gc_events=deque(maxlen=512)
 _request=threading.local()
-def begin_request():_request.lock_wait=0.;_request.cpu_started=time.thread_time();_request.phases={};_request.gc_ms=0.
+def begin_request():_request.lock_wait=0.;_request.cpu_started=time.thread_time();_request.phases={};_request.phase_depth={};_request.gc_ms=0.
 
 def _gc_timing(phase,info):
     if phase=='start':_request.gc_started=time.perf_counter()
@@ -24,11 +24,14 @@ def _gc_timing(phase,info):
 gc.callbacks.append(_gc_timing)
 
 def timed_call(name,function,*args,**kwargs):
-    start=time.perf_counter()
+    start=time.perf_counter();depth=getattr(_request,'phase_depth',None)
+    if depth is None:depth={};_request.phase_depth=depth
+    outer=not depth.get(name,0);depth[name]=depth.get(name,0)+1
     try:return function(*args,**kwargs)
     finally:
+        depth[name]-=1
         phases=getattr(_request,'phases',None)
-        if phases is not None:phases[name]=phases.get(name,0.)+(time.perf_counter()-start)*1000
+        if outer and phases is not None:phases[name]=phases.get(name,0.)+(time.perf_counter()-start)*1000
 def server_timing(start,queued=None):
     total=max(0.,(time.perf_counter()-start)*1000);wait=getattr(_request,'lock_wait',0.)*1000
     cpu=max(0.,time.thread_time()-getattr(_request,'cpu_started',time.thread_time()))*1000
@@ -41,6 +44,23 @@ class TimedRLock:
         _request.lock_wait=getattr(_request,'lock_wait',0.)+time.perf_counter()-start
         return ok
     def release(self):return self._lock.release()
+    def __enter__(self):self.acquire();return self
+    def __exit__(self,*args):self.release()
+
+class ScopedRLock:
+    """同一项目的写入继续串行，不让其他项目一起等待。"""
+    def __init__(self,scope):
+        self.scope=scope;self.guard=threading.Lock();self.locks={};self.local=threading.local()
+    def acquire(self,*args,**kwargs):
+        lock=self.for_scope(self.scope())
+        ok=lock.acquire(*args,**kwargs)
+        if ok:
+            if not hasattr(self.local,'stack'):self.local.stack=[]
+            self.local.stack.append(lock)
+        return ok
+    def for_scope(self,identity):
+        with self.guard:return self.locks.setdefault(identity,TimedRLock())
+    def release(self):self.local.stack.pop().release()
     def __enter__(self):self.acquire();return self
     def __exit__(self,*args):self.release()
 
