@@ -42,6 +42,14 @@ class StartupPerformance(unittest.TestCase):
             path.write_text('second and longer')
             self.assertNotEqual(first,version_html(html,folder))
 
+    def test_loading_script_is_inlined_without_an_extra_startup_request(self):
+        with tempfile.TemporaryDirectory()as tmp:
+            folder=Path(tmp);script=folder/'reader-loading.js';script.write_text('window.test=1;')
+            html='<script data-reader-loading-inline></script>'
+            self.assertEqual(version_html(html,folder),'<script>window.test=1;</script>')
+            script.write_text('window.test=2; // changed')
+            self.assertIn('window.test=2;',version_html(html,folder))
+
     def test_http_assets_use_snapshot_and_browser_cache(self):
         code=r'''
 import os,json,sys,threading,urllib.request,urllib.error,copy
@@ -73,8 +81,13 @@ h,b=get('/app.js')
 assert h['Cache-Control']=='no-store'
 from reader_performance import asset_digest
 h,b=get('/app.js?v='+asset_digest(app.STATIC/'app.js'));assert 'immutable'in h['Cache-Control']
+h,b=get('/reader-loading.js?v='+asset_digest(app.STATIC/'reader-loading.js'));assert 'immutable'in h['Cache-Control'];assert b'window.ReaderLoading'in b
 assert app.core.read_state()==before
 h,b=get('/api/progress');assert json.loads(b)['notes']==before['notes']
+assert int(h['X-Reader-Decoded-Length'])==len(b)
+import gzip
+h,b=get('/api/progress',{'Accept-Encoding':'gzip'})
+assert int(h['X-Reader-Decoded-Length'])==len(gzip.decompress(b) if h.get('Content-Encoding')=='gzip' else b)
 progress_tag=h['ETag'];assert 'private'in h['Cache-Control']
 try:get('/api/progress',{'X-Reader-Pin':'wrong','If-None-Match':progress_tag});raise AssertionError('版本号不能代替授权')
 except urllib.error.HTTPError as e:assert e.code in (401,403)

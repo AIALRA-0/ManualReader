@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.7 can run page reads separately from background imports and Agent writes, preventing their interpreter and garbage-collection pauses from blocking the page process. It builds page-reference indexes once, reads committed database snapshots without waiting for long writes, and removes redundant copies. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
+Version 0.4.8 shows completed steps, elapsed time, and measured download progress when opening materials, switching chapters, or viewing files. Waiting does not advance the percentage. A stalled read is retried once; writes are never automatically repeated. Page reads remain separate from background work. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
 
 <div align="center">
 

@@ -30,11 +30,11 @@ window.ReaderUI=(()=>{
  const confirmAction=options=>actionDialog({...options,cancel:true});
  const message=options=>actionDialog({...options,cancel:false,confirmLabel:options.confirmLabel||'知道了'});
  const loadingOwners=new WeakMap();
- function loading(container,text='正在加载内容'){
-  if(!container){const finish=()=>{};finish.stage=()=>{};return finish}
-  const owner={};loadingOwners.set(container,owner);container.setAttribute('aria-busy','true');container.dataset.loading=text;container.inert=true;
-  const finish=()=>{if(loadingOwners.get(container)!==owner)return;loadingOwners.delete(container);container.setAttribute('aria-busy','false');delete container.dataset.loading;container.inert=false};
-  finish.stage=text=>{if(loadingOwners.get(container)===owner)container.dataset.loading=text};return finish;
+ function loading(container,text='正在加载内容',steps=[]){
+  if(!container){const finish=()=>{};finish.stage=()=>{};finish.task=()=>Object.assign(()=>{},{done(){}});return finish}
+  loadingOwners.get(container)?.finish();const overlay=make('div','reader-loading-overlay'),progress=window.ReaderLoading?.create(text,steps),owner={finish:null},blocked=[...container.children].map(node=>[node,node.inert]),positioned=container.classList.contains('reader-loading-host');loadingOwners.set(container,owner);container.classList.add('reader-loading-host');container.setAttribute('aria-busy','true');container.dataset.loading=text;for(const [node]of blocked)node.inert=true;container.append(overlay);progress?.mount(overlay);
+  const finish=()=>{progress?.finish();overlay.remove();if(loadingOwners.get(container)!==owner)return;loadingOwners.delete(container);for(const [node,inert]of blocked)node.inert=inert;if(!positioned)container.classList.remove('reader-loading-host');container.setAttribute('aria-busy','false');delete container.dataset.loading;delete container.dataset.loadingStage};owner.finish=finish;
+  finish.stage=text=>{if(loadingOwners.get(container)===owner){container.dataset.loading=text;progress?.stage(text)}};finish.task=id=>progress?.task(id)||Object.assign(()=>{},{done(){}});return finish;
  }
  // 同一处高亮只涂一次颜色，边框只画在合并后的外沿，原始定位坐标保持不变
  function highlightGeometry(input,width,height){

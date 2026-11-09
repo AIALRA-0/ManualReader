@@ -155,13 +155,14 @@ class Handler(BaseHTTPRequestHandler):
   def encode():
    value=timed_call('project',data)if callable(data)else data
    payload=timed_call('encode',__import__('reader_performance').json_bytes,value)
-   compressed=len(payload)>2048 and accepts_gzip
+   decoded_length=len(payload);compressed=decoded_length>2048 and accepts_gzip
    if compressed:payload=timed_call('compress',__import__('gzip').compress,payload,compresslevel=3)
-   return payload,compressed
-  payload,compressed=JSON_RESPONSES.get(cache_tag,accepts_gzip,encode) if cache_tag else encode()
+   return payload,compressed,decoded_length
+  payload,compressed,decoded_length=JSON_RESPONSES.get(cache_tag,accepts_gzip,encode) if cache_tag else encode()
   self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','private, no-cache' if cache_tag else 'no-store');self.send_header('Vary',vary)
   if cache_tag:self.send_header('ETag',cache_tag)
   if compressed:self.send_header('Content-Encoding','gzip')
+  self.send_header('X-Reader-Decoded-Length',str(decoded_length))
   self.send_header('Content-Length',str(len(payload)));self.end_headers()
   if self.command!='HEAD':self.wfile.write(payload)
  def file(self,path,ctype):

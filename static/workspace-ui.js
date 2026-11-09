@@ -26,17 +26,17 @@ window.ReaderWorkspaceUI={create(ctx){
  let selectionSequence=0,selectionQueue=Promise.resolve(),selecting=false;
  async function selectLearning(id,{keepPanel=false}={}){
   const request=++selectionSequence,initialPanel=ctx.mobilePanel();
-  trace('queued',{request,id});ctx.pausePolling?.();selecting=true;const stopLoading=ReaderUI.loading(area,'正在切换章节');
+  trace('queued',{request,id});ctx.pausePolling?.();selecting=true;const stopLoading=ReaderUI.loading(area,'正在切换章节',[['save','保存本页问题'],['focus','保存当前阅读位置'],['select','读取下一章内容'],['render','显示对应的原文、译文和讲解']]);
   const work=selectionQueue.catch(()=>{}).then(async()=>{
    trace('started',{request,id});if(request!==selectionSequence)return;
-   await ctx.flushDraft();await ctx.waitForFocus?.();if(request!==selectionSequence)return;
+   stopLoading.stage('正在保存本页问题');await ctx.flushDraft();stopLoading.task('save').done();stopLoading.stage('正在保存当前阅读位置');await ctx.waitForFocus?.();stopLoading.task('focus').done();if(request!==selectionSequence)return;
    trace('ready',{request,id});remember();const previousView=ctx.capture();
    if(!columns.flat().includes('explanation')){mode='lesson';columns=presets.lesson.map(c=>[...c]);layout()}
-   trace('request',{request,id});let selected;try{selected=await ctx.post('/api/learning/select',{node_id:id,previous_view:previousView,include_progress:true,expected_selection_revision:ctx.state()?.learning_selection_revision||0,known_revision:ctx.state()?.revision,known_material_revision:ctx.state()?.material_revision_token})}catch(error){if(error.code==='selection_changed')await ctx.refresh(true);throw error}
+   stopLoading.stage('正在读取下一章内容');stopLoading.task('select')({state:'waiting'});trace('request',{request,id});let selected;try{selected=await ctx.post('/api/learning/select',{node_id:id,previous_view:previousView,include_progress:true,expected_selection_revision:ctx.state()?.learning_selection_revision||0,known_revision:ctx.state()?.revision,known_material_revision:ctx.state()?.material_revision_token},stopLoading.task('select'))}catch(error){if(error.code==='selection_changed')await ctx.refresh(true);throw error}
    if(request!==selectionSequence)return;
-   trace('response',{request,id});browseOriginal=false;await ctx.refresh(true,selected.progress);
+   stopLoading.task('select').done();stopLoading.stage('正在显示原文、译文和讲解');await ReaderLoading.paint();trace('response',{request,id});browseOriginal=false;await ctx.refresh(true,selected.progress);
    if(request!==selectionSequence)return;
-   trace('rendered',{request,id});if(ctx.mobile()&&!keepPanel&&ctx.mobilePanel()===initialPanel)ctx.panel('explanation');persist();
+   stopLoading.task('render').done();trace('rendered',{request,id});if(ctx.mobile()&&!keepPanel&&ctx.mobilePanel()===initialPanel)ctx.panel('explanation');persist();
   });selectionQueue=work;
   try{await work}finally{if(request===selectionSequence){selecting=false;ctx.resumePolling?.()}stopLoading()}
  }

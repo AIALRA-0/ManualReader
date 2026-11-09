@@ -445,7 +445,7 @@ class Handler(core.Handler):
             if path=='/reader-inline-practice.js':return self.file(STATIC/'reader-inline-practice.js')
             if path=='/quality-review.js':return self.file(STATIC/'quality-review.js')
             if path=='/vendor/math-text.js':return self.file(STATIC/'math-text.js','text/javascript; charset=utf-8')
-            if path in ('/reader-code-editor.js','/reader-source-flow.js','/reader-source-flow.css','/workspace-ui.js','/reader-terms.js','/reader-speech.js','/reader-practice.js','/reader-imports.js','/reader-media-view.js','/app.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
+            if path in ('/reader-code-editor.js','/reader-source-flow.js','/reader-source-flow.css','/workspace-ui.js','/reader-terms.js','/reader-speech.js','/reader-practice.js','/reader-imports.js','/reader-media-view.js','/app.js','/reader-loading.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
             if path.startswith('/evidence/'):
                 if os.environ.get('MANUAL_READER_PUBLIC_ORIGIN'):return self.send_error(404)
                 folder=(ROOT/'evidence').resolve();target=(ROOT/path[1:]).resolve()

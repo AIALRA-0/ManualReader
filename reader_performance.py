@@ -102,6 +102,11 @@ def asset_digest(path):
     return _asset_digest(str(path),stat.st_mtime_ns,stat.st_size)
 
 def version_html(data,folder):
+    marker='<script data-reader-loading-inline></script>'
+    if marker in data:
+        target=folder/'reader-loading.js'
+        if target.is_file():
+            stat=target.stat();data=data.replace(marker,'<script>'+_inline_script(str(target),stat.st_mtime_ns,stat.st_size)+'</script>')
     # 页面引用随实际文件内容更新；旧页面链接仍可用，但不缓存旧版本号。
     def replace(match):
         name=match[2];relative=name.split('?',1)[0].lstrip('/')
@@ -109,3 +114,8 @@ def version_html(data,folder):
         if not target.is_file():return match[0]
         return match[1]+name.split('?',1)[0]+'?v='+asset_digest(target)+match[3]
     return re.sub(r'((?:src|href)=["\'])(/[^"\']+\.(?:js|css)(?:\?[^"\']*)?)(["\'])',replace,data)
+
+@lru_cache(maxsize=2)
+def _inline_script(path,mtime,size):
+    from pathlib import Path
+    return Path(path).read_text('utf8').replace('</script','<\\/script')
