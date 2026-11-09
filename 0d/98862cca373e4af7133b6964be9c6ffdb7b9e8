@@ -1,0 +1,78 @@
+docs/deployment.md
+  s_1c46d58ed67333::t_586df9f63cd432 80-84
+docs/features.md
+  s_1c46d58ed67333::t_586df9f63cd432 122
+static/reader-loading.js
+  s_1c46d58ed67333::t_5e02f773071490 19
+  s_1c46d58ed67333::t_c428dadfd0c0cc 34
+  s_1c46d58ed67333::t_1c64f98e49e46d 1-18,20-33,35-43
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_586df9f63cd432 101-105
+static/settings.js
+  s_1c46d58ed67333::t_a9af519aee614f 3,29
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_586df9f63cd432 3-11
+README.md
+  s_1c46d58ed67333::t_586df9f63cd432 55
+Demo/test_loading_progress.js
+  s_1c46d58ed67333::t_6ca00ad662ccd4 1-19
+static/index.html
+  s_1c46d58ed67333::t_1c64f98e49e46d 9,11,14-15,20,35
+static/library-ui.js
+  s_1c46d58ed67333::t_8f23d54fe89f78 37
+  s_1c46d58ed67333::t_c46fa4ee9030cf 42
+CHANGELOG.md
+  s_1c46d58ed67333::t_586df9f63cd432 1-9
+README.en.md
+  s_1c46d58ed67333::t_586df9f63cd432 11
+reader_server.py
+  s_1c46d58ed67333::t_236352a7ba8678 448
+Demo/test_startup_performance.py
+  s_1c46d58ed67333::t_6ca00ad662ccd4 45-52,87-90
+  s_1c46d58ed67333::t_236352a7ba8678 84
+static/reader-imports.js
+  s_1c46d58ed67333::t_de2d6ca3baeb0f 5
+reader_performance.py
+  s_1c46d58ed67333::t_c428dadfd0c0cc 105-109,117-121
+static/reader-project-files.js
+  s_1c46d58ed67333::t_de2d6ca3baeb0f 63
+  s_1c46d58ed67333::t_ca07e8e0efeda0 25,27,44,56,58-61,64,66-68,74-75,78,89
+static/statistics.js
+  s_1c46d58ed67333::t_de2d6ca3baeb0f 2,33,35,42,49
+static/app.js
+  s_1c46d58ed67333::t_ca07e8e0efeda0 445
+  s_1c46d58ed67333::t_f75f38639a8833 415,418-419,421
+  s_1c46d58ed67333::t_421737da641ac4 14,413-414,416-417,420,422-425
+  s_1c46d58ed67333::t_c428dadfd0c0cc 15
+static/settings.html
+  s_1c46d58ed67333::t_1c64f98e49e46d 2
+static/app.css
+  s_1c46d58ed67333::t_1c64f98e49e46d 464,468,472,476,613-614
+  s_1c46d58ed67333::t_35938a913b6876 469-470
+  s_1c46d58ed67333::t_0c8589665961c8 471
+static/workspace-ui.js
+  s_1c46d58ed67333::t_c7debba4435427 29,32,35,37,39
+static/statistics.html
+  s_1c46d58ed67333::t_1c64f98e49e46d 3
+server.py
+  s_1c46d58ed67333::t_7a33e5905aede5 158,160-161,165
+static/reader-ui.js
+  s_1c46d58ed67333::t_37020c4bb3eff4 35-36
+  s_1c46d58ed67333::t_7a33e5905aede5 33-34,37
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d98862cca373e4af7133b6964be9c6ffdb7b9e8",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
