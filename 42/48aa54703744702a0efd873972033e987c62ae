@@ -1,0 +1,44 @@
+Demo/test_startup_performance.py
+  s_1c46d58ed67333::t_8ce7cf5d7c8500 78,82-84,96
+  s_1c46d58ed67333::t_4048d2950a10fb 88
+  s_1c46d58ed67333::t_e592f0cf083913 79-81
+  s_1c46d58ed67333::t_8016a894aa374f 85-87,89-91
+static/reader-source-flow.js
+  s_1c46d58ed67333::t_0fe13610c3d7d6 78,87-96
+Demo/test_source_image_priority.js
+  s_1c46d58ed67333::t_ed95ab87849294 1-23
+CHANGELOG.md
+  s_1c46d58ed67333::t_c0150814082aff 4-6
+  s_1c46d58ed67333::t_8ce7cf5d7c8500 3
+static/app.js
+  s_1c46d58ed67333::t_0fe13610c3d7d6 74
+reader_learning.py
+  s_1c46d58ed67333::t_0fe13610c3d7d6 124
+reader_workspace.py
+  s_1c46d58ed67333::t_0fe13610c3d7d6 50
+reader_server.py
+  s_1c46d58ed67333::t_8ce7cf5d7c8500 558-560
+  s_1c46d58ed67333::t_0fe13610c3d7d6 44-45,62,76,534
+  s_1c46d58ed67333::t_4048d2950a10fb 535
+reader_coverage.py
+  s_1c46d58ed67333::t_4048d2950a10fb 392,594-625,627-652
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_8ce7cf5d7c8500 15
+  s_1c46d58ed67333::t_c0150814082aff 11-14,16-18
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "4248aa54703744702a0efd873972033e987c62ae",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
