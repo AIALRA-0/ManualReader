@@ -1,0 +1,61 @@
+reader_workspace.py
+  s_1c46d58ed67333::t_b18e072e87d411 30-32,163
+reader_server.py
+  s_1c46d58ed67333::t_e3e7e5ba1054d8 494
+  s_1c46d58ed67333::t_71731ff9cd058a 43,72
+  s_1c46d58ed67333::t_536de5f13950ba 489,491-493,495-497,499-505
+  s_1c46d58ed67333::t_ab41b24dd4959e 506-514
+  s_1c46d58ed67333::t_6acad89df395f0 490,498
+server.py
+  s_1c46d58ed67333::t_b7734b3cb4d418 153
+static/index.html
+  s_1c46d58ed67333::t_837e5c72b60bac 15-25
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_5c4b7ee3da5f6a 7-10
+  s_1c46d58ed67333::t_a53706eeb3d662 13-14
+static/app.js
+  s_1c46d58ed67333::t_837e5c72b60bac 434
+requirements.txt
+  s_1c46d58ed67333::t_b7734b3cb4d418 11
+CHANGELOG.md
+  s_1c46d58ed67333::t_5c4b7ee3da5f6a 3-6
+  s_1c46d58ed67333::t_a53706eeb3d662 7
+  s_1c46d58ed67333::t_20d06e78f63b2e 8
+Demo/test_startup_overlap.js
+  s_1c46d58ed67333::t_fe1d926e23405c 1-2,4-13
+  s_1c46d58ed67333::t_13ae92434c21a0 3
+Demo/test_learning_cache_lifetime.py
+  s_1c46d58ed67333::t_cd163f5af8e25c 20
+  s_1c46d58ed67333::t_6650829ffc589a 1-19,21-28,36
+  s_1c46d58ed67333::t_b7734b3cb4d418 29-35
+reader_performance.py
+  s_1c46d58ed67333::t_b7734b3cb4d418 3-13
+reader_learning.py
+  s_1c46d58ed67333::t_b18e072e87d411 2,117-123,130
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_20d06e78f63b2e 93-94
+Demo/test_startup_performance.py
+  s_1c46d58ed67333::t_ab41b24dd4959e 98,101
+  s_1c46d58ed67333::t_536de5f13950ba 97,99-100,102-108
+  s_1c46d58ed67333::t_71731ff9cd058a 127-139
+README.md
+  s_1c46d58ed67333::t_a7dd5f24ce0b62 55
+README.en.md
+  s_1c46d58ed67333::t_e3e7e5ba1054d8 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "16f682e49b4cfa9f2c31d1ddf1a0210f9aa05847",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
