@@ -1,4 +1,5 @@
 from reader_performance import timed_call,asset_digest,version_html,ReadCache
+from reader_database import RequestConnection,ReadSnapshot
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
@@ -23,15 +24,22 @@ def default_focus():
  return {'passage_id':p,'sentence_id':None,'revision':1}
 def initial():return {'revision':1,'focus':default_focus(),'drafts':{},'rounds':[],'terms':[],'quizzes':[],'notes':{},'read_passages':{}}
 def db():
- conn=sqlite3.connect(DB,timeout=15);conn.execute('PRAGMA journal_mode=WAL');conn.execute('CREATE TABLE IF NOT EXISTS reader_state (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)');return conn
-def read_state():
+ conn=sqlite3.connect(DB,timeout=15,factory=RequestConnection);conn.execute('PRAGMA journal_mode=WAL');conn.execute('CREATE TABLE IF NOT EXISTS reader_state (id INTEGER PRIMARY KEY CHECK(id=1), value TEXT NOT NULL)');return conn
+def read_state(with_snapshot=False):
  with LOCK,db() as c:
   row=c.execute('SELECT value FROM reader_state WHERE id=1').fetchone()
-  if row:return json.loads(row[0])
-  state=initial();c.execute('INSERT INTO reader_state VALUES(1,?)',(json.dumps(state,ensure_ascii=False),));return state
-def mutate(fn):
+  if row:state=json.loads(row[0]);serialized=row[0]
+  else:
+   state=initial();serialized=json.dumps(state,ensure_ascii=False);c.execute('INSERT INTO reader_state VALUES(1,?)',(serialized,))
+  return ReadSnapshot(state,serialized) if with_snapshot else state
+
+def mutate(fn,snapshot=None):
  with LOCK,db() as c:
-  c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT value FROM reader_state WHERE id=1').fetchone();state=json.loads(row[0]) if row else initial();result=fn(state);state['revision']+=1;c.execute('INSERT INTO reader_state VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',(json.dumps(state,ensure_ascii=False),));return result
+  c.execute('BEGIN IMMEDIATE');row=c.execute('SELECT value FROM reader_state WHERE id=1').fetchone()
+  state=snapshot.take(row[0] if row else None) if isinstance(snapshot,ReadSnapshot) else None
+  if state is None:state=json.loads(row[0]) if row else initial()
+  result=fn(state);state['revision']+=1;c.execute('INSERT INTO reader_state VALUES(1,?) ON CONFLICT(id) DO UPDATE SET value=excluded.value',(json.dumps(state,ensure_ascii=False),));return result
+
 
 def find_round(state,rid):
  item=next((r for r in state['rounds'] if r['id']==rid),None)

@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.4 reduces startup and source-link delays with background catalog loading, asynchronous PDF text layers, bounded revision caches, and conditional material requests. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
+Version 0.4.5 builds on startup and source-link caching with explicit transaction cleanup and verified snapshot reuse during chapter changes. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
 
 <div align="center">
 

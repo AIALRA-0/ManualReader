@@ -1,5 +1,6 @@
 """网页使用统一登录；远程 Agent 通过项目配对取得独立、可撤销的授权。"""
 from reader_agent_contract import CLIENT_PATHS
+from reader_database import RequestConnection
 from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,unquote
 import base64,hashlib,hmac,io,ipaddress,json,os,re,secrets,sqlite3,threading,time,uuid
@@ -29,7 +30,7 @@ class Pairings:
             conn.execute('CREATE TABLE IF NOT EXISTS pairings (id TEXT PRIMARY KEY, owner TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL UNIQUE, material_id TEXT, can_import INTEGER NOT NULL, can_manage INTEGER NOT NULL, created REAL NOT NULL, expires REAL NOT NULL, code_expires REAL NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)')
             conn.execute('UPDATE pairings SET revoked=1 WHERE material_id IS NULL OR material_id=""')
             conn.execute('UPDATE pairings SET can_import=0,can_manage=0 WHERE material_id IS NOT NULL')
-    def db(self):return sqlite3.connect(self.path,timeout=15)
+    def db(self):return sqlite3.connect(self.path,timeout=15,factory=RequestConnection)
     def token(self,identity):return 'mr_'+base64.urlsafe_b64encode(hmac.new(self.key,identity.encode(),hashlib.sha256).digest()).decode().rstrip('=')
     @staticmethod
     def public(row):return {**{k:row[k] for k in ['id','material_id','can_import','can_manage','created','expires','code_expires','revoked']},'permanent':row['expires']==0}

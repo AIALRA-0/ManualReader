@@ -31,7 +31,7 @@ from reader_learning import learning_payload,validate_outline
 from reader_term_names import analyze_name,term_name,term_key,normalize_state,display_state
 from reader_teaching import TEACHING_RULES,teaching_context,lesson_task,append_assets,wait_for_user,translation_queue
 from reader_performance import begin_request,server_timing,TimedRLock,timed_call,ReadCache
-from reader_database import DATABASES
+from reader_database import DATABASES,RequestConnection
 from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
 from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
 from reader_outline import OUTLINE_RULES,edit_nodes,protect_taught_nodes,changes_between
@@ -181,7 +181,7 @@ def library():return [{**row,'title':row['name']} for row in library_tree()['mat
 def stored_state(identity):
     target=core.DB if identity==DEFAULT else LIBRARY/identity/'state.sqlite3'
     if not target.exists():return {'rounds':[],'terms':[],'quizzes':[],'notes':{},'read_passages':{}}
-    with sqlite3.connect(target.resolve().as_uri()+'?mode=ro',uri=True) as conn:
+    with sqlite3.connect(target.resolve().as_uri()+'?mode=ro',uri=True,factory=RequestConnection) as conn:
         row=conn.execute('SELECT value FROM reader_state WHERE id=1').fetchone()
     return json.loads(row[0]) if row else {'rounds':[]}
 
@@ -749,12 +749,13 @@ class Handler(core.Handler):
                     return self.json({'excluded_count':len(excluded_sources(material(),store.read())[0]),'learning':plan,'original_retained':True,'user_records_changed':False})
             if path=='/api/learning/select':
                 with core.LOCK:
-                    records=timed_call('read',core.read_state);selection_guard(records,data)
+                    snapshot=timed_call('read',core.read_state,with_snapshot=True);records=snapshot.state;selection_guard(records,data)
                     base_revision=records['revision'];can_patch=can_patch_navigation(data,records)
                     plan=timed_call('plan',learning_payload,material(),workspace().read_snapshot(),records);node=next((n for n in plan['nodes'] if n['id']==data.get('node_id')),None)
                     if not node:raise ValueError('没有找到这一个学习章节')
                     if getattr(self,'_remote_machine',False) and plan['selected_id'] and node['id']!=plan['selected_id'] and not completion_payload(material(),workspace().read(),records)['can_advance']:return self.json({'error':'当前章节尚未由用户勾选完成，Agent 不能进入下一节'},403)
                     def choose_learning(state):
+                        selection_guard(state,data)
                         old=dict(state['focus']);old['learning_node_id']=state.get('learning_node_id');state.setdefault('history',[]).append({'focus':old,'view':data.get('previous_view',{})});state['forward_history']=[]
                         record_selection(state,node['id'],core.stamp,'agent'if getattr(self,'_remote_machine',False)else'browser')
                         state['learning_node_id']=node['id'];target=next((pid for pid in node['passage_ids'] if not locate(pid).get('heading')),None)
@@ -764,7 +765,7 @@ class Handler(core.Handler):
                         result={'node_id':node['id'],'status':node['status']}
                         if getattr(self,'_remote_machine',False):result['lesson_task_id']=task_for(state,node['id'],self.lesson_actor(),core.stamp)['id']
                         return result,state
-                    result,selected_state=timed_call('save',core.mutate,choose_learning)
+                    result,selected_state=timed_call('save',core.mutate,choose_learning,snapshot=snapshot)
                     if data.get('include_progress'):result['progress']=timed_call('progress',navigation_progress,selected_state,base_revision)if can_patch else timed_call('progress',progress_payload,selected_state)
                 return self.json(result)
             if path=='/api/projects':
