@@ -1,0 +1,45 @@
+docs/deployment.md
+  s_1c46d58ed67333::t_ce65694270fb97 56-66
+reader_performance.py
+  s_1c46d58ed67333::t_6dc40d0e2e1c2c 25
+  s_1c46d58ed67333::t_fb2b4f51dc2f86 3-4,11,21,24
+reader_server.py
+  s_1c46d58ed67333::t_fb2b4f51dc2f86 44,401,549,1057-1061
+  s_1c46d58ed67333::t_6dc40d0e2e1c2c 402-404
+  s_1c46d58ed67333::t_9a04010d0f3768 412
+server.py
+  s_1c46d58ed67333::t_fb2b4f51dc2f86 153
+  s_1c46d58ed67333::t_fabf8606dfc5b3 152
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_ce65694270fb97 88-92
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_ce65694270fb97 3-9
+  s_1c46d58ed67333::t_7e95062bdad9dc 19
+README.en.md
+  s_1c46d58ed67333::t_ce65694270fb97 11
+Demo/test_startup_performance.py
+  s_1c46d58ed67333::t_6dc40d0e2e1c2c 92-96,101-104
+  s_1c46d58ed67333::t_9a04010d0f3768 97-100
+Demo/test_global_gc_timing.py
+  s_1c46d58ed67333::t_79bf94c218e055 1-17
+CHANGELOG.md
+  s_1c46d58ed67333::t_ce65694270fb97 1-8
+README.md
+  s_1c46d58ed67333::t_1c919cde77ec37 55
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "74e85d2c913e593e311f8ee53b826bf45d1b3751",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
