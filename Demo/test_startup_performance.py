@@ -94,6 +94,18 @@ app.core.JSON_RESPONSES.rows.clear()
 with patch('reader_practice_text.display_lesson',wraps=display_lesson)as prepare:
  h,b=get('/api/material');tag=h['ETag'];assert 'no-cache'in h['Cache-Control'];first_body=b
  h,b=get('/api/material');assert b==first_body and prepare.call_count==1
+# 字节仍有效时，切换过其他项目也无需重新整理正文。
+h,_=get('/api/progress');get('/api/coverage?summary=true')
+with patch.object(app,'material',side_effect=AssertionError('命中字节或 ETag 不应重新投影材料')):
+ h,b=get('/api/material');assert b==first_body
+ get('/api/coverage?summary=true');get('/api/import-jobs')
+ try:get('/api/material',{'If-None-Match':tag});raise AssertionError('原文未变化应返回 304')
+ except urllib.error.HTTPError as e:assert e.code==304
+ h,b=get('/api/progress')
+ progress_tag=h['ETag']
+ try:get('/api/progress',{'If-None-Match':progress_tag});raise AssertionError('进度未变化应返回 304')
+ except urllib.error.HTTPError as e:assert e.code==304
+
 with patch.object(app,'Runs')as audit:
  h,b=get('/api/material',{'X-Reader-Run':'run-'+'a'*20})
  assert audit.return_value.request.call_args.args[4]==len(json.dumps(json.loads(b),ensure_ascii=False).encode())
@@ -112,6 +124,19 @@ app.core.mutate(lambda state:state['quizzes'].append({'id':'quiz','prompt':'新�
 h,b=get('/api/material',{'If-None-Match':tag});assert h['ETag']!=tag
 m['passages'][0]['zh']='更新后的译文';(folder/'material.json').write_text(json.dumps(m))
 h2,b=get('/api/material',{'If-None-Match':h['ETag']});assert h2['ETag']!=h['ETag'] and json.loads(b)['passages'][0]['zh']=='更新后的译文'
+# 整理同份材料只做一次，而且不占住状态写入所用的全局锁。
+from concurrent.futures import ThreadPoolExecutor
+app.PROJECT_CACHE.rows.clear();entered=threading.Event();release=threading.Event();calls=[]
+def prepare(original):
+ calls.append(1);entered.set();assert release.wait(5);return {'id':'test'}
+with patch.object(app.Workspace,'project',side_effect=prepare):
+ with ThreadPoolExecutor(max_workers=4)as pool:
+  pending=[pool.submit(app.material)for _ in range(4)]
+  assert entered.wait(5)
+  acquired=app.core.LOCK.acquire(timeout=.1)
+  if acquired:app.core.LOCK.release()
+  release.set();assert acquired,'正文整理不应锁住其他项目和状态读取'
+  assert all(f.result()=={'id':'test'}for f in pending)and len(calls)==1
 server.shutdown()
 '''
         with tempfile.TemporaryDirectory()as tmp:

@@ -1,5 +1,16 @@
 """用响应头区分服务端处理和锁等待，不记录材料或凭据。"""
 import threading,time,gc
+import json
+try:import orjson as _fast_json
+except ImportError:_fast_json=None
+
+def json_bytes(value):
+    """仅加速 HTTP 编码；不改磁盘记录，特殊旧值仍按原编码器处理。"""
+    if _fast_json is not None:
+        try:return _fast_json.dumps(value,option=_fast_json.OPT_NON_STR_KEYS)
+        except (TypeError,ValueError):pass
+    return json.dumps(value,ensure_ascii=False,separators=(',',':')).encode('utf8')
+
 from collections import deque
 _gc_events=deque(maxlen=512)
 _request=threading.local()

@@ -1,5 +1,5 @@
 """学习章节独立于原文件目录；来源、讲解和旧问题均保留自己的编号。"""
-import copy,re
+import copy,re,weakref
 from reader_reading import scope as reading_scope
 
 
@@ -114,15 +114,20 @@ def learning_payload(material,stored,state):
     import copy
     key=(id(material),stored.get('revision'))
     cacheable=bool(material.get('alignment'))and isinstance(stored.get('revision'),int)
-    with _PLAN_LOCK:cached=_PLAN_CACHE.get(key)if cacheable else None
-    if cached and cached[0]is material:
+    try:reference=weakref.ref(material)if cacheable else None
+    except TypeError:reference=None
+    cacheable=reference is not None
+    with _PLAN_LOCK:
+        for stale in [k for k,v in _PLAN_CACHE.items()if v[0]()is None]:_PLAN_CACHE.pop(stale,None)
+        cached=_PLAN_CACHE.get(key)if cacheable else None
+    if cached and cached[0]()is material:
         nodes=[{**n,'own_reading_progress':dict(n['own_reading_progress']),'reading_progress':dict(n['reading_progress'])}for n in cached[1][0]];coverage_plan=cached[1][1]
     else:
         nodes,coverage_plan=_static_learning(material,stored)
         if cacheable:
             with _PLAN_LOCK:
                 if len(_PLAN_CACHE)>=2:_PLAN_CACHE.pop(next(iter(_PLAN_CACHE)))
-                _PLAN_CACHE[key]=(material,copy.deepcopy((nodes,coverage_plan)))
+                _PLAN_CACHE[key]=(reference,copy.deepcopy((nodes,coverage_plan)))
     passages=material['passages'];read=state.get('read_passages',{})
     for node in nodes:
         for field,ids in [('own_reading_progress',node['reading_passage_ids']),('reading_progress',node.pop('_subtree_reading_ids'))]:

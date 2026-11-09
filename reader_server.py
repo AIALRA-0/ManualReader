@@ -40,7 +40,7 @@ from reader_quality import answer_parts,public_rules,project_audit,QA_PART_CONTR
 from reader_translation import packets as translation_packets,save_groups as save_translation_groups,save_visuals as save_visual_translations
 
 core.LOCK=TimedRLock()
-ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict();PROJECT_CACHE=OrderedDict()
+ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict();PROJECT_CACHE=ReadCache(2)
 DISPLAY_CACHE=ReadCache(2)
 COVERAGE_CACHE=ReadCache(2)
 DEFAULT_MATERIAL=Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json')))
@@ -69,12 +69,7 @@ def material_revision(identity=None):
     return max([mpath(identity).stat().st_mtime_ns,workspace(identity).revision()]+[p.stat().st_mtime_ns for p in paths if p.exists()])
 def material(identity=None):
     identity=identity or mid();version=material_revision(identity)
-    with core.LOCK:
-        if identity not in PROJECT_CACHE or PROJECT_CACHE[identity][0]!=version:
-            PROJECT_CACHE[identity]=(version,workspace(identity).project(raw_material(identity)))
-        PROJECT_CACHE.move_to_end(identity)
-        while len(PROJECT_CACHE)>2:PROJECT_CACHE.popitem(last=False)
-        return PROJECT_CACHE[identity][1]
+    return PROJECT_CACHE.get(identity,version,lambda:timed_call('material_prepare',workspace(identity).project,raw_material(identity)))
 def db():
     target=core.DB if mid()==DEFAULT else LIBRARY/mid()/'state.sqlite3'
     return DATABASES.connect(target)
@@ -491,6 +486,32 @@ class Handler(core.Handler):
                 if path=='/api/settings':return self.json({**settings(SETTINGS),'defaults':default_templates()})
                 if path=='/api/library':return self.json(library())
                 if path=='/api/library/tree':return self.json(library_tree(parse_qs(urlsplit(self.path).query).get('view')==['names']))
+                if path=='/api/material':
+                    revision=material_revision();records=core.read_state()
+                    # 原文展示只受材料和题干变化影响，展开回答不应让整份原文重新下载。
+                    quizzes=records.get('quizzes',[])
+                    signature=__import__('hashlib').sha256(json.dumps([(q.get('id'),q.get('prompt'),q.get('options'),q.get('deleted_at'))for q in quizzes],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()[:16]
+                    tag='"material-'+mid()+'-'+str(revision)+'-'+signature+'"'
+                    if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
+                    return self.json(lambda:{**__import__('reader_practice_text').display_lesson(material(),quizzes),'material_revision':revision},cache_tag=tag)
+                if path=='/api/progress':
+                    metadata={'material_revision':material_revision(),'settings_revision':SETTINGS.stat().st_mtime_ns if SETTINGS.exists() else 0}
+                    progress=core.read_state()
+                    query=parse_qs(urlsplit(self.path).query)
+                    if query.get('since')==[str(progress['revision'])] and all(float(query.get(key,[-1])[0])==float(value) for key,value in metadata.items()):
+                        return self.json({'unchanged':True,'revision':progress['revision']})
+                    tag='"progress-'+mid()+'-'+str(progress['revision'])+'-'+str(metadata['material_revision'])+'-'+str(metadata['settings_revision'])+'"'
+                    if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
+                    return self.json(lambda:progress_payload(progress),cache_tag=tag)
+                if path=='/api/coverage':
+                    compact=parse_qs(urlsplit(self.path).query).get('summary')==['true'];records=core.read_state();version=(material_revision(),records['revision'],compact)
+                    value=COVERAGE_CACHE.get(mid(),version,lambda:coverage_payload(material(),workspace().read_snapshot(),records,include_missing=not compact,summary_only=compact))
+                    if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
+                    return self.json(value)
+                if path=='/api/speech/status':return self.json(speech_proxy('/status'))
+                if path=='/api/import-jobs':return self.json({'jobs':ImportJobs(mpath().parent,mid()).list()})
+                job_match=re.fullmatch(r'/api/import-jobs/(import-[a-f0-9]{20})',path)
+                if job_match:return self.json(ImportJobs(mpath().parent,mid()).read(job_match[1]))
                 m=material()
                 if path in CLIENT_PATHS:return self.file(ROOT/path.split('/')[-1],'text/x-python; charset=utf-8')
                 if path=='/api/writing/rules':return self.json(public_rules())
@@ -503,10 +524,6 @@ class Handler(core.Handler):
                 if path=='/api/quality-review/calls':
                     report=mpath().parent/'content-upgrade-calls.json'
                     return self.json(json.loads(report.read_text('utf8')) if report.exists() else {'material_id':m['id'],'calls':[]})
-                if path=='/api/speech/status':return self.json(speech_proxy('/status'))
-                if path=='/api/import-jobs':return self.json({'jobs':ImportJobs(mpath().parent,mid()).list()})
-                job_match=re.fullmatch(r'/api/import-jobs/(import-[a-f0-9]{20})',path)
-                if job_match:return self.json(ImportJobs(mpath().parent,mid()).read(job_match[1]))
                 if path=='/api/practice-book':return self.json(practice_payload(core.read_state()))
                 if path=='/api/terms':
                     terms=core.read_state().get('terms',[])
@@ -533,34 +550,12 @@ class Handler(core.Handler):
                 if path=='/api/learning/exclusions':
                     stored=workspace().read();active,outdated=excluded_sources(m,stored)
                     return self.json({'revision':stored['revision'],'exclusions':list(active.values()),'outdated_source_ids':outdated})
-                if path=='/api/coverage':
-                    compact=parse_qs(urlsplit(self.path).query).get('summary')==['true'];records=core.read_state();version=(material_revision(),records['revision'],compact)
-                    value=COVERAGE_CACHE.get(mid(),version,lambda:coverage_payload(m,workspace().read_snapshot(),records,include_missing=not compact,summary_only=compact))
-                    if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
-                    return self.json(value)
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'framework_version':__import__('reader_generation').VERSION,'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
-                if path=='/api/material':
-                    records=core.read_state();revision=material_revision()
-                    # 原文展示只受材料和题干变化影响，展开回答不应让整份原文重新下载。
-                    quizzes=records.get('quizzes',[])
-                    signature=__import__('hashlib').sha256(json.dumps([(q.get('id'),q.get('prompt'),q.get('options'),q.get('deleted_at'))for q in quizzes],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()[:16]
-                    version=(revision,signature);tag='"material-'+mid()+'-'+str(revision)+'-'+signature+'"'
-                    if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
-                    return self.json(lambda:{**__import__('reader_practice_text').display_lesson(m,quizzes),'material_revision':revision},cache_tag=tag)
                 history_match=re.fullmatch(r'/api/questions/([^/]+)/history',path)
                 if history_match:
                     q=next((q for r in core.read_state()['rounds']for q in r['questions']if q['id']==history_match[1]),None)
                     if not q:raise ValueError('没有找到这个问题')
                     return self.json({'question_id':q['id'],'answer_history':q.get('answer_history',[]),'question_history':q.get('question_history',[])})
-                if path=='/api/progress':
-                    progress=core.read_state()
-                    query=parse_qs(urlsplit(self.path).query)
-                    metadata={'material_revision':material_revision(),'settings_revision':SETTINGS.stat().st_mtime_ns if SETTINGS.exists() else 0}
-                    if query.get('since')==[str(progress['revision'])] and all(float(query.get(key,[-1])[0])==float(value) for key,value in metadata.items()):
-                        return self.json({'unchanged':True,'revision':progress['revision']})
-                    tag='"progress-'+mid()+'-'+str(progress['revision'])+'-'+str(metadata['material_revision'])+'-'+str(metadata['settings_revision'])+'"'
-                    if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
-                    return self.json(progress_payload(progress),cache_tag=tag)
                 if path=='/api/work':
                     query=parse_qs(urlsplit(self.path).query)
                     records=core.read_state();stored=workspace().read()

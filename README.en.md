@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.6 builds on startup and source-link caching with explicit transaction cleanup, verified snapshot reuse during chapter changes, and encoded material responses that do not retain duplicate display objects. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
+Version 0.4.6 builds on startup and source-link caching with explicit transaction cleanup, verified snapshot reuse during chapter changes, encoded material responses that do not retain duplicate display objects, overlapping startup requests, and projection work that no longer holds the state transaction lock. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
 
 <div align="center">
 

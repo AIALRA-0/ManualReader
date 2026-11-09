@@ -27,6 +27,9 @@ def check_id(value, label='编号'):
 
 _WORKSPACE_LOCKS={};_WORKSPACE_LOCKS_GUARD=threading.Lock();_WORKSPACE_SNAPSHOTS={}
 
+class MaterialSnapshot(dict):
+    """材料仍按字典读取和编码；辅助缓存只保留它的弱引用。"""
+
 class Workspace:
     def __init__(self, folder):
         self.folder = Path(folder)
@@ -157,7 +160,7 @@ class Workspace:
         from reader_alignment import build_alignment
         result['alignment']=build_alignment(result)
         result['framework_version']=__import__('reader_generation').VERSION
-        return result
+        return MaterialSnapshot(result)
 
     def apply_visual_translations(self,material):
         """只把已核对原图的结果用于展示；原图变化后保留为未核对。"""

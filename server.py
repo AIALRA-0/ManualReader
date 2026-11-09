@@ -150,7 +150,7 @@ class Handler(BaseHTTPRequestHandler):
   accepts_gzip=bool(re.search(r'(?:^|,)\s*gzip(?:\s*;\s*q=(?!0(?:\.0*)?(?:\s|,|$))[^,]+)?(?:\s*,|\s*$)',self.headers.get('Accept-Encoding',''),re.I))
   def encode():
    value=timed_call('project',data)if callable(data)else data
-   payload=timed_call('encode',lambda:json.dumps(value,ensure_ascii=False,separators=(',',':')).encode('utf8'))
+   payload=timed_call('encode',__import__('reader_performance').json_bytes,value)
    compressed=len(payload)>2048 and accepts_gzip
    if compressed:payload=timed_call('compress',__import__('gzip').compress,payload,compresslevel=3)
    return payload,compressed

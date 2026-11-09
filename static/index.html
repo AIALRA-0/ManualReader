@@ -12,6 +12,17 @@ html[data-reader-state=loading] .reader-startup::before{content:"";width:32px;he
 try{document.documentElement.dataset.theme=localStorage.getItem('manual-reader-theme')||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light')}catch{}
 window.ReaderBoot={stage(text){const n=document.getElementById('startup-detail');if(n)n.textContent=text},ready(){if(this.failure){this.error(this.failure);return}document.documentElement.dataset.readerState='ready'},error(text){this.failure=text;document.documentElement.dataset.readerState='error';this.stage(text);const h=document.getElementById('startup-title'),b=document.getElementById('startup-retry');if(h)h.textContent='阅读器尚未打开';if(b)b.hidden=false}};
 window.addEventListener('error',event=>{if(/^(?:ResizeObserver loop completed with undelivered notifications\.?|ResizeObserver loop limit exceeded\.?)$/.test(String(event.message||'').trim()))return;if(document.documentElement.dataset.readerState!=='loading')return;const resource=event.target?.tagName;if(resource==='SCRIPT'||resource==='LINK')ReaderBoot.error('页面资源暂未加载，请重新打开；原文和笔记仍然保留');else if(event.message)ReaderBoot.error('页面初始化遇到问题：'+event.message)},true);
+// 下载界面脚本时先读取当前材料；启动后只领取一次，不额外保留整份正文。
+(function(){
+ const requested=new URL(location.href).searchParams.get('material');
+ async function read(path,headers){const response=await fetch(path,{headers});const value=await response.json();if(!response.ok)throw Object.assign(Error(value.error||'请求未完成'),{status:response.status,code:value.code});return value}
+ const session=read('/api/session');session.catch(()=>{});ReaderBoot.session=session;
+ if(requested){
+  const prepared=session.then(s=>Promise.all(['/api/material','/api/progress'].map(path=>read(path,{'X-Reader-Pin':s.pin||'','X-Reader-Material':requested,'Content-Type':'application/json'}))));
+  prepared.catch(()=>{});ReaderBoot.prepared={identity:requested,value:prepared};
+ }
+ ReaderBoot.takePrepared=identity=>{const row=ReaderBoot.prepared;delete ReaderBoot.prepared;return row?.identity===identity?row.value:null};
+})();
 </script>
 <link href="/vendor/reader.css" rel="stylesheet"/><link href="/app.css?v=file-links-completion-v1-20261107" rel="stylesheet"/>
 <script defer src="/vendor/math-text.js?v=math-atomic-v4-20261106"></script><script defer src="/vendor/reader-text.js"></script>
