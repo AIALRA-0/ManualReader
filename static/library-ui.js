@@ -28,7 +28,7 @@ window.ReaderLibraryUI={create({api,post,current,open,onChanged,status,connectio
  document.addEventListener('touchcancel',()=>{if(touch||drag?.method==='touch')endDrag()});dialog.addEventListener('close',endDrag);document.addEventListener('keydown',event=>{if(event.key==='Escape'&&drag){event.preventDefault();endDrag()}},true);
  document.addEventListener('touchstart',event=>{if(event.touches.length>1&&(touch||drag?.method==='touch'))endDrag()},{passive:true});
  const activeMaterials=()=>tree.materials.filter(active).map(item=>({...item,title:item.name}));
- async function refresh(){tree=await api('/api/library/tree');render();return activeMaterials()}
+ async function refresh(){tree=await api('/api/library/tree?view=names');render();return activeMaterials()}
  function destination(){const row=get(selected.kind,selected.id);return trashOpen?'root':selected.kind==='folder'?selected.id:row?.folder_id||'root'}
  function folderPath(id,seen=new Set()){if(id==='root')return '根目录';if(seen.has(id))return '';seen.add(id);const row=get('folder',id);return row?folderPath(row.parent_id,seen)+' / '+row.name:'根目录'}
  function parentOptions(omit){parent.replaceChildren();const excluded=new Set(omit?[omit]:[]);let more=true;while(more){more=false;for(const item of tree.folders)if(excluded.has(item.parent_id)&&!excluded.has(item.id)){excluded.add(item.id);more=true}}for(const item of tree.folders.filter(row=>active(row)&&!excluded.has(row.id)).sort((a,b)=>a.id==='root'?-1:b.id==='root'?1:folderPath(a.id).localeCompare(folderPath(b.id),'zh-CN'))){const option=el('option',null,folderPath(item.id));option.value=item.id;parent.append(option)}}

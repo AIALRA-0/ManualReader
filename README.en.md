@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.3 adds a compact agent bootstrap, selective term completion, and recoverable usage receipts while preserving the existing reading workflow. Keep your existing databases, source files, and settings when upgrading; old content is not regenerated automatically. See the [handoff notes](docs/stability-handoff.md) for scope and checks.
+Version 0.4.4 reduces startup and source-link delays with background catalog loading, asynchronous PDF text layers, bounded revision caches, and conditional material requests. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
 
 <div align="center">
 

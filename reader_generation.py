@@ -57,7 +57,7 @@ def part_id(part,index):
     if not isinstance(identity,str)or not re.fullmatch(r'[A-Za-z0-9_-]{1,70}',identity):raise ValueError('内容部分的 id 需要使用字母、数字、下划线或连字符')
     return identity
 
-def display_parts(question,quizzes=()):
+def display_parts(question,quizzes=(),quiz_index=None):
     """旧分段补齐展示字段；不改回答正文、问题版本或已读哈希。"""
     rows=question.get('answer_parts')
     if not isinstance(rows,list):return question
@@ -68,7 +68,7 @@ def display_parts(question,quizzes=()):
         part.setdefault('markdown','\n\n'.join(str(part.get(k)or'')for k in ('direct_answer','explanation')if part.get(k)))
         if not part['markdown']:return question
         if quizzes:
-            part['display_markdown']=__import__('reader_practice_text').clean(part['markdown'],quizzes)[0]
+            part['display_markdown']=__import__('reader_practice_text').clean(part['markdown'],quizzes,quiz_index)[0]
         parts.append(part)
     return {**question,'answer_parts':parts}
 

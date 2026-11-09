@@ -29,3 +29,49 @@ class TimedRLock:
     def release(self):return self._lock.release()
     def __enter__(self):self.acquire();return self
     def __exit__(self,*args):self.release()
+
+
+class ReadCache:
+    """按输入版本复用展示结果；同一版本只准备一次，写入仍走原来的数据接口。"""
+    def __init__(self,limit):
+        from collections import OrderedDict
+        self.limit=limit;self.rows=OrderedDict();self.guard=threading.Lock();self.pending={}
+    def get(self,scope,version,build):
+        key=(scope,version)
+        while True:
+            with self.guard:
+                row=self.rows.get(scope)
+                if row and row[0]==version:self.rows.move_to_end(scope);return row[1]
+                event=self.pending.get(key)
+                if event is None:
+                    event=threading.Event();self.pending[key]=event;break
+            timed_call('reuse_wait',event.wait)
+        try:
+            value=build()
+            with self.guard:
+                self.rows[scope]=(version,value);self.rows.move_to_end(scope)
+                while len(self.rows)>self.limit:self.rows.popitem(last=False)
+            return value
+        finally:
+            with self.guard:self.pending.pop(key,None);event.set()
+
+
+from functools import lru_cache
+import hashlib,re
+@lru_cache(maxsize=128)
+def _asset_digest(path,mtime,size):
+    from pathlib import Path
+    return hashlib.sha256(Path(path).read_bytes()).hexdigest()[:16]
+
+def asset_digest(path):
+    stat=path.stat()
+    return _asset_digest(str(path),stat.st_mtime_ns,stat.st_size)
+
+def version_html(data,folder):
+    # 页面引用随实际文件内容更新；旧页面链接仍可用，但不缓存旧版本号。
+    def replace(match):
+        name=match[2];relative=name.split('?',1)[0].lstrip('/')
+        target=folder/('math-text.js' if relative=='vendor/math-text.js' else relative)
+        if not target.is_file():return match[0]
+        return match[1]+name.split('?',1)[0]+'?v='+asset_digest(target)+match[3]
+    return re.sub(r'((?:src|href)=["\'])(/[^"\']+\.(?:js|css)(?:\?[^"\']*)?)(["\'])',replace,data)

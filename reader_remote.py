@@ -85,14 +85,14 @@ class RemoteMixin:
         secret=os.environ.get('MANUAL_READER_PROXY_SECRET','')
         trusted=bool(secret) and secrets.compare_digest(self.headers.get('X-Reader-Proxy-Secret',''),secret) and ipaddress.ip_address(self.client_address[0]).is_loopback and self.headers.get('X-Aialra-Authenticated')=='1'
         return email or user if trusted and owners.intersection([email,user]) else None
-    def json(self,data,status=200):
+    def json(self,data,status=200,cache_tag=None):
         if ORIGIN and getattr(self,'_remote_machine',False) and getattr(self,'_mapped_path','')=='/api/guide' and status==200:
             data=json.loads(json.dumps(data,ensure_ascii=False).replace('/api/','/'))
             data['headers']={'Authorization':'Bearer <access_token>','X-Reader-Material':getattr(self,'_grant_material',None) or self.headers.get('X-Reader-Material','')}
             data['api_base']=public_base();data['capabilities']={'read':True,'write':True,'mark_read':False,'write_user_notes':False,'answer_exercises':False,'import':bool(self._grant['can_import']),'manage':bool(self._grant['can_manage'])}
             data['project_scope']={'material_id':self._grant_material,'upload_project_files':True,'other_projects':False}
             for key in ('library','project','lecture'):data.get('endpoints',{}).pop(key,None)
-        return super().json(data,status)
+        return super().json(data,status,cache_tag=cache_tag)
     def begin_remote(self,method):
         REQUEST.machine=False;self._remote_machine=False;self._remote_authorized=False;self._grant_material=None
         if not ORIGIN:return False

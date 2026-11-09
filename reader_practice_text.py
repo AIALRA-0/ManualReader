@@ -5,7 +5,15 @@ def _key(text):
     text=unicodedata.normalize('NFKC',str(text)).casefold()
     return re.sub(r'[\W_]+','',text)
 
-def duplicate_ranges(markdown,quizzes):
+def quiz_index(quizzes):
+    indexed={}
+    for quiz in quizzes:
+        if quiz.get('deleted_at') or not quiz.get('prompt') or not 2<=len(quiz.get('options',[]))<=6:continue
+        indexed.setdefault((_key(quiz['prompt']),tuple(sorted(_key(o)for o in quiz['options']))),quiz)
+    return indexed
+
+
+def duplicate_ranges(markdown,quizzes,indexed=None):
     """题干及全部选项都对应同一条已存练习时，才省略重复文本。"""
     lines=str(markdown).splitlines(keepends=True);offsets=[];offset=0;protected=[];fence=None
     for line in lines:
@@ -16,10 +24,7 @@ def duplicate_ranges(markdown,quizzes):
             if fence and mark[1][0]==fence[0] and len(mark[1])>=len(fence):fence=None
             elif not fence:fence=mark[1]
     options=re.compile(r'^\s*(?:[-*+]\s+)?(?:\*\*)?([A-F])[.、·：:]\s*(.*?)(?:\*\*)?\s*$')
-    indexed={}
-    for quiz in quizzes:
-        if quiz.get('deleted_at') or not quiz.get('prompt') or not 2<=len(quiz.get('options',[]))<=6:continue
-        indexed.setdefault((_key(quiz['prompt']),tuple(sorted(_key(o)for o in quiz['options']))),quiz)
+    if indexed is None:indexed=quiz_index(quizzes)
     result=[];i=0
     while i<len(lines):
         if protected[i] or not options.match(lines[i]):i+=1;continue
@@ -45,8 +50,8 @@ def duplicate_ranges(markdown,quizzes):
         i=max(end,i+1)
     return result
 
-def clean(markdown,quizzes):
-    text=str(markdown or'');ranges=duplicate_ranges(text,quizzes)
+def clean(markdown,quizzes,indexed=None):
+    text=str(markdown or'');ranges=duplicate_ranges(text,quizzes,indexed)
     for start,end,_ in reversed(ranges):text=text[:start]+text[end:]
     return text.strip(),[identity for _,_,identity in ranges]
 
@@ -56,13 +61,13 @@ def display_lesson(material,quizzes):
     for p in material.get('passages',[]):
         if p.get('content_kind')=='explanation' and not p.get('display_omit'):
             groups.setdefault(p.get('explanation_id')or p.get('section_id')or p['id'],[]).append(p)
-    changed={}
+    changed={};indexed=quiz_index(quizzes)
     for passages in groups.values():
         records=[];offset=0
         for p in passages:
             text=p.get('display_markdown',p.get('zh')or p.get('en')or'')
             records.append((p,text,offset,offset+len(text)));offset+=len(text)+2
-        joined='\n\n'.join(r[1]for r in records);ranges=duplicate_ranges(joined,quizzes)
+        joined='\n\n'.join(r[1]for r in records);ranges=duplicate_ranges(joined,quizzes,indexed)
         for p,text,start,end in records:
             overlaps=[(max(a,start)-start,min(b,end)-start)for a,b,_ in ranges if a<end and b>start]
             if not overlaps:continue

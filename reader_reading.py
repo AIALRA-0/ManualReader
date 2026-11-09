@@ -22,7 +22,8 @@ def scope(material,links):
     ids=list(dict.fromkeys(l['passage_id'] for l in links if l.get('passage_id') in sources))
     pages=page_ids(material,ids);slide_pages={pid for pid in pages if material['pages'][pid].get('kind')=='slide' or material['pages'][pid].get('width',1)>1.15*material['pages'][pid].get('height',1)}
     # 幻灯片以整页为阅读范围，竖版文档仍保留用户选择的题目或段落范围。
-    ids.extend(p['id'] for p in sources.values() if p['id'] not in ids and any(r.get('page_id') in slide_pages for r in p.get('refs',[])))
+    selected=set(ids)
+    if slide_pages:ids.extend(p['id'] for p in sources.values() if p['id'] not in selected and any(r.get('page_id') in slide_pages for r in p.get('refs',[])))
     ids=set(ids);ordered=[p['id'] for p in material['passages'] if p['id'] in ids]
     return {'passage_ids':ordered,'page_ids':pages,'pages':[{'id':pid,'number':material['pages'][pid]['number'],'file_id':material['pages'][pid].get('file_id','primary')} for pid in pages]}
 

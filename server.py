@@ -1,3 +1,4 @@
+from reader_performance import timed_call,asset_digest,version_html,ReadCache
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlsplit, unquote
@@ -5,6 +6,7 @@ import copy, json, os, re, secrets, sqlite3, threading, uuid
 from reader_questions import has_current_answer,update_round_status,answer_revision
 from datetime import datetime, timezone
 
+JSON_RESPONSES=ReadCache(8)
 ROOT=Path(__file__).resolve().parent
 MATERIAL=json.loads(Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json'))).read_text('utf8'))
 PASSAGES={p['id']:p for p in MATERIAL['passages']}
@@ -133,21 +135,35 @@ def round_context(state,rid):
 
 class Handler(BaseHTTPRequestHandler):
  def log_message(self,fmt,*args):return
- def json(self,data,status=200):
-  payload=json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf8');compressed=len(payload)>2048 and bool(re.search(r'(?:^|,)\s*gzip(?:\s*;\s*q=(?!0(?:\.0*)?(?:\s|,|$))[^,]+)?(?:\s*,|\s*$)',self.headers.get('Accept-Encoding',''),re.I))
-  if compressed:payload=__import__('gzip').compress(payload,compresslevel=3)
-  self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','no-store');self.send_header('Vary','Accept-Encoding')
+ def json(self,data,status=200,cache_tag=None):
+  vary='Accept-Encoding, Cookie, Authorization, X-Reader-Material' if cache_tag else 'Accept-Encoding'
+  if status==304:
+   self.send_response(304);self.send_header('ETag',cache_tag);self.send_header('Cache-Control','private, no-cache');self.send_header('Vary',vary);self.end_headers();return
+  accepts_gzip=bool(re.search(r'(?:^|,)\s*gzip(?:\s*;\s*q=(?!0(?:\.0*)?(?:\s|,|$))[^,]+)?(?:\s*,|\s*$)',self.headers.get('Accept-Encoding',''),re.I))
+  def encode():
+   payload=timed_call('encode',lambda:json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf8'))
+   compressed=len(payload)>2048 and accepts_gzip
+   if compressed:payload=timed_call('compress',__import__('gzip').compress,payload,compresslevel=3)
+   return payload,compressed
+  payload,compressed=JSON_RESPONSES.get(cache_tag,accepts_gzip,encode) if cache_tag else encode()
+  self.send_response(status);self.send_header('Content-Type','application/json; charset=utf-8');self.send_header('Cache-Control','private, no-cache' if cache_tag else 'no-store');self.send_header('Vary',vary)
+  if cache_tag:self.send_header('ETag',cache_tag)
   if compressed:self.send_header('Content-Encoding','gzip')
   self.send_header('Content-Length',str(len(payload)));self.end_headers()
   if self.command!='HEAD':self.wfile.write(payload)
  def file(self,path,ctype):
   if not path.is_file():self.send_error(404);return
   asset_path=urlsplit(self.path).path
-  cacheable=asset_path.startswith(('/page/','/asset/','/vendor/')) and asset_path!='/vendor/math-text.js'
+  from urllib.parse import parse_qs
+  versioned=path.suffix in ('.js','.css') and parse_qs(urlsplit(self.path).query).get('v')==[asset_digest(path)]
+  cacheable=versioned or asset_path.startswith(('/page/','/asset/','/vendor/')) and asset_path!='/vendor/math-text.js' or bool(__import__('re').fullmatch(r'/content-files/[A-Za-z0-9_-]+/asset/[^/]+',asset_path))
+  cache_control='private, max-age=31536000, immutable' if versioned else 'private, max-age=300' if cacheable else 'no-store'
   tag=f'W/"{path.stat().st_mtime_ns}-{path.stat().st_size}"'
   if cacheable and self.headers.get('If-None-Match')==tag:
-   self.send_response(304);self.send_header('ETag',tag);self.send_header('Cache-Control','private, max-age=300');self.send_header('Vary','Cookie, Authorization, X-Reader-Material');self.end_headers();return
-  data=path.read_bytes();self.send_response(200);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control','private, max-age=300' if cacheable else 'no-store');self.send_header('X-Content-Type-Options','nosniff')
+   self.send_response(304);self.send_header('ETag',tag);self.send_header('Cache-Control',cache_control);self.send_header('Vary','Cookie, Authorization, X-Reader-Material');self.end_headers();return
+  data=timed_call('asset_read',path.read_bytes)
+  if path.suffix=='.html' and asset_path in ('/','/settings','/statistics','/quality-review'):data=version_html(data.decode('utf8'),path.parent).encode('utf8')
+  self.send_response(200);self.send_header('Content-Type',ctype);self.send_header('Content-Length',str(len(data)));self.send_header('Cache-Control',cache_control);self.send_header('X-Content-Type-Options','nosniff')
   if cacheable:self.send_header('ETag',tag);self.send_header('Vary','Cookie, Authorization, X-Reader-Material')
   if 'image/svg+xml' in ctype:self.send_header('Content-Security-Policy',"default-src 'none'; img-src data:; style-src 'unsafe-inline'; sandbox")
   self.end_headers()

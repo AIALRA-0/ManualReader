@@ -6,6 +6,7 @@ from pathlib import Path
 from urllib.parse import urlsplit,parse_qs,unquote
 from http.server import ThreadingHTTPServer
 import base64,copy,json,mimetypes,os,re,sqlite3,threading,uuid,socket,time,sys
+from collections import OrderedDict
 import server as core
 from reader_contract import normalize_question,prose_display,writing_guide,canonical_term,reader_context_fields
 from source_parser import parse,apply_translations
@@ -29,7 +30,7 @@ from reader_remote import RemoteMixin,public_base
 from reader_learning import learning_payload,validate_outline
 from reader_term_names import analyze_name,term_name,term_key,normalize_state,display_state
 from reader_teaching import TEACHING_RULES,teaching_context,lesson_task,append_assets,wait_for_user,translation_queue
-from reader_performance import begin_request,server_timing,TimedRLock,timed_call
+from reader_performance import begin_request,server_timing,TimedRLock,timed_call,ReadCache
 from reader_database import DATABASES
 from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
 from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
@@ -39,7 +40,8 @@ from reader_quality import answer_parts,public_rules,project_audit,QA_PART_CONTR
 from reader_translation import packets as translation_packets,save_groups as save_translation_groups,save_visuals as save_visual_translations
 
 core.LOCK=TimedRLock()
-ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE={};PROJECT_CACHE={}
+ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict();PROJECT_CACHE=OrderedDict()
+DISPLAY_CACHE=ReadCache(8)
 DEFAULT_MATERIAL=Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json')))
 STATIC=Path(os.environ.get('MANUAL_READER_STATIC',str(ROOT/'static')))
 LIBRARY=Path(os.environ.get('MANUAL_READER_LIBRARY',str(ROOT/'library')))
@@ -55,6 +57,8 @@ def raw_material(identity=None):
     version=path.stat().st_mtime_ns
     with core.LOCK:
         if identity not in CACHE or CACHE[identity][0]!=version:CACHE[identity]=(version,json.loads(path.read_text('utf8')))
+        CACHE.move_to_end(identity)
+        while len(CACHE)>8:CACHE.popitem(last=False)
         return CACHE[identity][1]
 def project_files(identity=None):
     identity=identity or mid();return ProjectFiles(identity,mpath(identity).parent,SETTINGS,raw_material(identity))
@@ -67,6 +71,8 @@ def material(identity=None):
     with core.LOCK:
         if identity not in PROJECT_CACHE or PROJECT_CACHE[identity][0]!=version:
             PROJECT_CACHE[identity]=(version,workspace(identity).project(raw_material(identity)))
+        PROJECT_CACHE.move_to_end(identity)
+        while len(PROJECT_CACHE)>8:PROJECT_CACHE.popitem(last=False)
         return PROJECT_CACHE[identity][1]
 def db():
     target=core.DB if mid()==DEFAULT else LIBRARY/mid()/'state.sqlite3'
@@ -153,7 +159,7 @@ def save_result(state,rid,data,actor='reader'):
     return result
 core.save_result=save_result
 
-def library_sources():
+def library_sources(names_only=False):
     identities=[DEFAULT]+[p.parent.name for p in LIBRARY.glob('*/material.json')]
     index=LIBRARY/'library-index.json'
     saved={row['id']:row for row in json.loads(index.read_text('utf8')).get('materials',[])}if index.exists()else{}
@@ -162,11 +168,13 @@ def library_sources():
         entry=saved.get(identity,{})
         # 材料树本来就以目录中保存的信息为准；列出名称时不整理全库正文和定位。
         if all(key in entry for key in fields):rows.append({'id':identity,**{key:entry[key]for key in fields}});continue
+        if names_only:
+            rows.append({'id':identity,'title':entry.get('name')or entry.get('title')or raw_material(identity)['title']});continue
         document=material(identity)
         rows.append({'id':identity,'title':document['title'],'kind':document.get('kind','pdf'),'reader_mode':document.get('reader_mode'),'passages':len(document['passages']),'translation_status':document.get('translation_status','ready'if identity==DEFAULT else'pending')})
     return rows
 
-def library_tree():return reader_library.catalog(LIBRARY/'library-index.json',library_sources())
+def library_tree(names_only=False):return reader_library.catalog(LIBRARY/'library-index.json',library_sources(names_only))
 
 def library():return [{**row,'title':row['name']} for row in library_tree()['materials'] if not row.get('deleted') and not row.get('archived')]
 
@@ -186,6 +194,10 @@ def sample_records(scope,with_revisions=False):
 
 def progress_payload(progress=None):
     raw=core.read_state() if progress is None else progress
+    version=(material_revision(),raw['revision'],SETTINGS.stat().st_mtime_ns if SETTINGS.exists() else 0)
+    return DISPLAY_CACHE.get(('progress',mid()),version,lambda:timed_call('project',_progress_payload,raw))
+
+def _progress_payload(raw):
     m=material();stored=workspace().read_snapshot()
     # 正常阅读只传当前内容；完整历史继续保存在数据库，按需单独读取。
     progress={**{k:v for k,v in raw.items()if k not in ('lesson_tasks','learning_selection_events')},'rounds':[{**r,'questions':[{**{k:v for k,v in q.items()if k not in ('answer_history','answer_parts_history')},'answer_revision':answer_revision(q)}for q in r['questions']]}for r in raw['rounds']],
@@ -194,9 +206,11 @@ def progress_payload(progress=None):
     from reader_contract import quiz_display_orders,quiz_quality_flags
     orders=quiz_display_orders(progress.get('quizzes',[]))
     for quiz in progress.get('quizzes',[]):quiz.update(display_order=orders.get(quiz['id'],list(range(len(quiz['options'])))),quality_flags=quiz_quality_flags(quiz))
+    from reader_practice_text import quiz_index
+    indexed_quizzes=quiz_index(progress.get('quizzes',[]))
     for row in progress['rounds']:
         from reader_generation import display_parts
-        row['questions']=[display_parts(decorate_question(m,q),progress.get('quizzes',[])) for q in row['questions']]
+        row['questions']=[display_parts(decorate_question(m,q),progress.get('quizzes',[]),quiz_index=indexed_quizzes) for q in row['questions']]
     progress['mistake_quiz_ids']=practice_payload(progress)['quiz_ids']
     from reader_generation import practice_placements,VERSION as FRAMEWORK_VERSION
     progress['framework_version']=FRAMEWORK_VERSION
@@ -376,20 +390,24 @@ def agent_bootstrap():
     return result
 
 class Handler(core.Handler):
+    _dispatch_context=threading.local()
+    def setup(self):
+        self._dispatch_ms=getattr(self._dispatch_context,"value",0.);self._receive_started=time.perf_counter()
+        super().setup()
     def lesson_actor(self):
         return 'agent:'+str(self._grant['id']) if getattr(self,'_remote_machine',False) else 'reader'
     def end_headers(self):
         started=getattr(self,'_request_started',time.perf_counter());admit=max(0.,started-getattr(self,'_remote_started',started))*1000
-        self.send_header('Server-Timing',server_timing(started)+f', admit;dur={admit:.2f}')
+        self.send_header('Server-Timing',server_timing(started)+f', admit;dur={admit:.2f}, dispatch;dur={getattr(self,"_dispatch_ms",0.):.2f}, receive;dur={max(0.,getattr(self,"_remote_started",started)-getattr(self,"_receive_started",started))*1000:.2f}')
         return super().end_headers()
     def context(self):
         begin_request()
         self._request_started=time.perf_counter();CONTEXT.material_id=self.headers.get('X-Reader-Material') or parse_qs(urlsplit(self.path).query).get('material',[DEFAULT])[0]
-    def json(self,data,status=200):
+    def json(self,data,status=200,cache_tag=None):
         identity=self.headers.get('X-Reader-Run')
         if identity and re.fullmatch(r'run-[a-f0-9]{20}',identity) and self.authenticated() and urlsplit(self.path).path!='/api/runs/'+identity:
             Runs(mpath().parent).request(identity,self.command,urlsplit(self.path).path,(time.perf_counter()-getattr(self,'_request_started',time.perf_counter()))*1000,len(json.dumps(data,ensure_ascii=False).encode()))
-        return super().json(data,status)
+        return super().json(data,status,cache_tag=cache_tag)
     def file(self,path,ctype=None):
         return super().file(path,ctype or mimetypes.guess_type(path.name)[0] or 'application/octet-stream')
     def project_file_response(self,path,download=False):
@@ -433,7 +451,7 @@ class Handler(core.Handler):
                 return self.file(target)
             file_match=re.fullmatch(r'/content-files/([A-Za-z0-9_-]+)/(original|asset/[^/]+)',path)
             if file_match:
-                fid,kind=file_match.groups();row=next((r for r in workspace().read()['files'] if r['id']==fid),None)
+                fid,kind=file_match.groups();row=next((r for r in timed_call('asset_meta',workspace().read_snapshot)['files'] if r['id']==fid),None)
                 if not row:return self.send_error(404)
                 folder=workspace().files/fid
                 target=folder/row['stored_name'] if kind=='original' else folder/'assets'/kind.split('/')[-1]
@@ -468,7 +486,7 @@ class Handler(core.Handler):
                     return self.json({'error':'没有这个文件接口'},404)
                 if path=='/api/settings':return self.json({**settings(SETTINGS),'defaults':default_templates()})
                 if path=='/api/library':return self.json(library())
-                if path=='/api/library/tree':return self.json(library_tree())
+                if path=='/api/library/tree':return self.json(library_tree(parse_qs(urlsplit(self.path).query).get('view')==['names']))
                 m=material()
                 if path in CLIENT_PATHS:return self.file(ROOT/path.split('/')[-1],'text/x-python; charset=utf-8')
                 if path=='/api/writing/rules':return self.json(public_rules())
@@ -516,7 +534,14 @@ class Handler(core.Handler):
                     if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
                     return self.json(value)
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'framework_version':__import__('reader_generation').VERSION,'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
-                if path=='/api/material':return self.json({**__import__('reader_practice_text').display_lesson(m,core.read_state().get('quizzes',[])),'material_revision':material_revision()})
+                if path=='/api/material':
+                    records=core.read_state();revision=material_revision()
+                    # 原文展示只受材料和题干变化影响，展开回答不应让整份原文重新下载。
+                    quizzes=records.get('quizzes',[])
+                    signature=__import__('hashlib').sha256(json.dumps([(q.get('id'),q.get('prompt'),q.get('options'),q.get('deleted_at'))for q in quizzes],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()[:16]
+                    version=(revision,signature);tag='"material-'+mid()+'-'+str(revision)+'-'+signature+'"'
+                    if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
+                    return self.json(DISPLAY_CACHE.get(('material',mid()),version,lambda:{**__import__('reader_practice_text').display_lesson(m,quizzes),'material_revision':revision}),cache_tag=tag)
                 history_match=re.fullmatch(r'/api/questions/([^/]+)/history',path)
                 if history_match:
                     q=next((q for r in core.read_state()['rounds']for q in r['questions']if q['id']==history_match[1]),None)
@@ -818,16 +843,16 @@ class Handler(core.Handler):
                     return {'updated':len(prepared)}
                 return self.json(core.mutate(update_terms))
             if path=='/api/folders':
-                with core.LOCK:result=reader_library.change(LIBRARY/'library-index.json',library_sources(),'folder',None,'create',data)
+                with core.LOCK:result=reader_library.change(LIBRARY/'library-index.json',library_sources(True),'folder',None,'create',data)
                 return self.json(result)
             if path=='/api/library/clear-trash':
-                with core.LOCK:result=reader_library.clear_trash(LIBRARY/'library-index.json',library_sources(),data.get('confirmed'))
+                with core.LOCK:result=reader_library.clear_trash(LIBRARY/'library-index.json',library_sources(True),data.get('confirmed'))
                 return self.json(result)
             library_match=re.fullmatch(r'/api/library/(folder|material)/([A-Za-z0-9_-]+)/(rename|move|trash|restore)',path)
             if library_match:
                 kind,identity,action=library_match.groups()
                 with core.LOCK:
-                    result=reader_library.change(LIBRARY/'library-index.json',library_sources(),kind,identity,action,data)
+                    result=reader_library.change(LIBRARY/'library-index.json',library_sources(True),kind,identity,action,data)
                     if kind=='material' and action=='rename':
                         document=copy.deepcopy(material(identity));document['title']=result['name'];target=mpath(identity);versions=target.parent/'versions';versions.mkdir(exist_ok=True);(versions/(target.stem+'-'+str(target.stat().st_mtime_ns)+'.json')).write_bytes(target.read_bytes());temporary=target.with_suffix('.next.json');temporary.write_text(json.dumps(document,ensure_ascii=False,indent=2),'utf8');temporary.replace(target);CACHE.pop(identity,None)
                 return self.json(result)
@@ -1002,6 +1027,15 @@ class ReaderHTTPServer(ThreadingHTTPServer):
     # 多栏同时读取页面、文字层和接口时，不让五个待连接名额迫使浏览器重试 TCP。
     request_queue_size=128
     allow_reuse_address=os.name!='nt'
+    def process_request(self,request,client_address):
+        if not hasattr(self,'_accepted'):self._accepted={}
+        self._accepted[request]=time.perf_counter()
+        return super().process_request(request,client_address)
+    def finish_request(self,request,client_address):
+        accepted=self._accepted.pop(request,time.perf_counter())
+        # 接收连接后到线程开始处理的等待单独记录，和业务锁等待分开。
+        self.RequestHandlerClass._dispatch_context.value=(time.perf_counter()-accepted)*1000
+        return super().finish_request(request,client_address)
     def handle_error(self,request,client_address):
         if isinstance(sys.exc_info()[1],(BrokenPipeError,ConnectionResetError,ConnectionAbortedError)):return
         return super().handle_error(request,client_address)
