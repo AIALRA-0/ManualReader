@@ -1,5 +1,5 @@
 from pathlib import Path
-import base64,json,sys,tempfile,unittest,time,threading
+import base64,json,sys,tempfile,unittest,time,threading,os
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 from reader_project_files import ProjectFiles
 from reader_file_events import EVENTS
@@ -18,6 +18,8 @@ class Actions(unittest.TestCase):
   self.file();self.store.action({'action':'copy',**self.row('a.txt'),'destination':'b.txt'});self.assertTrue(self.store.target('a.txt').exists());self.assertEqual(self.store.target('b.txt').read_text(),'hello')
  def test_stale_version_rejected(self):
   self.file();row=self.row('a.txt');self.store.target('a.txt').write_text('changed');
+  # 文件系统可能合并紧邻写入的时间戳；明确改变版本再验证拒绝分支。
+  changed=int(row['expected_modified'])+1_000_000_000;os.utime(self.store.target('a.txt'),ns=(changed,changed))
   with self.assertRaises(ValueError):self.store.action({'action':'move',**row,'destination':'b.txt'})
  def test_destination_collision_rejected(self):
   self.file();self.file('b.txt')
