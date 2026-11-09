@@ -36,6 +36,15 @@ class ReaderContracts(unittest.TestCase):
         self.assertTrue(ensure_result_media(material,state,result));self.assertIn('/figure.png',result['answers'][0]['text'])
     def test_prompt_uses_one_writing_call(self):
         self.assertIn('同一次写作',TEACHING_METHOD);self.assertEqual(writing_guide()['instructions'].count(writing_method('answer')),1);self.assertEqual(writing_guide('lesson')['instructions'].count(writing_method('lesson')),1)
+    def test_visual_rule_is_shared_by_guide_and_both_writers(self):
+        from reader_prompts import VISUAL_METHOD,WRITING_VERSION
+        for role in ('answer','lesson'):
+            guide=writing_guide(role)
+            self.assertEqual(guide['version'],WRITING_VERSION)
+            self.assertEqual(guide['instructions'].count(writing_method(role)),1)
+            self.assertEqual(writing_method(role).count(VISUAL_METHOD),1)
+        self.assertIn('Mermaid',VISUAL_METHOD)
+
     def test_capitalization_and_chinese_english_order(self):
         self.assertEqual(canonical_term('矩形剖分（rectangle dissection）'),'矩形剖分（Rectangle Dissection）')
     def test_ordinary_pdf_text_does_not_attach_the_whole_page(self):

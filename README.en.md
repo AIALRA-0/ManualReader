@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.8 shows completed steps, elapsed time, and measured download progress when opening materials, switching chapters, or viewing files. Waiting does not advance the percentage. A stalled read is retried once; writes are never automatically repeated. Page reads remain separate from background work. Existing content, IDs, notes, exercise answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md) for upgrade and measurement details.
+Version 0.4.9 separates table questions from media enlargement, recognizes HTML login and error pages before parsing JSON, and preserves selected quiz options after failed requests. Writers proactively illustrate mathematical dependencies, mechanisms, and state changes with suitable source figures or diagrams. Measured loading progress and all existing content, IDs, notes, answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md).
 
 <div align="center">
 

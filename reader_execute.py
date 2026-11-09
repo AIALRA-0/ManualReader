@@ -36,7 +36,7 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
       '公式中的多字母程序标识使用LaTeX的mathtt或text保留整个名称，并说明其含义；数学下标使用完整花括号。程序标识与数学下标要区分，不把程序名称擅自改成另一种变量，也不把多字母名称当成几个字母相乘',
       '图片已按 sources.media 中的编号顺序随输入附上；必须实际读图，对估计值和不确定标记保持原有含义',
       NAMING_RULE]
-    payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。通过generated_assets返回实际工具产生的path、alt、question_ids；内置工具默认写入本次会话的generated_images目录，脚本会核对会话编号，复制到本组目录并上传，再插入对应回答，不要编造已保存路径。没有实际生成成功时不要写虚构地址。空间形状或结构需要直观看时配图；简单词义不配图。')
+    payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。通过generated_assets返回实际工具产生的path、alt、question_ids；内置工具默认写入本次会话的generated_images目录，脚本会核对会话编号，复制到本组目录并上传，再插入对应回答，不要编造已保存路径。没有实际生成成功时不要写虚构地址。多步数学、逻辑、状态和空间关系按writing_method中的图示要求主动处理；Mermaid直接放入对应part的markdown，不另调绘图判断模型。')
     payload['instructions'].append('同次输出 plan 及其 unit_ids，每道练习用 placement 声明插入哪个回答 part 后；正文、术语和练习之外不输出重复成稿')
     payload['instructions'].append('新术语只提交名称、定义、直观解释和问题编号，不自行编造term_id；只有复用registered_terms中已有条目时才返回其真实term_id，新编号由脚本分配')
     if not payload.get('registered_terms'):
