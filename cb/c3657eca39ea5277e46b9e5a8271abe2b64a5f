@@ -1,0 +1,39 @@
+server.py
+  s_1c46d58ed67333::t_a25551048e1066 2,27-28,31-36,38-42
+docs/security/publication-risk-notes.md
+  s_1c46d58ed67333::t_8fde9d7c77f707 81-87
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_c642e80bc97b78 9
+  s_1c46d58ed67333::t_8fde9d7c77f707 3-8
+Demo/test_database_lifecycle.py
+  s_1c46d58ed67333::t_8fde9d7c77f707 1-111
+reader_remote.py
+  s_1c46d58ed67333::t_a25551048e1066 3,33
+CHANGELOG.md
+  s_1c46d58ed67333::t_8fde9d7c77f707 1-5,7-8
+  s_1c46d58ed67333::t_c642e80bc97b78 6
+reader_database.py
+  s_1c46d58ed67333::t_a25551048e1066 6-21,47
+README.md
+  s_1c46d58ed67333::t_8fde9d7c77f707 55
+README.en.md
+  s_1c46d58ed67333::t_8fde9d7c77f707 11
+reader_server.py
+  s_1c46d58ed67333::t_a25551048e1066 34,184,752,758,768
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cbc3657eca39ea5277e46b9e5a8271abe2b64a5f",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
