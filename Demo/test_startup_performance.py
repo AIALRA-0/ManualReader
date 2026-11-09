@@ -75,11 +75,25 @@ from reader_performance import asset_digest
 h,b=get('/app.js?v='+asset_digest(app.STATIC/'app.js'));assert 'immutable'in h['Cache-Control']
 assert app.core.read_state()==before
 h,b=get('/api/progress');assert json.loads(b)['notes']==before['notes']
+progress_tag=h['ETag'];assert 'private'in h['Cache-Control']
+try:get('/api/progress',{'X-Reader-Pin':'wrong','If-None-Match':progress_tag});raise AssertionError('版本号不能代替授权')
+except urllib.error.HTTPError as e:assert e.code in (401,403)
+
+try:get('/api/progress',{'If-None-Match':progress_tag});raise AssertionError('未变化的进度应复用浏览器原记录')
+except urllib.error.HTTPError as e:assert e.code==304
+
+with patch.object(app,'coverage_payload',wraps=app.coverage_payload)as coverage:
+ h,b=get('/api/coverage?summary=true');first=json.loads(b)
+ h,b=get('/api/coverage?summary=true');assert json.loads(b)==first and coverage.call_count==1
+ h,b=get('/api/coverage');full=json.loads(b);assert full['overall']==first['overall'] and full['revision']==first['revision'] and coverage.call_count==2
+ app.core.mutate(lambda state:state['read_passages'].update({'p':True}))
+ h,b=get('/api/coverage?summary=true');assert json.loads(b)['input_revisions']['reader_state']==app.core.read_state()['revision'] and coverage.call_count==3
+
 h,b=get('/api/material');tag=h['ETag'];assert 'no-cache'in h['Cache-Control']
 try:get('/api/material',{'If-None-Match':tag});raise AssertionError('应该复用浏览器已保存的原文')
 except urllib.error.HTTPError as e:assert e.code==304
 app.core.mutate(lambda state:state['notes'].update({'p':'笔记更新'}))
-h,b=get('/api/progress');assert json.loads(b)['notes']['p']=='笔记更新'
+h,b=get('/api/progress',{'If-None-Match':progress_tag});assert h['ETag']!=progress_tag and json.loads(b)['notes']['p']=='笔记更新'
 try:get('/api/material',{'If-None-Match':tag});raise AssertionError('笔记更新不应重传原文')
 except urllib.error.HTTPError as e:assert e.code==304
 app.core.mutate(lambda state:state['quizzes'].append({'id':'quiz','prompt':'新题干','options':['甲','乙']}))

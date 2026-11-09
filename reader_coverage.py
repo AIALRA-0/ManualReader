@@ -389,7 +389,7 @@ def _claims(material, workspace, state, index, issues):
     return {pid: _merge(ranges) for pid, ranges in covered.items()}, full, coarse
 
 
-def coverage_payload(material, workspace_state, reader_state, *, include_missing=True):
+def coverage_payload(material, workspace_state, reader_state, *, include_missing=True, summary_only=False):
     """返回可直接展示的统计；不会更改材料、来源编号、笔记或阅读记录。"""
     workspace = workspace_state or {}
     state = reader_state or {}
@@ -591,64 +591,65 @@ def coverage_payload(material, workspace_state, reader_state, *, include_missing
                   '讲解和回答需要随正文保存明确的来源编号或字符区间；整篇参考关系显示为已关联，尚未细分',
                   '已读和完成由用户手动记录；生成译文、讲解或回答不会改变用户的阅读状态',
               ]}
-    for file in files:
-        scope = {pid: ranges for pid, ranges in all_scope.items()
-                 if index.sources[pid].get('file_id', 'primary') == file['id']}
-        result['files'].append({'file_id': file['id'], 'name': file.get('name') or file.get('title') or file['id'],
-                                'kind': file.get('kind'), **summary(scope, file_ids=[file['id']])})
-    nodes = workspace.get('learning_outline', material.get('learning', {}).get('nodes', []))
-    if not nodes and material.get('reader_mode') == 'authored':
-        nodes = [{**n, 'legacy_section_ids': [n['id']]} for n in material.get('authored_sections', [])]
-    explanations = {e['id']: e for e in workspace.get('explanations', material.get('explanations', []))}
-    scopes = {}
-    manual_scopes = {}
-    by_id = {n['id']: n for n in nodes}
+    if not summary_only:
+        for file in files:
+            scope = {pid: ranges for pid, ranges in all_scope.items()
+                     if index.sources[pid].get('file_id', 'primary') == file['id']}
+            result['files'].append({'file_id': file['id'], 'name': file.get('name') or file.get('title') or file['id'],
+                                    'kind': file.get('kind'), **summary(scope, file_ids=[file['id']])})
+        nodes = workspace.get('learning_outline', material.get('learning', {}).get('nodes', []))
+        if not nodes and material.get('reader_mode') == 'authored':
+            nodes = [{**n, 'legacy_section_ids': [n['id']]} for n in material.get('authored_sections', [])]
+        explanations = {e['id']: e for e in workspace.get('explanations', material.get('explanations', []))}
+        scopes = {}
+        manual_scopes = {}
+        by_id = {n['id']: n for n in nodes}
 
-    def own_scope(node, visiting=None):
-        identity = node['id']
-        if identity in scopes:
+        def own_scope(node, visiting=None):
+            identity = node['id']
+            if identity in scopes:
+                return scopes[identity]
+            visiting = (visiting or set()) | {identity}
+            scope = defaultdict(list)
+            links = list(node.get('source_links', []))
+            for eid in node.get('explanation_ids', []):
+                links.extend(explanations.get(eid, {}).get('source_links', []))
+            for link in links:
+                try:
+                    _add_scope(scope, index.reference(link))
+                except (ValueError, TypeError) as error:
+                    issues.append({'code': 'chapter_source', 'learning_node_id': identity, 'message': str(error)})
+            parent = by_id.get(node.get('parent_id'))
+            if not scope and parent and parent['id'] not in visiting:
+                scope.update({pid: list(ranges) for pid, ranges in own_scope(parent, visiting).items()})
+            scopes[identity] = {pid: _merge(ranges) for pid, ranges in scope.items()}
             return scopes[identity]
-        visiting = (visiting or set()) | {identity}
-        scope = defaultdict(list)
-        links = list(node.get('source_links', []))
-        for eid in node.get('explanation_ids', []):
-            links.extend(explanations.get(eid, {}).get('source_links', []))
-        for link in links:
-            try:
-                _add_scope(scope, index.reference(link))
-            except (ValueError, TypeError) as error:
-                issues.append({'code': 'chapter_source', 'learning_node_id': identity, 'message': str(error)})
-        parent = by_id.get(node.get('parent_id'))
-        if not scope and parent and parent['id'] not in visiting:
-            scope.update({pid: list(ranges) for pid, ranges in own_scope(parent, visiting).items()})
-        scopes[identity] = {pid: _merge(ranges) for pid, ranges in scope.items()}
-        return scopes[identity]
 
-    for node in nodes:
-        own_scope(node)
-        manual_scopes[node['id']] = {p['id'] for p in material.get('passages', [])
-                                    if p.get('explanation_id') in node.get('explanation_ids', [])
-                                    or p.get('section_id') in node.get('legacy_section_ids', [])}
-    for node in nodes:
-        descendants = {node['id']}
-        while True:
-            expanded = descendants | {n['id'] for n in nodes if n.get('parent_id') in descendants}
-            if expanded == descendants:
-                break
-            descendants = expanded
-        scope = defaultdict(list)
-        manual = set()
-        for identity in descendants:
-            for pid, ranges in scopes[identity].items():
-                scope[pid].extend(ranges)
-            manual.update(manual_scopes[identity])
-        scope = {pid: _merge(ranges) for pid, ranges in scope.items()}
-        result['chapters'].append({'learning_node_id': node['id'], 'title': node.get('title', ''),
-                                   'number': node.get('number', ''), 'parent_id': node.get('parent_id'),
-                                   'descendant_count': len(descendants) - 1,
-                                   **summary(scope, manual),
-                                   'own': summary(scopes[node['id']], manual_scopes[node['id']])})
-    if include_missing:
+        for node in nodes:
+            own_scope(node)
+            manual_scopes[node['id']] = {p['id'] for p in material.get('passages', [])
+                                        if p.get('explanation_id') in node.get('explanation_ids', [])
+                                        or p.get('section_id') in node.get('legacy_section_ids', [])}
+        for node in nodes:
+            descendants = {node['id']}
+            while True:
+                expanded = descendants | {n['id'] for n in nodes if n.get('parent_id') in descendants}
+                if expanded == descendants:
+                    break
+                descendants = expanded
+            scope = defaultdict(list)
+            manual = set()
+            for identity in descendants:
+                for pid, ranges in scopes[identity].items():
+                    scope[pid].extend(ranges)
+                manual.update(manual_scopes[identity])
+            scope = {pid: _merge(ranges) for pid, ranges in scope.items()}
+            result['chapters'].append({'learning_node_id': node['id'], 'title': node.get('title', ''),
+                                       'number': node.get('number', ''), 'parent_id': node.get('parent_id'),
+                                       'descendant_count': len(descendants) - 1,
+                                       **summary(scope, manual),
+                                       'own': summary(scopes[node['id']], manual_scopes[node['id']])})
+    if include_missing and not summary_only:
         # 缺项直接使用上面计算百分比时的字符区间和对象规则，不另猜测覆盖情况。
         missing={'translation':[],'explanation':[]}
         file_names={f['id']:f.get('name')or f['id']for f in files}

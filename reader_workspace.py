@@ -47,7 +47,7 @@ class Workspace:
                 if cached and cached[0]==signature:return cached[1]
             value=self.read()
             with _WORKSPACE_LOCKS_GUARD:
-                if len(_WORKSPACE_SNAPSHOTS)>=4:_WORKSPACE_SNAPSHOTS.pop(next(iter(_WORKSPACE_SNAPSHOTS)))
+                if len(_WORKSPACE_SNAPSHOTS)>=2:_WORKSPACE_SNAPSHOTS.pop(next(iter(_WORKSPACE_SNAPSHOTS)))
                 _WORKSPACE_SNAPSHOTS[key]=(signature,value)
             return value
 

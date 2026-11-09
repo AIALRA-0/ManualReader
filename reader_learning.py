@@ -121,7 +121,7 @@ def learning_payload(material,stored,state):
         nodes,coverage_plan=_static_learning(material,stored)
         if cacheable:
             with _PLAN_LOCK:
-                if len(_PLAN_CACHE)>=8:_PLAN_CACHE.pop(next(iter(_PLAN_CACHE)))
+                if len(_PLAN_CACHE)>=2:_PLAN_CACHE.pop(next(iter(_PLAN_CACHE)))
                 _PLAN_CACHE[key]=(material,copy.deepcopy((nodes,coverage_plan)))
     passages=material['passages'];read=state.get('read_passages',{})
     for node in nodes:

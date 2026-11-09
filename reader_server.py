@@ -41,7 +41,8 @@ from reader_translation import packets as translation_packets,save_groups as sav
 
 core.LOCK=TimedRLock()
 ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict();PROJECT_CACHE=OrderedDict()
-DISPLAY_CACHE=ReadCache(8)
+DISPLAY_CACHE=ReadCache(4)
+COVERAGE_CACHE=ReadCache(2)
 DEFAULT_MATERIAL=Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json')))
 STATIC=Path(os.environ.get('MANUAL_READER_STATIC',str(ROOT/'static')))
 LIBRARY=Path(os.environ.get('MANUAL_READER_LIBRARY',str(ROOT/'library')))
@@ -58,7 +59,7 @@ def raw_material(identity=None):
     with core.LOCK:
         if identity not in CACHE or CACHE[identity][0]!=version:CACHE[identity]=(version,json.loads(path.read_text('utf8')))
         CACHE.move_to_end(identity)
-        while len(CACHE)>8:CACHE.popitem(last=False)
+        while len(CACHE)>2:CACHE.popitem(last=False)
         return CACHE[identity][1]
 def project_files(identity=None):
     identity=identity or mid();return ProjectFiles(identity,mpath(identity).parent,SETTINGS,raw_material(identity))
@@ -72,7 +73,7 @@ def material(identity=None):
         if identity not in PROJECT_CACHE or PROJECT_CACHE[identity][0]!=version:
             PROJECT_CACHE[identity]=(version,workspace(identity).project(raw_material(identity)))
         PROJECT_CACHE.move_to_end(identity)
-        while len(PROJECT_CACHE)>8:PROJECT_CACHE.popitem(last=False)
+        while len(PROJECT_CACHE)>2:PROJECT_CACHE.popitem(last=False)
         return PROJECT_CACHE[identity][1]
 def db():
     target=core.DB if mid()==DEFAULT else LIBRARY/mid()/'state.sqlite3'
@@ -530,7 +531,8 @@ class Handler(core.Handler):
                     stored=workspace().read();active,outdated=excluded_sources(m,stored)
                     return self.json({'revision':stored['revision'],'exclusions':list(active.values()),'outdated_source_ids':outdated})
                 if path=='/api/coverage':
-                    compact=parse_qs(urlsplit(self.path).query).get('summary')==['true'];value=coverage_payload(m,workspace().read_snapshot(),core.read_state(),include_missing=not compact)
+                    compact=parse_qs(urlsplit(self.path).query).get('summary')==['true'];records=core.read_state();version=(material_revision(),records['revision'],compact)
+                    value=COVERAGE_CACHE.get(mid(),version,lambda:coverage_payload(m,workspace().read_snapshot(),records,include_missing=not compact,summary_only=compact))
                     if compact:value={k:v for k,v in value.items()if k in('schema_version','material_id','material_title','overall','revision','input_revisions','learning_exclusions')}
                     return self.json(value)
                 if path=='/api/content':return self.json({'learning':learning_payload(m,workspace().read(),core.read_state()),'material_id':mid(),'framework_version':__import__('reader_generation').VERSION,'revision':m['workspace_revision'],'files':m['reading_files'],'explanations':m['explanations'],'presentation':m['presentation'],'rules':ASSOCIATION_RULES})
@@ -553,7 +555,9 @@ class Handler(core.Handler):
                     metadata={'material_revision':material_revision(),'settings_revision':SETTINGS.stat().st_mtime_ns if SETTINGS.exists() else 0}
                     if query.get('since')==[str(progress['revision'])] and all(float(query.get(key,[-1])[0])==float(value) for key,value in metadata.items()):
                         return self.json({'unchanged':True,'revision':progress['revision']})
-                    return self.json(progress_payload(progress))
+                    tag='"progress-'+mid()+'-'+str(progress['revision'])+'-'+str(metadata['material_revision'])+'-'+str(metadata['settings_revision'])+'"'
+                    if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
+                    return self.json(progress_payload(progress),cache_tag=tag)
                 if path=='/api/work':
                     query=parse_qs(urlsplit(self.path).query)
                     records=core.read_state();stored=workspace().read()
