@@ -149,7 +149,8 @@ class Handler(BaseHTTPRequestHandler):
    self.send_response(304);self.send_header('ETag',cache_tag);self.send_header('Cache-Control','private, no-cache');self.send_header('Vary',vary);self.end_headers();return
   accepts_gzip=bool(re.search(r'(?:^|,)\s*gzip(?:\s*;\s*q=(?!0(?:\.0*)?(?:\s|,|$))[^,]+)?(?:\s*,|\s*$)',self.headers.get('Accept-Encoding',''),re.I))
   def encode():
-   payload=timed_call('encode',lambda:json.dumps(data,ensure_ascii=False,separators=(',',':')).encode('utf8'))
+   value=timed_call('project',data)if callable(data)else data
+   payload=timed_call('encode',lambda:json.dumps(value,ensure_ascii=False,separators=(',',':')).encode('utf8'))
    compressed=len(payload)>2048 and accepts_gzip
    if compressed:payload=timed_call('compress',__import__('gzip').compress,payload,compresslevel=3)
    return payload,compressed

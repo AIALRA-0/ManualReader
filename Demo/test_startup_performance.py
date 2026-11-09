@@ -89,7 +89,19 @@ with patch.object(app,'coverage_payload',wraps=app.coverage_payload)as coverage:
  app.core.mutate(lambda state:state['read_passages'].update({'p':True}))
  h,b=get('/api/coverage?summary=true');assert json.loads(b)['input_revisions']['reader_state']==app.core.read_state()['revision'] and coverage.call_count==3
 
-h,b=get('/api/material');tag=h['ETag'];assert 'no-cache'in h['Cache-Control']
+from reader_practice_text import display_lesson
+app.core.JSON_RESPONSES.rows.clear()
+with patch('reader_practice_text.display_lesson',wraps=display_lesson)as prepare:
+ h,b=get('/api/material');tag=h['ETag'];assert 'no-cache'in h['Cache-Control'];first_body=b
+ h,b=get('/api/material');assert b==first_body and prepare.call_count==1
+with patch.object(app,'Runs')as audit:
+ h,b=get('/api/material',{'X-Reader-Run':'run-'+'a'*20})
+ assert audit.return_value.request.call_args.args[4]==len(json.dumps(json.loads(b),ensure_ascii=False).encode())
+
+import time
+h,b=get('/api/session',{'X-Reader-Proxy-Started':str(time.time()-.05)})
+assert any(item.strip().startswith('proxy_wait;dur=')and float(item.split('=')[1])>=50 for item in h['Server-Timing'].split(','))
+
 try:get('/api/material',{'If-None-Match':tag});raise AssertionError('应该复用浏览器已保存的原文')
 except urllib.error.HTTPError as e:assert e.code==304
 app.core.mutate(lambda state:state['notes'].update({'p':'笔记更新'}))

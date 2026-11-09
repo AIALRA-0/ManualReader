@@ -41,7 +41,7 @@ from reader_translation import packets as translation_packets,save_groups as sav
 
 core.LOCK=TimedRLock()
 ROOT=core.ROOT;DEFAULT=core.MATERIAL['id'];CONTEXT=threading.local();CACHE=OrderedDict();PROJECT_CACHE=OrderedDict()
-DISPLAY_CACHE=ReadCache(4)
+DISPLAY_CACHE=ReadCache(2)
 COVERAGE_CACHE=ReadCache(2)
 DEFAULT_MATERIAL=Path(os.environ.get('MANUAL_READER_MATERIAL',str(ROOT/'material.json')))
 STATIC=Path(os.environ.get('MANUAL_READER_STATIC',str(ROOT/'static')))
@@ -398,8 +398,10 @@ class Handler(core.Handler):
     def lesson_actor(self):
         return 'agent:'+str(self._grant['id']) if getattr(self,'_remote_machine',False) else 'reader'
     def end_headers(self):
-        started=getattr(self,'_request_started',time.perf_counter());admit=max(0.,started-getattr(self,'_remote_started',started))*1000
-        self.send_header('Server-Timing',server_timing(started)+f', admit;dur={admit:.2f}, dispatch;dur={getattr(self,"_dispatch_ms",0.):.2f}, receive;dur={max(0.,getattr(self,"_remote_started",started)-getattr(self,"_receive_started",started))*1000:.2f}')
+        started=getattr(self,'_request_started',time.perf_counter());admit=max(0.,started-getattr(self,'_remote_started',started))*1000;proxy=getattr(self,'_proxy_started',None)
+        fields=server_timing(started,proxy)+f', admit;dur={admit:.2f}, dispatch;dur={getattr(self,"_dispatch_ms",0.):.2f}, receive;dur={max(0.,getattr(self,"_remote_started",started)-getattr(self,"_receive_started",started))*1000:.2f}'
+        if proxy is not None:fields+=f', proxy_wait;dur={max(0.,getattr(self,"_remote_started",started)-proxy)*1000:.2f}'
+        self.send_header('Server-Timing',fields)
         return super().end_headers()
     def context(self):
         begin_request()
@@ -407,6 +409,7 @@ class Handler(core.Handler):
     def json(self,data,status=200,cache_tag=None):
         identity=self.headers.get('X-Reader-Run')
         if identity and re.fullmatch(r'run-[a-f0-9]{20}',identity) and self.authenticated() and urlsplit(self.path).path!='/api/runs/'+identity:
+            if callable(data):data=timed_call('project',data)
             Runs(mpath().parent).request(identity,self.command,urlsplit(self.path).path,(time.perf_counter()-getattr(self,'_request_started',time.perf_counter()))*1000,len(json.dumps(data,ensure_ascii=False).encode()))
         return super().json(data,status,cache_tag=cache_tag)
     def file(self,path,ctype=None):
@@ -543,7 +546,7 @@ class Handler(core.Handler):
                     signature=__import__('hashlib').sha256(json.dumps([(q.get('id'),q.get('prompt'),q.get('options'),q.get('deleted_at'))for q in quizzes],ensure_ascii=False,separators=(',',':')).encode()).hexdigest()[:16]
                     version=(revision,signature);tag='"material-'+mid()+'-'+str(revision)+'-'+signature+'"'
                     if self.headers.get('If-None-Match')==tag:return self.json(None,304,cache_tag=tag)
-                    return self.json(DISPLAY_CACHE.get(('material',mid()),version,lambda:{**__import__('reader_practice_text').display_lesson(m,quizzes),'material_revision':revision}),cache_tag=tag)
+                    return self.json(lambda:{**__import__('reader_practice_text').display_lesson(m,quizzes),'material_revision':revision},cache_tag=tag)
                 history_match=re.fullmatch(r'/api/questions/([^/]+)/history',path)
                 if history_match:
                     q=next((q for r in core.read_state()['rounds']for q in r['questions']if q['id']==history_match[1]),None)
@@ -1051,7 +1054,11 @@ class ReaderHTTPServer(ThreadingHTTPServer):
 
 class ProductionHandler(RemoteMixin,Handler):
     def begin_remote(self,method):
-        self._remote_started=time.perf_counter()
+        self._remote_started=time.perf_counter();self._request_started=self._remote_started;begin_request();self._proxy_started=None
+        try:
+            elapsed=time.time()-float(self.headers.get('X-Reader-Proxy-Started'))
+            if 0<=elapsed<=120:self._proxy_started=self._remote_started-elapsed
+        except (TypeError,ValueError):pass
         return super().begin_remote(method)
     def project_available(self,identity):
         if not isinstance(identity,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',identity) or not mpath(identity).exists():return False
