@@ -1,0 +1,56 @@
+tools/code-highlight/package.json
+  s_1c46d58ed67333::t_e7103a7f03d009 1-6
+docs/code-reading.md
+  s_1c46d58ed67333::t_9f726a473d2a3e 1-30
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_85cc57e415c0d1 18-21
+README.md
+  s_1c46d58ed67333::t_85cc57e415c0d1 24
+Demo/test_code_languages.js
+  s_1c46d58ed67333::t_9f726a473d2a3e 1-8
+Demo/check_code_highlight.py
+  s_1c46d58ed67333::t_ac742de1fb61e5 1-101
+static/reader-project-files.js
+  s_1c46d58ed67333::t_c96d6fdd50b89d 72
+tools/code-highlight/build.cjs
+  s_1c46d58ed67333::t_e7103a7f03d009 1-7
+THIRD_PARTY_NOTICES.md
+  s_1c46d58ed67333::t_85cc57e415c0d1 6
+static/reader-markdown.js
+  s_1c46d58ed67333::t_c96d6fdd50b89d 12,31
+README.en.md
+  s_1c46d58ed67333::t_85cc57e415c0d1 11
+static/index.html
+  s_1c46d58ed67333::t_c96d6fdd50b89d 31
+static/app.css
+  s_1c46d58ed67333::t_9302d539b7f076 2-3,628-635
+static/app.js
+  s_1c46d58ed67333::t_c96d6fdd50b89d 86,127,129
+  s_1c46d58ed67333::t_be5c8ad0f63047 122
+CHANGELOG.md
+  s_1c46d58ed67333::t_85cc57e415c0d1 3-5
+vendor/code-highlight/LICENSE
+  s_1c46d58ed67333::t_a5082b86939955 1-29
+vendor/code-highlight/highlight.min.js
+  s_1c46d58ed67333::t_67d14897774b3a 1-10
+vendor/code-highlight/worker.js
+  s_1c46d58ed67333::t_a46e2f8d8449c3 1-32
+vendor/reader-code-highlight.js
+  s_1c46d58ed67333::t_11b4c596c3b28c 1-19
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e193546fbe57da139247e05a2772685d1eed96c3",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
