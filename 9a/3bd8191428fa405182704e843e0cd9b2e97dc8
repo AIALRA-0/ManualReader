@@ -1,0 +1,39 @@
+static/reader-ui.js
+  s_1c46d58ed67333::t_ecd454b934156a 55
+CHANGELOG.md
+  s_1c46d58ed67333::t_8bfc80755ffa13 1-8
+static/workspace-ui.js
+  s_1c46d58ed67333::t_46449c169ca25f 62
+  s_1c46d58ed67333::t_15a5211d762b0d 49-50,58-61,63,85
+README.en.md
+  s_1c46d58ed67333::t_8bfc80755ffa13 11
+README.md
+  s_1c46d58ed67333::t_8bfc80755ffa13 55
+Demo/test_reading_layouts.js
+  s_1c46d58ed67333::t_55fa89f2129972 1-15
+static/app.css
+  s_1c46d58ed67333::t_d6165f5229c556 154
+  s_1c46d58ed67333::t_0a3aa0ffcf3621 278-279
+  s_1c46d58ed67333::t_58b7bc617ae6e7 156
+  s_1c46d58ed67333::t_92421c74bd4133 153,155,280-284
+Demo/check_code_themes.py
+  s_1c46d58ed67333::t_9eaecd6bc26308 1-54
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_8bfc80755ffa13 3-31
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "9a3bd8191428fa405182704e843e0cd9b2e97dc8",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
