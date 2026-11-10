@@ -1,0 +1,23 @@
+.gitattributes
+  s_1c46d58ed67333::t_2f3d3395c9a236 15-17
+static/app.js
+  s_1c46d58ed67333::t_2cd6e90cf6abaf 122
+static/reader-project-files.js
+  s_1c46d58ed67333::t_2ffd9d24c51ad1 72
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "fe8706f8f532fe2c97692147878c5e138571f022",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
