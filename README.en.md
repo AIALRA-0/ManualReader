@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.9 separates table questions from media enlargement, recognizes HTML login and error pages before parsing JSON, and preserves selected quiz options after failed requests. Writers proactively illustrate mathematical dependencies, mechanisms, and state changes with suitable source figures or diagrams. Measured loading progress and all existing content, IDs, notes, answers, and manual reading progress are preserved. See the [handoff notes](docs/stability-handoff.md).
+Version 0.4.10 fixes question disclosures that could stop opening while text remained selected. Disclosure, link, input, note, and practice controls retain their normal behavior; selection, copying, source linking, and saved reading records are preserved. See the [handoff notes](docs/stability-handoff.md).
 
 <div align="center">
 
