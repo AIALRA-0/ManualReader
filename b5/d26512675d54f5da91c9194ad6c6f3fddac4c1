@@ -1,0 +1,34 @@
+CHANGELOG.md
+  s_1c46d58ed67333::t_da89269284286d 1-7
+README.md
+  s_1c46d58ed67333::t_da89269284286d 55
+Demo/test_media_references.js
+  s_1c46d58ed67333::t_6f4361071f3882 1-11
+static/reader-media-view.js
+  s_1c46d58ed67333::t_536d83ed150264 4,6-7
+  s_1c46d58ed67333::t_f2e06336a8bbfa 13
+  s_1c46d58ed67333::t_6f4361071f3882 5,8
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_da89269284286d 3-16
+Demo/check_media_diagrams.py
+  s_1c46d58ed67333::t_da27075bcc5f53 1-48,52-62,67-78
+  s_1c46d58ed67333::t_63b8990df14d77 49-51,63-66
+README.en.md
+  s_1c46d58ed67333::t_da89269284286d 11
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b5d26512675d54f5da91c9194ad6c6f3fddac4c1",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
