@@ -52,7 +52,7 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 安装与备份见[部署说明](docs/deployment.md)，PDF、网页、PPT、仓库和空项目怎样进入阅读器见[导入说明](docs/importing.md)
 
-v0.4.11 统一源文件与代码块的明暗主题，布局改为按排列选择；各窗口内容仍可自行切换，旧布局与阅读记录保留；升级与复测见[稳定交接说明](docs/stability-handoff.md)
+v0.4.12 修复流程图放大后文字偏移和样式失效的问题，缩放与恢复适配保持原图的文字对齐、字体和箭头；现有布局与阅读记录保留；升级与复测见[稳定交接说明](docs/stability-handoff.md)
 
 ## 3 六个区域怎样配合
 

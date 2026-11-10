@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.11 makes source snippets and legacy code blocks follow the active theme. Six arrangement choices replace content-named layouts while preserving pane choices, stacked panes, existing layouts, and saved reading records. See the [handoff notes](docs/stability-handoff.md).
+Version 0.4.12 preserves scoped SVG styles when diagrams are enlarged. Labels retain their alignment and fonts, and arrow references remain valid through zooming and refitting. Existing layouts and reading records are preserved. See the [handoff notes](docs/stability-handoff.md).
 
 <div align="center">
 
