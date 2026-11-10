@@ -1,0 +1,38 @@
+README.md
+  s_1c46d58ed67333::t_25a9fb694d26e2 55
+CHANGELOG.md
+  s_1c46d58ed67333::t_25a9fb694d26e2 1-4,6-7
+  s_1c46d58ed67333::t_dee860c85c50c5 5
+Demo/test_selection_controls.js
+  s_1c46d58ed67333::t_77fc87a9787534 1-12
+static/reader-markdown.js
+  s_1c46d58ed67333::t_684e3662170155 35-36,45
+static/app.js
+  s_1c46d58ed67333::t_dee860c85c50c5 177-178,185
+docs/interaction-regression.md
+  s_1c46d58ed67333::t_25a9fb694d26e2 29,37-42
+  s_1c46d58ed67333::t_dee860c85c50c5 36,43-44
+  s_1c46d58ed67333::t_1a5d999adf6c3d 45-46
+docs/stability-handoff.md
+  s_1c46d58ed67333::t_25a9fb694d26e2 3-9
+README.en.md
+  s_1c46d58ed67333::t_25a9fb694d26e2 11
+Demo/test_question_interactions.js
+  s_1c46d58ed67333::t_dee860c85c50c5 54-58
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cc40d9e6e46659106b88660fc34976f5e136bc3a",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <AIALRA-0@users.noreply.github.com>"
+    }
+  }
+}
