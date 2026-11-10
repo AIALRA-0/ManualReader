@@ -3,6 +3,7 @@
 本仓库保留所附组件的原有许可文件；项目源码尚未另行指定许可证
 
 - Markdown 渲染使用 markdown-it，许可及相关依赖说明见 `static/markdown-vendor.LICENSE.txt`
+- 代码着色使用 highlight.js 11.12.0，BSD 3-Clause 许可见 `vendor/code-highlight/LICENSE`；重建方式见 [代码阅读说明](docs/code-reading.md)
 - 公式显示使用 KaTeX，MIT 许可见 `vendor/media-vendor/katex/LICENSE`
 - 流程图使用 Mermaid，MIT 许可见 `vendor/media-vendor/LICENSE-mermaid.txt`
 

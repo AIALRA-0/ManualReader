@@ -1,0 +1,6 @@
+{
+  "private": true,
+  "description": "按固定版本重建本地代码高亮组件；部署不需要 Node.js",
+  "scripts": {"build": "node build.cjs"},
+  "dependencies": {"esbuild": "0.25.12", "highlight.js": "11.12.0"}
+}

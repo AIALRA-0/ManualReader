@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.12 preserves scoped SVG styles when diagrams are enlarged. Labels retain their alignment and fonts, and arrow references remain valid through zooming and refitting. Existing layouts and reading records are preserved. See the [handoff notes](docs/stability-handoff.md).
+Version 0.4.12 adds automatic code highlighting with 193 bundled grammars in a lazily loaded worker, shared by source snippets, file tabs, and Markdown fences. Selections and theme contrast are preserved. It also preserves scoped SVG styles when diagrams are enlarged. Labels retain their alignment and fonts, and arrow references remain valid through zooming and refitting. Existing layouts and reading records are preserved. See the [handoff notes](docs/stability-handoff.md).
 
 <div align="center">
 
