@@ -8,7 +8,7 @@
 
 </div>
 
-Version 0.4.10 fixes question disclosures that could stop opening while text remained selected. Disclosure, link, input, note, and practice controls retain their normal behavior; selection, copying, source linking, and saved reading records are preserved. See the [handoff notes](docs/stability-handoff.md).
+Version 0.4.11 makes source snippets and legacy code blocks follow the active theme. Six arrangement choices replace content-named layouts while preserving pane choices, stacked panes, existing layouts, and saved reading records. See the [handoff notes](docs/stability-handoff.md).
 
 <div align="center">
 

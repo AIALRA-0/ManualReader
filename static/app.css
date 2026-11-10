@@ -150,6 +150,10 @@ dialog::backdrop,.quiz-answer:not([hidden]){animation:reader-fade calc(.18s / va
 .markdown-body blockquote{margin:12px 0;padding:4px 12px;border:1px solid var(--line);border-radius:6px;background:var(--hover)}
 .markdown-body hr{margin:18px 0;border:0;border-top:1px solid var(--line)}
 .markdown-body a{color:inherit;text-underline-offset:.22em;text-decoration-thickness:1px}
+/* 原生代码片段和旧代码块也跟随主题，不再继承旧样式中的固定浅色背景。 */
+pre,#source-code{background:var(--bg);color:var(--text)}
+pre>code{background:transparent;color:inherit}
+pre .code-line.marked{background:var(--selected);color:var(--text)}
 .markdown-body code{font-family:Consolas,'Cascadia Code',monospace;font-size:.92em}
 .markdown-body :not(pre)>code{padding:1px 4px;background:var(--selected);border-radius:3px;white-space:pre-wrap}
 .markdown-body pre{max-width:100%;overflow:auto;padding:12px;border:1px solid var(--line);border-radius:6px;background:var(--bg);white-space:pre;line-height:1.7}
@@ -271,6 +275,13 @@ select[data-reader-native-select]{position:absolute!important;width:1px!importan
 .reading-handle.horizontal{left:0;right:0;height:8px;cursor:row-resize;width:auto;margin-top:-4px}
 .reading-handle:hover,.reading-handle:focus-visible{background:var(--line)}
 .reading-layout-menu{width:180px;z-index:90}.reading-layout-menu[hidden]{display:none}
+.reading-layout-menu .reader-select-option{display:flex;align-items:center;justify-content:flex-start;gap:10px}
+.reading-layout-label{flex:1;text-align:left}
+.reading-layout-preview{display:grid;gap:3px;width:26px;height:20px;flex:none;color:var(--muted)}
+.reading-layout-preview>span{display:grid;gap:3px;min-width:0;min-height:0}
+.reading-layout-preview i{display:block;border:1px solid currentColor;border-radius:2px}
+.reading-layout-check{margin-left:auto;font-size:14px}
+.reading-layout-menu [aria-checked=true]{background:var(--selected)}
 .explanation-tools{display:flex;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
 .explanation-tools>.reader-select{width:100%}.explanation-links{display:flex;gap:8px;margin:0 0 14px;flex-wrap:wrap}
 .explanation-block{padding:0;margin-bottom:20px}.explanation-block .markdown-body{color:var(--text);font-size:16px;line-height:1.85}

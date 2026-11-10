@@ -52,7 +52,7 @@ python Demo/load_walkthrough.py --base http://127.0.0.1:8939
 
 安装与备份见[部署说明](docs/deployment.md)，PDF、网页、PPT、仓库和空项目怎样进入阅读器见[导入说明](docs/importing.md)
 
-v0.4.10 修复保留正文选区时提问栏点不开的问题；折叠、链接和输入继续正常操作，原来的复制、原文联动与阅读记录保留；升级与复测见[稳定交接说明](docs/stability-handoff.md)
+v0.4.11 统一源文件与代码块的明暗主题，布局改为按排列选择；各窗口内容仍可自行切换，旧布局与阅读记录保留；升级与复测见[稳定交接说明](docs/stability-handoff.md)
 
 ## 3 六个区域怎样配合
 
