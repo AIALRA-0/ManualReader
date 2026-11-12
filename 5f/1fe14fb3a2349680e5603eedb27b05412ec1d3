@@ -1,0 +1,33 @@
+reader_execute.py
+  s_1c46d58ed67333::t_0ac11376196c70 33-34,39-40,50,52,165,170,175,279,289-290,306,313,409-423,425-428,430-450,452-454
+Demo/test_daily_summary.py
+  s_1c46d58ed67333::t_0d04c14717c19b 1-49
+Demo/test_research_transport.py
+  s_1c46d58ed67333::t_344735ed2fcfa2 5,24-27,37-65
+Demo/test_source_cache.py
+  s_1c46d58ed67333::t_3b1da56eb0db61 36-48
+reader_research_transport.py
+  s_1c46d58ed67333::t_fc133123f539e0 2-85,102,104-109,112
+reader_server.py
+  s_1c46d58ed67333::t_452c9e64bb6bc0 342,344,346
+reader_source_cache.py
+  s_1c46d58ed67333::t_0deba1ea893025 72-80,82-95,103-104,108,111-113
+reader_writer_transport.py
+  s_1c46d58ed67333::t_1c663bf751edb8 5,24,59-60
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f1fe14fb3a2349680e5603eedb27b05412ec1d3",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
