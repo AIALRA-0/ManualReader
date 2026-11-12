@@ -30,11 +30,14 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
     payload['instructions']=[s for s in payload['instructions'] if not any(k in s for k in ('reference.json','result JSON 文件','本地 JSON','本地文件','最终只返回文件路径','文件路径和条数','问题、原句和规则已写入'))]
     payload['instructions']=[s for s in payload['instructions']if s!=TEACHING_METHOD and not s.startswith('读者懂普通中文与四则运算；')]
     payload['instructions'].append(writing_method(payload.get('mode','answer')))
+    needs_visual = any(q.get('visual_requirement',{}).get('explicit') for q in payload.get('questions',[])) or any(
+        source.get('source_kind',source.get('kind')) in ('image','visual','page_image','table','formula','equation') for source in payload['sources'])
     payload['instructions']+=['原文、必要写作规则和可用原图已经放入这一次输入，不再为了读取它们调用工具',
       '直接输出最终JSON对象，包含本组全部回答、术语和本组选择题；客户端负责保存，不写文件，不输出收尾消息',
       '理解原句所必需的前置必须在回答里讲清；简单问题简洁，复杂问题充分，不限制回答字数',
       '公式中的多字母程序标识使用LaTeX的mathtt或text保留整个名称，并说明其含义；数学下标使用完整花括号。程序标识与数学下标要区分，不把程序名称擅自改成另一种变量，也不把多字母名称当成几个字母相乘',
-      '图片已按 sources.media 中的编号顺序随输入附上；必须实际读图，对估计值和不确定标记保持原有含义',
+      ('当前题需要原图。查看附上的原图，保留估计值和标记。'
+       if needs_visual else '先看当前提问。只有当前结论需要图中证据时才查相关原图，上一轮的配图无需重新打开。'),
       NAMING_RULE]
     payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。通过generated_assets返回实际工具产生的path、alt、question_ids；内置工具默认写入本次会话的generated_images目录，脚本会核对会话编号，复制到本组目录并上传，再插入对应回答，不要编造已保存路径。没有实际生成成功时不要写虚构地址。多步数学、逻辑、状态和空间关系按writing_method中的图示要求主动处理；Mermaid直接放入对应part的markdown，不另调绘图判断模型。')
     payload['instructions'].append('同次输出 plan 及其 unit_ids，每道练习用 placement 声明插入哪个回答 part 后；正文、术语和练习之外不输出重复成稿')
@@ -44,9 +47,9 @@ def build_prompt(payload,reference,style=WRITING_STYLE):
     payload['instructions']=list(dict.fromkeys(payload['instructions']))
     return '请用 '+writer_label('answer')+' 完成本组阅读回答，直接返回结果JSON\n'+style+'\n任务与原材料：\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
 
-def command(executable,folder,target,images,writer=True,role=None,allow_image_generation=True):
+def command(executable,folder,target,images,writer=True,role=None,allow_image_generation=True,research=True):
     profile=writer_profile(role or(WRITER_ROLE.get()if writer else'coordinator'))
-    args=[executable,'exec','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json','--color','never','-m',profile['model'],'-c','model_reasoning_effort='+json.dumps(profile['effort']),'-c','service_tier="default"','-c','web_search="live"','-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
+    args=[executable,'exec','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json','--color','never','-m',profile['model'],'-c','model_reasoning_effort='+json.dumps(profile['effort']),'-c','service_tier="default"','-c','web_search='+json.dumps('live' if research else 'disabled'),'-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
     if writer:
         writer_instructions=Path(folder)/'writer-instructions.txt'
         writer_instructions.write_text(WRITER_INSTRUCTIONS,'utf8')
@@ -159,17 +162,17 @@ def normalize_terms(value,payload):
             changes.append({'model_proposed_id':identity,'name':term['name'],'action':'保留完整定义和直观解释，由阅读器分配真实编号'});term.pop('term_id')
     return changes
 
-def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True):
+def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True,research=True):
     """记录真实输入、模型输出、检索和用量；不读取维护聊天或连接凭证。"""
     from reader_worker import runtime_usage,external_tool_usage
     folder=Path(folder);folder.mkdir(exist_ok=True,parents=True);target=folder/'final.txt';events=folder/'events.jsonl'
     if events.exists():raise ValueError('本次调用已有日志，请读取原任务，不重复生成')
-    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,images,allow_image_generation=allow_image_generation)
+    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,images,allow_image_generation=allow_image_generation,research=research)
     if(folder/'output-schema.json').exists():args[-1:-1]=['--output-schema',str(folder/'output-schema.json')]
     from reader_writer_transport import Gate
     system='只根据本任务定义修正术语名称；不要重写定义或回答，只返回本任务要求的updates和unresolved。必要时可检索核对名称。'if WRITER_ROLE.get()=='term_repair'else WRITER_INSTRUCTIONS
     if system_override is not None:system=system_override
-    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair').start()
+    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,research=research,allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair').start()
     args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
     save(folder/'invocation.json',{'arguments':args,**writer_profile(WRITER_ROLE.get()),'images':[str(p)for p in images],'prompt_characters':len(prompt),'framework_version':FRAMEWORK_VERSION})
     environment=dict(os.environ)
@@ -273,7 +276,7 @@ def repair_term_names(bridge,out,question_ids,executable):
     finally:WRITER_ROLE.reset(role_token)
     save(folder/'script-processing.json',report);return report
 
-def _execute(bridge,out,include_answered=False,reader_context=None):
+def _execute(bridge,out,include_answered=False,reader_context=None,*,observe_caller=True):
     began=stamp();clock=time.perf_counter();cpu=time.process_time();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
     if (out/'run.json').exists():raise ValueError('这个目录已经有任务记录，请为新一轮选择空目录，避免覆盖原始输出')
     executable=codex_executable()
@@ -283,7 +286,8 @@ def _execute(bridge,out,include_answered=False,reader_context=None):
         report={'run':bridge.request('/api/runs/'+bridge.run_id),'coordinator':{'kind':'local_script','total_seconds':round(time.perf_counter()-clock,3)},'groups':[],'term_names':{'state':'not_needed'},'issues':[],'question_pool':manifest.get('question_pool',{}),'message':manifest.get('message')}
         save(out/'measured-run.json',report)
         return report
-    bridge.start_caller_observer(out)
+    if observe_caller:
+        bridge.start_caller_observer(out)
     run=json.loads((out/'run.json').read_text('utf8'));reference=json.loads((out/'reference.json').read_text('utf8'))
     payloads={g['id']:json.loads((out/('prompt-'+g['id']+'.txt')).read_text('utf8').split('\n',1)[1]) for g in run['groups']}
     prepare_seconds=time.perf_counter()-clock;results=[];errors=[]
@@ -299,14 +303,14 @@ def _execute(bridge,out,include_answered=False,reader_context=None):
     if errors:raise RuntimeError('部分组需要处理，已完成结果和准确原因见 measured-run.json；没有启动模型修复循环')
     return report
 
-def execute(bridge,out,include_answered=False,reader_context=None):
+def execute(bridge,out,include_answered=False,reader_context=None,*,observe_caller=True):
     """把执行进程单独登记，外层不把 Shell 提前返回当作写作结束。"""
     out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
     if(out/'run.json').exists()or(out/'execution-state.json').exists():raise ValueError('这个目录已有任务，请等待或核对原任务；不能覆盖执行状态或重新派发')
     state={'pid':os.getpid(),'state':'running','started_at':stamp()}
     save(out/'execution-state.json',state)
     try:
-        result=_execute(bridge,out,include_answered,reader_context)
+        result=_execute(bridge,out,include_answered,reader_context,observe_caller=observe_caller)
         save(out/'execution-state.json',{**state,'state':'complete','completed_at':stamp()})
         return result
     except Exception as error:
@@ -338,7 +342,6 @@ def teach(bridge,out,reader_context=None,research_file=None):
     packet['writing_tool_policy']='直接使用随输入提供的原文、原图和规则，不为这些已有材料枚举工具或重读文件；必要事实缺失时可搜索并打开来源，用户要求配图时沿用原图或实际工具生成的图片，不编造地址；资料足够后直接成稿'
     packet['source_groups']=__import__('reader_generation').source_groups(packet['sources'])
     cache=__import__('reader_source_cache').for_bridge(bridge)
-    packet=__import__('reader_source_cache').augment(packet,cache)
     packed,aliases=__import__('reader_writer_input').compact_packet(packet);save(folder/'source-aliases.json',aliases)
     save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
     prompt='用 '+writer_label('lesson')+' 普通服务，只完成给定当前章；先按同一次输出中的 plan 组织正文，再提取术语和练习，直接返回 result_contract 规定的 JSON。\n'+WRITING_STYLE+'\n'+json.dumps(packed,ensure_ascii=False,separators=(',',':'))
@@ -402,68 +405,49 @@ def compact_result(report):
     run=report['run']
     return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json',**{k:report[k] for k in ('question_pool','message') if k in report}}
 
-def daily(bridge,out,include_answered=False,reader_context=None):
-    """手动触发时另开配置指定的干净会话，只做本轮回答调度和汇报。"""
-    from reader_worker import conversation_usage,external_tool_usage
-    import shlex
-    out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True);folder=out/'coordinator';folder.mkdir()
-    executable=codex_executable();target=folder/'reply.md'
-    if not executable:raise ValueError('请先安装并登录本地Codex')
-    child=[sys.executable,str(Path(__file__).with_name('reader_bridge.py')),'--base',bridge.base,'--material',bridge.headers['X-Reader-Material'],'run-compact','--out',str(out)]
-    if include_answered:child+=['--include-answered']
-    if reader_context:
-        context_file=out/'reader-feedback.json';save(context_file,reader_context)
-        child+=['--reader-feedback-file',str(context_file)]
-    shell=('& '+' '.join("'"+v.replace("'","''")+"'" for v in child)) if os.name=='nt' else shlex.join(child)
-    prompt=('你是阅读器日常回答任务的主调度，只处理当前项目的未回答问题。立即执行下面的一条命令；程序会读取问题和材料、附上原图、按已准备的分组数量，以'+writer_label('answer')+'普通服务并行生成完整回答、必要前置、术语和练习，并逐组写回。不要开发、测试、部署、读其他文件或历史，也不要自己重复写答案。程序运行期间必须等到 measured-run.json 已落盘才可汇报，Shell 返回后台会话编号不代表任务结束；工具返回仍在运行时，用write_stdin等候，单次等候可用60000毫秒，不要频繁轮询。命令完成后，用中文简短汇报实际完成的问题数、写作窗口耗时和返回的用量，明确主调度本次会话的最终用量由启动器在你汇报结束后补入。不得改模型、推理档、服务档或并行数。\n'+shell)
-    args=command(executable,folder,target,[],writer=False);args[args.index('-s')+1]='danger-full-access'
-    for flag in ('shell_tool',):
-        pos=args.index(flag);del args[pos-1:pos+1]
-    args[args.index('web_search="live"')]='web_search="disabled"'
-    env=dict(os.environ)
-    for key in ('CODEX_THREAD_ID','CODEX_SESSION_ID','MANUAL_READER_PAIRING_CODE'):env.pop(key,None)
-    if bridge.remote:env['MANUAL_READER_TOKEN']=bridge.headers['Authorization'].removeprefix('Bearer ')
-    began=stamp();clock=time.perf_counter();(folder/'input.txt').write_text(prompt,'utf8');save(folder/'invocation.json',{'arguments':args,**writer_profile('coordinator'),'previous_conversation_messages':0,'began_at':began})
-    session=None
-    from reader_writer_transport import Gate,measured_usage
-    gate=Gate(writer_profile('coordinator'),prompt,'只启动并等待本轮已经授权的写作任务，依据实际完成记录简短汇报；不要重复写作、搜索或枚举工具。',folder,True,False).start()
-    args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
-    save(folder/'invocation.json',{'arguments':args,**writer_profile('coordinator'),'previous_conversation_messages':0,'began_at':began})
+DAILY_QA_SUMMARY = '''本地程序已经处理本轮阅读问题。只根据提供的统计，用中文简短汇报实际处理的问题数、耗时、用量和存在的错误。以记录中的状态为准，写入失败就说明哪一组失败。不要复述正文，也不要启动任何任务。'''
+
+
+def summarize_daily(folder, summary, executable):
+    """让干净的汇报会话只读统计结果，实际用量单独登记。"""
+    role = WRITER_ROLE.set('coordinator')
     try:
-        with (folder/'events.jsonl').open('w',encoding='utf8') as events,(folder/'stderr.log').open('w',encoding='utf8') as error:
-            process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=error,text=True,encoding='utf8',env=env,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
-            for line in process.stdout:
-                events.write(line);events.flush()
-                try:event=json.loads(line)
-                except ValueError:continue
-                if isinstance(event,dict)and event.get('type')=='thread.started':session=event['thread_id'];save(folder/'session.json',{'session_id':session})
-            code=process.wait()
-    finally:gate.stop()
-    actual_caller=measured_usage(gate.receipts,writer_profile('coordinator'),session)
-    if actual_caller:save(folder/'usage.json',actual_caller)
-    # 主调度可能在 Shell 返回后台会话编号时结束；启动器仍等同一批写作者落盘。
-    report=wait_for_report(out)
-    if not session:raise RuntimeError('写作记录已保留，但主调度没有返回会话编号，暂不能结算主调度用量')
-    caller=None
-    if actual_caller and code==0:
-        caller={**actual_caller,'scope':'entire_codex_turn','state':'complete','started_at':began,'completed_at':stamp(),'total_seconds':round(time.perf_counter()-clock,3),'scope_note':'干净会话的全部逐请求回执；含读取任务、启动、等待和最终汇报'}
-        caller['requests']=[{**r,'model':caller['model'],'configured_service_tier':'default'}for r in caller['requests']]
-    else:
-        for attempt in range(20):
-            value=conversation_usage(session)
-            if value and value['report'] and value['report']['state']=='complete':caller=value['report'];break
-            time.sleep(.25)
-    if not caller:raise RuntimeError('主调度已返回，但最终用量日志尚未结算，原始输出保留')
-    caller['configured_service_tier']=caller.get('configured_service_tier') or 'default'
-    for request in caller['requests']:request['configured_service_tier']=request.get('configured_service_tier') or 'default'
-    expected=writer_profile('coordinator')
-    if(caller.get('model'),caller.get('effort'),caller['configured_service_tier'])!=(expected['model'],expected['effort'],'default'):raise RuntimeError('主调度实际配置与公布的配置不同，日志已保留')
-    caller.update(launch_started_at=began,launch_completed_at=stamp(),launch_to_final_seconds=round(time.perf_counter()-clock,3),tool_usage=external_tool_usage((folder/'events.jsonl').read_text('utf8').splitlines()))
-    bridge.run_id=report['run']['id'];bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'caller','caller':caller})
-    run=bridge.request('/api/runs/'+bridge.run_id)
-    result={'run_id':bridge.run_id,'boundary':'从启动干净主调度到它完成最终汇报；包含读取问题、程序启动、两路写作、必要检索、写回与主调度等待，开发、验收和部署在另一会话记录','started_at':began,'completed_at':stamp(),'launch_to_final_seconds':round(time.perf_counter()-clock,3),'caller':caller,'run':run,'complete_usage':run['complete_usage'],'complete_token_cost_usd':run['complete_estimated_token_cost_usd'],'complete_cost_with_recorded_search_usd':None,'actual_subscription_charge':None}
-    # 原生检索、图片没有逐项账单回执时，不能用调用次数乘固定单价冒充总费用。
-    result['external_tool_cost_usd']=run.get('estimated_external_tool_cost_usd')
-    result['complete_cost_with_recorded_search_usd']=run.get('complete_estimated_total_cost_usd')
+        text, usage, _ = invoke_writer(folder,json.dumps(summary,ensure_ascii=False),[],executable,
+                                        system_override=DAILY_QA_SUMMARY,allow_image_generation=False,research=False)
+    finally:
+        WRITER_ROLE.reset(role)
+    (Path(folder)/'reply.md').write_text(text,'utf8')
+    return usage
+
+
+def daily(bridge,out,include_answered=False,reader_context=None):
+    """本地程序启动并等待原任务，完成后再调用一次模型汇报。"""
+    out = Path(out).resolve()
+    began = stamp()
+    clock = time.perf_counter()
+    try:
+        report = execute(bridge,out,include_answered,reader_context,observe_caller=False)
+    except RuntimeError:
+        saved = out/'measured-run.json'
+        if not saved.is_file():
+            raise
+        report = json.loads(saved.read_text('utf8'))
+        if not report.get('issues'):
+            raise
+    usage = summarize_daily(out/'coordinator',compact_result(report),codex_executable())
+    elapsed = round(time.perf_counter()-clock,3)
+    caller = {**usage,'scope':'entire_codex_turn','state':'complete','started_at':began,'completed_at':stamp(),
+              'total_seconds':elapsed,'launch_to_final_seconds':elapsed,
+              'scope_note':'读取、派发、等待和写回由本地程序完成，模型用量来自结束后读取统计和汇报的实际请求。'}
+    bridge.run_id = report['run']['id']
+    bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'caller','caller':caller})
+    run = bridge.request('/api/runs/'+bridge.run_id)
+    result = {'run_id':bridge.run_id,'boundary':'从启动本地调度到干净会话汇报结束，包含准备、写作、检索、写回和等待。',
+              'started_at':began,'completed_at':stamp(),'launch_to_final_seconds':elapsed,'caller':caller,'run':run,
+              'complete_usage':run['complete_usage'],'complete_token_cost_usd':run['complete_estimated_token_cost_usd'],
+              'complete_cost_with_recorded_search_usd':run.get('complete_estimated_total_cost_usd'),
+              'external_tool_cost_usd':run.get('estimated_external_tool_cost_usd'),'actual_subscription_charge':None}
     save(out/'daily-complete.json',result)
-    return {'run_id':bridge.run_id,'question_count':len(run['question_ids']),'seconds':result['launch_to_final_seconds'],'usage':result['complete_usage'],'estimated_token_cost_usd':result['complete_token_cost_usd'],'estimated_total_cost_usd':result['complete_cost_with_recorded_search_usd'],'detail_file':str(out/'daily-complete.json')}
+    return {'run_id':bridge.run_id,'question_count':len(run['question_ids']),'seconds':elapsed,'usage':result['complete_usage'],
+            'estimated_token_cost_usd':result['complete_token_cost_usd'],'estimated_total_cost_usd':result['complete_cost_with_recorded_search_usd'],
+            'detail_file':str(out/'daily-complete.json')}

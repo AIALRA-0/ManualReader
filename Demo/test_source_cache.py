@@ -33,4 +33,17 @@ class SourceCacheTests(unittest.TestCase):
         with tempfile.TemporaryDirectory()as tmp:
             path=Path(tmp)/'cache.json';text=json.dumps({'version':2,'fragments':[{'text':'旧片段','url':'https://example.com','observed_at':time.time(),'used_in_completed_generation':True}]});path.write_text(text,'utf8')
             self.assertEqual(SourceCache(path).read(),[]);self.assertEqual(path.read_text('utf8'),text)
+    def test_analysis_term_finds_english_evidence_for_chinese_followup(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/'cache.json'
+            row={'url':'https://example.test/paper','text':'VLIW schedules independent operations together.',
+                 'observed_at':time.time(),'used_in_completed_generation':True,'line_start':12,'line_end':12}
+            duplicate={**row,'url':row['url']+'#overview'}
+            path.write_text(json.dumps({'version':3,'fragments':[row,duplicate]}),'utf8')
+            packet={'questions':[{'text':'所以这两者是什么关系？'}],
+                    'reader_analysis':{'items':[{'gaps':[{'kind':'first_use','anchor':'VLIW'}]}]}}
+            result=SourceCache(path).select(packet)
+            self.assertEqual(result['cache_hits'],1)
+            self.assertEqual(result['notes'][0]['source_lines'],[12,12])
+
 if __name__=='__main__':unittest.main()

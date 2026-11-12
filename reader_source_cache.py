@@ -69,9 +69,30 @@ class SourceCache:
         rows=self.read()
         if not rows:return {'notes':[],'cache_hits':0,'source':'actual_opened_pages'}
         index=[_words(r['text'])for r in rows];df=Counter(w for terms in index for w in terms)
-        queries=[q['text']for q in packet.get('questions',[])]
+        source_rows=packet.get('sources',[])
+        sources={source['id']:source for source in source_rows if source.get('id')}
+        queries=[]
+        for question in packet.get('questions',[]):
+            source=sources.get(question.get('source_id'),{})
+            excerpt=_text(source.get('original') or source.get('excerpt') or source.get('en'))[:1600]
+            queries.append(question['text'])
+            if excerpt:
+                queries.append(question['text']+'\n'+excerpt)
         if not queries:
-            sources=[s.get('original')or s.get('en')or s.get('zh')or''for s in packet.get('sources',[])];step=max(1,len(sources)//12);queries=[' '.join(sources[i:i+step])for i in range(0,len(sources),step)]
+            excerpts=[s.get('original')or s.get('en')or s.get('zh')or''for s in source_rows]
+            step=max(1,len(excerpts)//12)
+            queries=[' '.join(excerpts[i:i+step])for i in range(0,len(excerpts),step)]
+        feedback=packet.get('reader_feedback_latest')
+        if isinstance(feedback,dict):feedback=feedback.get('text')
+        if isinstance(feedback,str) and feedback.strip():queries.append(feedback)
+        analysis=packet.get('reader_analysis') or {}
+        anchors={gap['anchor'] for item in analysis.get('items',[]) for gap in item.get('gaps',[])
+                 if gap.get('kind')=='first_use' and gap.get('anchor')}
+        for item in analysis.get('items',[]):
+            advice='\n'.join([item.get('task_focus',''),*item.get('verification',[]),
+                              *(gap.get('handling','') for gap in item.get('gaps',[]))])
+            anchors.update(re.findall(r'\b[A-Z][A-Z0-9_-]{3,}\b',advice))
+        queries.extend(sorted(anchors))
         candidates={}
         for query in queries:
             words=_words(query)
@@ -79,14 +100,17 @@ class SourceCache:
             for i,terms in enumerate(index):
                 overlap=words&terms
                 strong={w for w in overlap if len(w)>=5 and re.fullmatch(r'[a-z][a-z0-9_-]+',w)and df[w]<=max(3,len(rows)//10)}
-                if len(overlap)<2 and not strong:continue
+                exact_anchor=query in anchors and words and words<=terms
+                if len(overlap)<2 and not strong and not exact_anchor:continue
                 score=sum(math.log(1+len(rows)/(1+df[w]))for w in overlap)/math.sqrt(max(1,len(terms)))
                 scored.append((score,i))
             for score,i in sorted(scored,reverse=True)[:3]:candidates[i]=max(candidates.get(i,0),score)
-        selected=[];size=0
+        selected=[];size=0;seen=set()
         for i,score in sorted(candidates.items(),key=lambda r:r[1],reverse=True):
             row=rows[i]
-            if size+len(row['text'])>max_characters:continue
+            key=(_url(row['url']),row['text'])
+            if key in seen or size+len(row['text'])>max_characters:continue
+            seen.add(key)
             selected.append({**row,'score':round(score,3)});size+=len(row['text'])
         notes=[{'url':r['url'],'text':r['text'],'source_lines':[r['line_start'],r['line_end']]}for r in selected]
         return {'notes':notes,'cache_hits':len(notes),'characters':size,'source':'actual_opened_pages','rule':'这些是实际打开过的来源短片段；直接复用支持本题的事实，缺口继续搜索，不把缓存视为完整结论'}

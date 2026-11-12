@@ -2,6 +2,7 @@
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 import json,re,threading,time,requests,zstandard
+from reader_research_transport import compact_history
 
 def measured_usage(receipts,profile,session_id):
     """直接用服务端逐请求回执计量，避免读取客户端日志时阻塞已完成正文。"""
@@ -20,7 +21,7 @@ def measured_usage(receipts,profile,session_id):
             'model_started_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(receipts[0]['started_at'])),
             'model_completed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(receipts[-1]['started_at']+receipts[-1].get('seconds',0)))}
 
-WEB_DESCRIPTION='''Run raw JavaScript to access only the web research tool, with no file or shell access needed. Use text(await tools.web__run(args)) to return results. Example: text(await tools.web__run({search_query:[{q:"query"}],response_length:"short"})). Open sources with {open:[{ref_id:"https://..."}]} or previously returned reference ids. Find evidence with {find:[{ref_id:"...",pattern:"..."}]}. For PDF figures use {screenshot:[{ref_id:"...",pageno:0}]}, then emit each returned image block with image(block). Combine independent searches/opens in one call. Search-only calls return short discovery snippets; open the source or find a specific passage for complete evidence. Open, find and screenshots retain their requested scope. search_query accepts up to four objects with q and optional domains/recency. response_length is short, medium or long. Results contain source ids, URLs, dates and source text; open the supporting page before citing it. text(value) returns text; image(imageContent) returns an image. No tool discovery is required.'''
+WEB_DESCRIPTION='''Use tools.web__run for evidence missing from the material and already opened source notes. Combine independent lookups. Start with response_length:"short" and use open:[{ref_id:"...",lineno:120}] or find:[{ref_id:"...",pattern:"..."}]. Request a broader excerpt when a needed fact is still unresolved. Open the supporting source before citing it. Reuse lines already returned. Keep research and figures available until you have the needed evidence. For text use text(await tools.web__run(args)) once. The result may be a string: NEVER iterate a string. If you expect images, use const r=await tools.web__run(args); if(typeof r==="string")text(r); else for(const b of (Array.isArray(r)?r:r.content??[])){if(b.type==="image")image(b);else if(b.type==="text")text(b.text);} A PDF figure uses screenshot:[{ref_id:"...",pageno:0}]. No tool discovery is needed.'''
 
 IMAGE_DESCRIPTION='\nFor a necessary new illustration, tools.image_gen__imagegen({prompt:"...",transparent_background:false,referenced_image_paths:["actual local source path"]}) generates or edits an image. For a new image omit referenced_image_paths and num_last_images_to_include; for edits provide one of them. Use generatedImage(result) to show a returned image, and preserve the real returned asset path when the tool provides it. For a long image call the exact FIRST line is // @exec: {"yield_time_ms":120000,"max_output_tokens":1000} followed by a newline. JSON is mandatory. After awaiting the tool use generatedImage(result); NEVER use text(result), JSON.stringify(result), Object.entries(result), or print image_url because it contains base64. If exec yields a running cell id, resume with functions.wait. Do not print base64 or invent paths; include generated_assets only when an actual asset was generated. Proactively illustrate mathematical dependencies, multi-step mechanisms and state changes beside the explanation; use an existing figure or Mermaid when suitable, and generate a bitmap for necessary visual shape or appearance. Simple definitions need no decorative picture.'
 
@@ -55,7 +56,8 @@ class Gate:
         first={'role':'user','content':[{'type':'input_text','text':self.prompt}]}
         unique={json.dumps(x,sort_keys=True):x for x in images};first['content'].extend(unique.values())
         # 保留本任务真实工具往返；不携带维护对话、全局技能目录和无关工具说明。
-        value={**value,'instructions':self.system,'input':([self.tools]if self.research and self.tools else[])+[first]+messages[target+1:],
+        history=compact_history(messages[target+1:]) if self.research and self.spec.get('role')!='coordinator' else messages[target+1:]
+        value={**value,'instructions':self.system,'input':([self.tools]if self.research and self.tools else[])+[first]+history,
                'tools':[t for t in value.get('tools',[])if self.spec.get('role')=='coordinator'and t.get('name')in('exec_command','write_stdin')],'tool_choice':'auto'if self.research else'none','parallel_tool_calls':False,'service_tier':'default'}
         value.pop('previous_response_id',None)
         if self.research and not self.tools:raise ValueError('没有取得可用的检索工具声明')
