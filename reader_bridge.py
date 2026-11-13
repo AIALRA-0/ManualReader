@@ -13,22 +13,26 @@ class NoRedirect(HTTPRedirectHandler):
 
 
 def feedback_file(path):
-    """从本轮文件读取用户反馈，文件内容不参与登录或项目选择。"""
+    """从本轮文件读取用户的学习目标、背景和反馈。"""
     if not path:return None
+    from reader_contract import reader_context_fields
     raw=Path(path).read_text('utf-8-sig')
-    if len(raw)>24000:raise ValueError('反馈文件过长，请只保留本轮用户指出的未懂之处')
+    if len(raw)>24000:raise ValueError('反馈文件过长，请只保留这次和学习有关的用户原话')
     try:value=json.loads(raw)
     except ValueError:value=raw
-    if isinstance(value,str):return {'reader_feedback_latest':{'text':value,'source':'用户在当前Codex对话中的直接反馈'}}
+    if isinstance(value,str):return reader_context_fields({'reader_feedback_latest':value})
     if not isinstance(value,dict):raise ValueError('反馈文件需要是用户原话或JSON对象')
-    if 'text' in value:return {'reader_feedback_latest':value}
-    result={k:value[k] for k in ('reader_feedback_latest','confirmed_passage','confirmed_understanding') if k in value}
+    if 'text' in value:return reader_context_fields({'reader_feedback_latest':value})
+    result=reader_context_fields(value)
     if not result:raise ValueError('反馈文件没有本轮读者反馈或明确确认的内容')
     return result
 
 
 class Bridge:
     def __init__(self, base=None, material=None,token=None,pairing=None,remember=False):
+        from threading import Lock
+        self._source_images={}
+        self._image_lock=Lock()
         url_file=Path(__file__).parent/'reader-url.txt'
         base=base or (url_file.read_text('utf8').strip() if url_file.exists() else 'http://127.0.0.1:8939')
         self.base=base.rstrip('/')
@@ -51,12 +55,32 @@ class Bridge:
             if material:self.headers['X-Reader-Material']=material
             if remember:
                 if not material:raise ValueError('记住连接前需要明确项目编号')
-                guide=self.request('/api/guide')
+                guide=self.request('/api/guide?view=bootstrap')
                 if guide.get('material_id')!=material:raise ValueError('服务器返回的项目与连接不一致，未保存凭证')
                 remember_token(self.base,material,token);self._from_vault=True
+                self._verified_guide = guide
         else:
             session=json.load(self.opener.open(self.base+'/api/session',timeout=30))
             self.headers={'X-Reader-Pin':session['pin'],'X-Reader-Material':material or session['material_id'],'Content-Type':'application/json'}
+
+    def source_image(self,url,download):
+        """同一个项目任务中的多个写作组只下载同一张原图一次。"""
+        from concurrent.futures import Future
+        if not hasattr(self,'_image_lock'):
+            return download()
+        with self._image_lock:
+            pending=self._source_images.get(url)
+            owns_download=pending is None
+            if owns_download:
+                pending=self._source_images[url]=Future()
+        if owns_download:
+            try:
+                pending.set_result(download())
+            except Exception as error:
+                with self._image_lock:
+                    self._source_images.pop(url,None)
+                pending.set_exception(error)
+        return pending.result()
 
     def request(self, path, data=None):
         if data is not None and path.split('?',1)[0] in ('/api/read','/read'):raise ValueError('阅读进度由用户在页面手动勾选，Agent 不写入已读状态')
@@ -92,16 +116,23 @@ class Bridge:
                         'next_action':'有明确问题编号时，使用 prepare --question 原问题编号；用户要求重答已有有效答案时再加 --include-answered，只处理这些编号，不扩大到全部已答问题'}
                 (out/'dispatch.json').write_text(json.dumps(result,ensure_ascii=False,indent=2),'utf8')
                 return result
-            urls=[group['input_url'] for group in manifest['groups']]+[manifest['reference_url']]
+            scoped=manifest.get('reference_mode')=='group_snapshot'
+            urls=[group['input_url'] for group in manifest['groups']]
+            if not scoped:urls.append(manifest['reference_url'])
             with ThreadPoolExecutor(max_workers=min(4,len(urls))) as pool:payloads=list(pool.map(self.request,urls))
-            (out/'reference.json').write_text(json.dumps(payloads[-1],ensure_ascii=False),'utf8')
+            if scoped:
+                evidence={row['id']:row for payload in payloads for row in payload.get('reference_blocks',[])}
+                reference={'material_id':manifest.get('material_id'),'passages':list(evidence.values())}
+            else:
+                reference=payloads.pop()
+            (out/'reference.json').write_text(json.dumps(reference,ensure_ascii=False),'utf8')
             worker_script=Path(__file__).parent/'reader_worker.py'
             tasks=[]
             for group,payload in zip(manifest['groups'],payloads):
                 identity=group['id'];target=out/('result-'+identity+'.json');payload['reference_file']=str((out/'reference.json').resolve());payload['output_file']=str((out/('result-'+identity+'.draft.json')).resolve())
-                payload['publish_command']='使用同一Python执行 reader_worker.py finish --out '+str(out.resolve())+' --group '+identity+'，脚本只检查JSON、编号与缺项，然后一次发布结果，不重新写作'
-                prompt=out/('prompt-'+identity+'.txt');prompt.write_text('使用 '+writer_label('answer')+'，只处理本组问题。先把回答讲清，再派生术语和选择题。结果只写一次到 output_file，然后执行 publish_command 交给脚本检查和发布，最终仅回复文件路径和条数，不再输出整份JSON，不增加审稿或修复循环。\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':')),'utf8')
-                tasks.append({'group_id':identity,'model':writer_profile('answer')['model'],'reasoning_effort':writer_profile('answer')['effort'],'fork_turns':'none','message':'先调用 reader_worker.py 的 input 动作读取一次指定输入（该动作会同时记录真实开始时间和本次会话编号）；直接完成写作并保存 output_file，最终只返回路径和条数。输入目录：'+str(out.resolve())+'；组号：'+identity,'input_file':str(prompt.resolve()),'output_file':str(target.resolve()),'worker_script':str(worker_script.resolve())})
+                payload['publish_command']='你用同一个 Python 执行 reader_worker.py finish --out '+str(out.resolve())+' --group '+identity+'\n脚本核对 JSON、编号和缺项，然后发布一次'
+                prompt=out/('prompt-'+identity+'.txt');prompt.write_text('你用 '+writer_label('answer')+' 回答本组问题，在同一次写作里整理术语和选择题，将结果一次保存到 output_file，运行 publish_command 后只回复文件路径和条数\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':')),'utf8')
+                tasks.append({'group_id':identity,'model':writer_profile('answer')['model'],'reasoning_effort':writer_profile('answer')['effort'],'fork_turns':'none','message':'你先用 reader_worker.py 的 input 动作读取一次输入，脚本会同时记录真实开始时间和会话编号\n你写完后保存到 output_file，只返回路径和条数\n输入目录 '+str(out.resolve())+'\n组号 '+identity,'input_file':str(prompt.resolve()),'output_file':str(target.resolve()),'worker_script':str(worker_script.resolve())})
             result={'run_id':self.run_id,'questions':manifest['question_count'],'groups':len(tasks),'tasks':tasks,'script_seconds':round(time.perf_counter()-started,4),'model_calls':0,'dispatch':'现在连续派发全部tasks，不在各组之间检索、写作或等待；每组使用全新历史；生成结果后运行 reader_bridge.py collect 自动写回和提取真实日志用量'}
             environment=dict(os.environ)
             if self.remote:environment['MANUAL_READER_TOKEN']=self.headers['Authorization'].removeprefix('Bearer ')
@@ -121,21 +152,8 @@ class Bridge:
         out=Path(out);out.mkdir(parents=True,exist_ok=True)
         (out/'work.json').write_text(json.dumps(packet,ensure_ascii=False,indent=2),'utf8')
         if lesson:
-            (out/'prompt-1.txt').write_text('按下面任务只完成当前一节，输出讲解、术语和逐讲解片段至少一题的结果 JSON，优先选择题，也可用带参考答案的自行作答题；按writing.instructions接住reading_context的实际前文，并参考recent_reader_questions只补本节相关缺口；写回后继续处理本章，不进入下一节\n'+json.dumps(packet,ensure_ascii=False),'utf8')
+            (out/'prompt-1.txt').write_text('你只完成当前一节，返回讲解、术语和练习的 JSON，每个讲解片段至少一道题\n你按 practice_policy 选能检验目标的题型，多题组选择题过半\n你按 writing.instructions 接住 reading_context 的实际前文，参考 recent_reader_questions，在本节第一次遇到同类内容时讲得更详细\n写回后，你继续处理本章\n'+json.dumps(packet,ensure_ascii=False),'utf8')
             return {'groups':1,'model':packet['writer'],'output_directory':str(out.resolve()),'model_calls':0}
-        for i,ids in enumerate(packet['groups'],1):
-            questions=[q for q in packet['questions'] if q['id'] in ids]
-            from reader_work import group_packet
-            shared_text=json.dumps(group_packet(packet,ids),ensure_ascii=False,separators=(',',':'))
-            prompt=('使用 '+writer_label('answer')+'，直接完成下面的阅读回答任务。'
-                    '共同材料和规范已在输入中，不再读文件、不操作阅读器、不发送进度说明。'
-                    '回答、术语和练习一起输出为结果 JSON，由脚本负责逐项保存。'
-                    '确实缺少外部事实时才检索；不加审稿 Agent，不循环修复。\n'
-                    +shared_text)
-            (out/f'prompt-{i}.txt').write_text(prompt,'utf8')
-        return {'questions':len(packet['questions']),'groups':len(packet['groups']),
-                'model':packet['writer'],'output_directory':str(out.resolve()),'script_seconds':round(time.perf_counter()-started,4),'model_calls':0,
-                'dispatch':'将 prompt 文件中的正文直接交给写作者，不要只给文件路径让写作者再次读取'}
 
     def collect(self,out,include_run=True):
         from reader_worker import runtime_usage
@@ -156,7 +174,12 @@ class Bridge:
                 meta=json.loads(marker.read_text('utf8'));usage=runtime_usage(meta,manifest.get('coordinator_session_id'))
                 if usage:
                     self.request('/api/runs/'+self.run_id+'/events',{'group_id':identity,'type':'usage',**usage});(out/('usage-'+identity+'.json')).write_text(json.dumps(usage,ensure_ascii=False,indent=2),'utf8')
-        return {'run_id':self.run_id,'groups_saved':len(list(out.glob('saved-*.json'))),'groups_total':len(manifest['groups']),'receipts':receipts,**({'run':self.request('/api/runs/'+self.run_id)} if include_run else {})}
+        completed=0
+        for path in out.glob('saved-*.json'):
+            saved=json.loads(path.read_text('utf8'))
+            if not saved.get('missing_question_ids') and not saved.get('issues'):
+                completed+=1
+        return {'run_id':self.run_id,'groups_saved':completed,'groups_total':len(manifest['groups']),'receipts':receipts,**({'run':self.request('/api/runs/'+self.run_id)} if include_run else {})}
 
     def start_caller_observer(self,out):
         out=Path(out);manifest=json.loads((out/'run.json').read_text('utf8'))
@@ -265,6 +288,7 @@ if __name__=='__main__':
     apply=sub.add_parser('apply');apply.add_argument('result');apply.add_argument('--out',required=True);apply.add_argument('--metrics')
     collect=sub.add_parser('collect');collect.add_argument('--out',required=True)
     watch=sub.add_parser('watch');watch.add_argument('--out',required=True)
+    resume=sub.add_parser('resume-writeback');resume.add_argument('--out',required=True)
     caller=sub.add_parser('watch-caller');caller.add_argument('--out',required=True)
     for name in ('run','run-compact','daily','teach'):
         run=sub.add_parser(name);run.add_argument('--out',required=True);run.add_argument('--include-answered',action='store_true');run.add_argument('--reader-feedback-file')
@@ -276,9 +300,11 @@ if __name__=='__main__':
     bridge=Bridge(args.base,args.material,os.environ.get('MANUAL_READER_TOKEN'),sys.stdin.readline().strip() if args.pairing_code_stdin else os.environ.get('MANUAL_READER_PAIRING_CODE'),remember=args.remember)
     reader_context=feedback_file(getattr(args,'reader_feedback_file',None))
     if args.action=='connect':
-        guide=bridge.request('/api/guide');result={'connected':True,'material_id':guide.get('material_id'),'remembered':args.remember,'credential_source':'系统凭据库或本轮显式凭证'}
+        guide=getattr(bridge,'_verified_guide',None) or bridge.request('/api/guide?view=bootstrap');result={'connected':True,'material_id':guide.get('material_id'),'remembered':args.remember,'credential_source':'系统凭据库或本轮显式凭证'}
     elif args.action=='terms':
         result=__import__('reader_term_maintenance').maintain(bridge,args.out)
+    elif args.action=='resume-writeback':
+        result=__import__('reader_execute').resume_writeback(bridge,args.out)
     elif args.action in ('run','run-compact','daily','teach'):
         from reader_execute import execute,compact_result,daily,teach
         result=teach(bridge,args.out,reader_context,getattr(args,'research_file',None))if args.action=='teach'else daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)

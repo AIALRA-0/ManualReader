@@ -58,11 +58,12 @@ class TermQualityTests(unittest.TestCase):
         row=self.term();before=copy.deepcopy(row)
         self.assertFalse(revise_term(row,{**row,'action':'revise','expected_version':3},lambda:'test-time'))
         self.assertEqual(row,before)
-    def test_writing_method_contains_the_same_instruction_once(self):
-        from reader_prompts import writing_method
-        from reader_agent_contract import CLIENT_MODULES
-        for mode in ('lesson','answer'):self.assertEqual(writing_method(mode).count(INSTRUCTION),1)
-        self.assertIn('reader_term_quality.py',CLIENT_MODULES)
+    def test_writer_and_term_validator_agree_on_minimum_lengths(self):
+        from reader_prompts import writing_section
+        from reader_term_quality import MINIMUMS
+
+        self.assertIn(str(MINIMUMS['professional_definition']) + ' 个非空白字符', writing_section('7.2'))
+        self.assertIn(str(MINIMUMS['intuitive_explanation']) + ' 个非空白字符', writing_section('7.3'))
 
     def test_new_rule_version_keeps_source_group_coverage(self):
         from unittest.mock import patch

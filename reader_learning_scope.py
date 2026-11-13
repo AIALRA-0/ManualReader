@@ -31,7 +31,22 @@ def reading_material(material,stored):
     excluded,_=excluded_sources(material,stored)
     return {**material,'passages':[p for p in material['passages']if p['id']not in excluded]}if excluded else material
 
-def chapterwise_outline_guard(stored,nodes,current_ids,can_advance):
-    roots=[n for n in nodes if not n.get('parent_id')and n['id']not in current_ids]
-    if len(roots)>1:raise ValueError('一次只规划一个新的首层大章节；这个大章下可以一起规划多个子节，不要一次展开整个项目')
-    if roots and stored.get('learning_outline')and not can_advance:raise ValueError('当前章节还未由用户勾选完成，请先保留当前大章，不新增下一大章')
+def chapterwise_outline_guard(stored,nodes,current_ids,can_advance,selected_id=None):
+    roots_by_id={}
+    added=[]
+    for node in nodes:
+        identity=node['id']
+        parent=node.get('parent_id')
+        roots_by_id[identity]=roots_by_id[parent] if parent else identity
+        if identity not in current_ids:
+            added.append(identity)
+    if not added:
+        return
+    added_roots={roots_by_id[identity] for identity in added}
+    if len(added_roots)!=1:
+        raise ValueError('每轮只确定一个顶层章和它需要的子节，请等轮到其他章再添加')
+    root=next(iter(added_roots))
+    if root not in current_ids and stored.get('learning_outline') and not can_advance:
+        raise ValueError('等用户勾选当前章节完成后，再登记下一顶层章')
+    if root in current_ids and selected_id and root!=roots_by_id.get(selected_id):
+        raise ValueError('本轮只能给当前顶层章添加子节，请先按阅读顺序进入目标章')

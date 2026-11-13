@@ -1,5 +1,6 @@
 """同一次写作的开头、路线和结尾接入现有讲解块，不另外生成练习。"""
-import copy,json,unicodedata
+import copy,json,re,unicodedata
+from reader_connected import END_TITLES, RECAP_FIELDS, recap_markdown
 NARRATIVE_CONTRACT={'opening':'接住上一条已经讲清的认识，直接引出本条的问题；首条从具体任务开始','flow':[{'part_id':'本章讲解part编号','label':'这一步要弄明白的问题'}],'closing':'总结本条结果，再引出目录下一条的问题；末条给出完成结果'}
 OBJECTIVE_CONTRACT={'id':'o1','text':'一个具体可检查的动作','expected_response':'用户做对时实际说出的判断或算出的结果'}
 
@@ -44,12 +45,88 @@ def validate_context(explanation,context):
     framing=explanation.get('framing',{})
     previous=any(row.get('role')=='previous'for row in framing.get('start',[]))
     following=any(row.get('role')=='next'for row in framing.get('end',[]))
-    if previous!=bool(context.get('previous')):raise ValueError('章首承接与实际目录上一条不一致；首条省略前文承接')
-    if following!=bool(context.get('next')):raise ValueError('章末引导与实际目录下一条不一致；末条省略下一条引导')
+    if context.get('previous') and not previous:raise ValueError('章首需要单独承接目录上一条的实际结果')
+    ending=context.get('ending',{}).get('mode','next' if context.get('next') else 'complete')
+    if following!=(ending!='complete'):raise ValueError('目录还有下一条或仍有内容待讲时，需要单独引出具体问题；整份材料讲完时只保留回顾')
+
+
+def open_question(explanations):
+    """从旧稿末条回顾中提取作者已经提出的后续问题。"""
+    for explanation in reversed(explanations):
+        recap=next((row for row in explanation.get('framing',{}).get('end',[]) if row.get('role')=='recap'),{})
+        points=recap.get('bullets',[])
+        text=points[-1].get('implication','').strip() if points else ''
+        if not re.search(r'(?:如果|接下来|下一节|还能|还可以)',text) or not text.endswith(('？','?')):continue
+        question=re.split(r'[。！？]\s*|；\s+(?=如果|接下来|下一节)',text.rstrip('？?'))[-1].strip()
+        if question:return question+'？'
+    return ''
+
+
+def pending_source(stored,node):
+    """没有后续目录时，只用当前材料中确实还有正文的单元作提示。"""
+    deferred=set(stored.get('learning',{}).get('coverage_plan',{}).get('deferred',[]))
+    if not deferred:return None
+    links=node.get('effective_source_links') or node.get('source_links',[])
+    files={link.get('file_id') for link in links if link.get('file_id')}
+    passages=stored.get('passages',[])
+    owned=set(node.get('owned_source_ids',[]))|{link['passage_id'] for link in links}
+    last=max((i for i,p in enumerate(passages) if p['id'] in owned),default=-1)
+    for i,p in enumerate(passages):
+        if i<=last:continue
+        if p['id'] not in deferred or (files and p.get('file_id') not in files):continue
+        if (p.get('duplicate_of') or p.get('heading') or p.get('role') in ('page_furniture','figure_label','metadata')
+                or p.get('kind') in ('whitespace','heading','page_image')):continue
+        text=re.sub(r'\s+',' ',p.get('en') or p.get('zh') or p.get('alt') or '').strip()
+        text=re.sub(r'^\[sid=[^\]]+\]\s*','',text)
+        if len(text)>=8:return {'id':p['id'],'excerpt':text[:160]}
+    return None
+
+
+def ending_context(stored,node,following,explanations):
+    if following:return {'mode':'next'}
+    question=open_question(explanations)
+    if question:return {'mode':'open','question':question}
+    if source:=pending_source(stored,node):
+        return {'mode':'open','unplanned_source':source}
+    return {'mode':'complete'}
+
+
+def project_endings(material):
+    """保留旧片段编号，只整理章末在阅读器里的显示顺序与文字排版。"""
+    passages={p['id']:p for p in material['passages']}
+    explanations={e['id']:e for e in material['explanations']}
+    for explanation in explanations.values():
+        steps={row['part_id']:row['label'] for row in explanation.get('narrative',{}).get('flow',[])}
+        recap=next((row for row in explanation.get('framing',{}).get('end',[]) if row.get('role')=='recap'),{})
+        bullets=recap.get('bullets') or []
+        formatted=recap_markdown((steps[b['part_id']],b) for b in bullets) if bullets and all(
+            b.get('part_id') in steps and all(isinstance(b.get(key),str) and b[key].strip() for key in RECAP_FIELDS)
+            for b in bullets) else ''
+        for identity in explanation.get('passage_ids',[]):
+            p=passages.get(identity)
+            if not p:continue
+            title=p.get('reading_heading') or p.get('display_reading_heading')
+            if title==END_TITLES['recap'] or (formatted and identity==explanation['id']+'--closing'):
+                p['chapter_ending_role']='recap'
+                if formatted:p['display_markdown']=formatted
+            elif title==END_TITLES['next']:
+                p['chapter_ending_role']='next'
+    nodes=material['learning']['nodes']
+    material['chapter_endings']={}
+    for index,node in enumerate(nodes):
+        rows=[explanations[eid] for eid in node.get('explanation_ids',[]) if eid in explanations]
+        if not rows:continue
+        following=nodes[index+1] if index+1<len(nodes) else None
+        ending=ending_context(material,node,following,rows)
+        if following:ending['next_title']=following['title']
+        material['chapter_endings'][node['id']]=ending
 
 def reading_context(nodes,identity,stored):
     from reader_blocks import sequence_context
     context=sequence_context(nodes,identity)
+    current=context['current']
+    rows=[e for e in stored.get('explanations',[]) if e['id'] in current.get('explanation_ids',[])]
+    context['ending']=ending_context(stored,current,context['next'],rows)
     for field in ('previous','current','next'):
         node=context[field]
         if node is None:continue
@@ -74,12 +151,30 @@ def reading_context(nodes,identity,stored):
     return context
 
 
-FRAMING_CONTRACT={'start': [{'role': 'previous', 'heading': '接着上一节', 'markdown': '接住目录前一条已知事实；首章省略'}, {'role': 'current', 'heading': '这一节要弄明白什么', 'markdown': '单独引出本节问题'}], 'map_heading': '阅读流程', 'end': [{'role': 'recap', 'heading': '把这一节串起来', 'bullets': [{'part_id': 'p1', 'context': '独立一句完整说明', 'problem': '独立一句完整说明', 'claim': '独立一句完整说明', 'reason': '独立一句完整说明', 'evidence': '独立一句完整说明', 'implication': '独立一句完整说明'}]}, {'role': 'next', 'heading': '接下来要解决什么', 'markdown': '接住本节结果引出目录下一条；末章省略'}]}
+FRAMING_CONTRACT={
+    'start': [
+        {'role':'previous','heading':'接着上一节','markdown':'至少100字，接住上一节的实际结果；首节用「从眼前的任务说起」，交代手头原件和任务'},
+        {'role':'current','heading':'这一节要弄明白什么','markdown':'至少100字，说明本节要解决的问题、实际步骤和可核对的结果'},
+    ],
+    'map_heading':'阅读流程',
+    'end': [
+        {'role':'recap','heading':'把这一节串起来','bullets':[{
+            'part_id':'与阅读流程同一项的稳定编号',
+            'context':'一句，交代这个问题出现时已有的对象和条件',
+            'problem':'一句，从这些条件引出本项的核心问题',
+            'claim':'一句，直接回答这个问题',
+            'reason':'一句，讲清上述答案怎样从条件或动作得出',
+            'evidence':'一句，用本项的事实、图中关系或实际算例核对这个原因和结论',
+            'implication':'一句，说清读者怎样用这个结果，或怎样带着它读到下一步',
+        }]},
+        {'role':'next','heading':'接下来要解决什么','markdown':'接住本节结果，引出目录紧邻下一条；尚未定下一条时留一个实际待解决的问题；整份材料讲完时省略'},
+    ],
+}
 
-def prepare_explanation(explanation):
+def prepare_explanation(explanation,preserve_prose=False):
     value=copy.deepcopy(explanation);framing=value.get('framing')
     if framing and any('role'in r for r in framing.get('start',[])):
-        value=__import__('reader_connected').validate_connected(value);framing=value['framing']
+        value=__import__('reader_connected').validate_connected(value,preserve_prose);framing=value['framing']
     if not framing:return value
     for name in ('start','end'):
         rows=framing.get(name)
@@ -87,11 +182,11 @@ def prepare_explanation(explanation):
     if not isinstance(framing.get('map_heading'),str)or not framing['map_heading'].strip():raise ValueError('整张讲解路线需要自己的小标题')
     parts=value.get('parts',[])
     for part in parts:
-        if not all(isinstance(part.get(k),str)and part[k].strip()for k in ('premise','question')):raise ValueError('每个讲解部分需要先说明具体事实，再提出由它引出的问题')
-        premise=part['premise'].strip().rstrip('。；;，,：:');question=part['question'].strip().rstrip('？?')
+        if not all(isinstance(part.get(k),str)and part[k].strip()for k in ('premise','question')):raise ValueError('每个讲解部分先接住前面的具体事实，再说明读者接下来要做什么')
+        premise=part['premise'].strip().rstrip('。；;，,：:');question=part['question'].strip()
         part['premise']=premise;part['question']=question
         heading=str(part.get('heading')or'').strip().rstrip('？?')
-        if not heading or len(heading)>24 or '\n'in heading:raise ValueError('请单独提供24字以内的短标题；事实和问题放在premise与question中，不塞进标题')
+        if not heading or len(heading)>24 or '\n'in heading:raise ValueError('请单独提供24字以内的短标题；把呈上和启下分别放在 premise 与 question 中')
         part['heading']=heading
     value['narrative']={'opening':'\n\n'.join(r['markdown']for r in framing['start']),'flow':__import__('reader_connected').flow_steps(parts),'closing':'\n\n'.join(r['markdown']for r in framing['end'])}
     return value
@@ -101,7 +196,8 @@ def prepare_output(data):
     if value.get('framing'):value.setdefault('explanation',{})['framing']=value['framing']
     explanation=value.get('explanation',{})
     if not explanation.get('framing'):return value
-    explanation=prepare_explanation(explanation);value['explanation']=explanation;value['narrative']=explanation['narrative']
+    from reader_prompts import WRITING_VERSION
+    explanation=prepare_explanation(explanation,value.get('writing_version')==WRITING_VERSION);value['explanation']=explanation;value['narrative']=explanation['narrative']
     quizzes=value.get('quizzes',[]);parts={p['id']:p for p in explanation['parts']};goals=value.get('objectives',[]);gmap={g['id']:g for g in goals}
     for goal in goals:
         own=[q for q in quizzes if goal['id']in q.get('objective_ids',[])];goal['quiz_ids']=[q['id']for q in own]
@@ -125,7 +221,7 @@ def diagram_label(label):
         if row:lines.append(row)
     return '<br/>'.join(lines)
 
-def frame_blocks(data,blocks):
+def frame_blocks(data,blocks,previous_blocks=()):
     framing=data.get('framing')
     if not framing:return _plain_frame_blocks(data,blocks)
     mapping={'source_ranges':[],'explained_source_ids':[],'progress_exempt':True}
@@ -135,7 +231,18 @@ def frame_blocks(data,blocks):
         mapping['explained_source_ids'].extend(block.get('explained_source_ids',[]))
     mapping['explained_source_ids']=list(dict.fromkeys(mapping['explained_source_ids']))
     def entry(row,identity):return {'id':identity,'markdown':row['markdown'],'reading_heading':row['heading'].strip().rstrip('？?'),**copy.deepcopy(mapping)}
-    opening=[entry(row,'opening'if i==0 else'opening-question')for i,row in enumerate(framing['start'])]
+    start_ids=('opening','opening-question','opening-previous')
+    existing={b.get('reading_heading'):b['id'] for b in previous_blocks if b['id'] in start_ids}
+    reused={row['heading']:existing[row['heading']] for row in framing['start'] if row['heading'] in existing}
+    reserved=set(reused.values())
+    opening=[]
+    for i,row in enumerate(framing['start']):
+        identity=reused.get(row['heading'])
+        if identity is None:
+            default=start_ids[i]
+            identity=next(candidate for candidate in (default,'opening-previous',*start_ids) if candidate not in reserved)
+            reserved.add(identity)
+        opening.append(entry(row,identity))
     closing=[entry(row,'closing'if i==0 else'closing-question')for i,row in enumerate(framing['end'])]
     flow=data['narrative']['flow'];lines=['flowchart TD']+[f's{i}[{json.dumps(diagram_label(step["label"]),ensure_ascii=False)}]'for i,step in enumerate(flow)]+[f's{i} --> s{i+1}'for i in range(len(flow)-1)]
     route={'id':'route','markdown':'```mermaid\n'+'\n'.join(lines)+'\n```','reading_heading':framing['map_heading'].strip().rstrip('？?'),**copy.deepcopy(mapping)}

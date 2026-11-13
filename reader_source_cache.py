@@ -1,5 +1,5 @@
 """复用同项目实际打开过的网页短片段，不把旧回答当证据。"""
-from collections import Counter
+from collections import defaultdict
 from pathlib import Path
 from urllib.parse import urlsplit,unquote
 import json,math,re,time,threading,os,hashlib,uuid
@@ -50,17 +50,23 @@ class SourceCache:
                     title,url,lines=page['title'],page['url'],page['lines']
                     if _url(url)not in used:continue
                     if not lines:continue
-                    current=[];size=0
+                    current=[];size=0;page_index=None
+                    def locator(value):
+                        return int(value) if value.isdecimal() else value
                     def store():
                         nonlocal added
                         if not current:return
                         body='\n'.join(t for _,t in current).strip();key=(url,body)
                         if len(body)>=30 and key not in seen:
-                            existing.append({'url':url,'title':title,'text':body,'line_start':int(current[0][0]),'line_end':int(current[-1][0]),'observed_at':time.time(),'used_in_completed_generation':True});seen.add(key);added+=1
+                            existing.append({'url':url,'title':title,'text':body,'line_start':locator(current[0][0]),'line_end':locator(current[-1][0]),'observed_at':time.time(),'used_in_completed_generation':True});seen.add(key);added+=1
                     for number,line in lines:
                         if not line.strip():continue
                         if len(re.findall(r'【\d+†',line))>=6:continue
-                        if size+len(line)>850 and current:store();current=[];size=0
+                        page_number=number.partition('@P')[2]
+                        if current and (size+len(line)>850 or page_number!=page_index):
+                            store()
+                            current=[];size=0
+                        page_index=page_number
                         current.append((number,line));size+=len(line)
                     store()
         self.path.parent.mkdir(parents=True,exist_ok=True);temp=self.path.with_suffix('.'+uuid.uuid4().hex+'.next');temp.write_text(json.dumps({'version':3,'parser_version':'web-source-blocks-v1','fragments':existing[-2400:]},ensure_ascii=False),'utf8');temp.replace(self.path)
@@ -68,7 +74,11 @@ class SourceCache:
     def select(self,packet,max_characters=12000):
         rows=self.read()
         if not rows:return {'notes':[],'cache_hits':0,'source':'actual_opened_pages'}
-        index=[_words(r['text'])for r in rows];df=Counter(w for terms in index for w in terms)
+        index=[_words(r['text'])for r in rows]
+        postings=defaultdict(list)
+        for i, terms in enumerate(index):
+            for word in terms:
+                postings[word].append(i)
         source_rows=packet.get('sources',[])
         sources={source['id']:source for source in source_rows if source.get('id')}
         queries=[]
@@ -94,15 +104,17 @@ class SourceCache:
             anchors.update(re.findall(r'\b[A-Z][A-Z0-9_-]{3,}\b',advice))
         queries.extend(sorted(anchors))
         candidates={}
-        for query in queries:
+        for query in dict.fromkeys(queries):
             words=_words(query)
             scored=[]
-            for i,terms in enumerate(index):
+            candidates_for_query={i for word in words for i in postings.get(word,())}
+            for i in candidates_for_query:
+                terms=index[i]
                 overlap=words&terms
-                strong={w for w in overlap if len(w)>=5 and re.fullmatch(r'[a-z][a-z0-9_-]+',w)and df[w]<=max(3,len(rows)//10)}
+                strong={w for w in overlap if len(w)>=5 and re.fullmatch(r'[a-z][a-z0-9_-]+',w)and len(postings[w])<=max(3,len(rows)//10)}
                 exact_anchor=query in anchors and words and words<=terms
                 if len(overlap)<2 and not strong and not exact_anchor:continue
-                score=sum(math.log(1+len(rows)/(1+df[w]))for w in overlap)/math.sqrt(max(1,len(terms)))
+                score=sum(math.log(1+len(rows)/(1+len(postings[w])))for w in overlap)/math.sqrt(max(1,len(terms)))
                 scored.append((score,i))
             for score,i in sorted(scored,reverse=True)[:3]:candidates[i]=max(candidates.get(i,0),score)
         selected=[];size=0;seen=set()
@@ -113,7 +125,7 @@ class SourceCache:
             seen.add(key)
             selected.append({**row,'score':round(score,3)});size+=len(row['text'])
         notes=[{'url':r['url'],'text':r['text'],'source_lines':[r['line_start'],r['line_end']]}for r in selected]
-        return {'notes':notes,'cache_hits':len(notes),'characters':size,'source':'actual_opened_pages','rule':'这些是实际打开过的来源短片段；直接复用支持本题的事实，缺口继续搜索，不把缓存视为完整结论'}
+        return {'notes':notes,'cache_hits':len(notes),'characters':size,'source':'actual_opened_pages','rule':'你可以复用这些已打开的来源片段，用其中确实支持本题的事实，片段还缺什么就继续查什么'}
 
 
 def for_bridge(bridge):

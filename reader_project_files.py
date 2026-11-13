@@ -70,6 +70,18 @@ class ProjectFiles(FileActions):
         if exists and not path.exists():raise ValueError('这个文件已移走，请刷新文件目录')
         return path
 
+    def open_request(self,data):
+        if not isinstance(data,dict):raise ValueError('请提供项目相对路径和要查看的位置')
+        name=relative(data.get('path'));path=self.target(name)
+        if not path.is_file():raise ValueError('请选择普通文件')
+        line,end,page=(data.get(key) for key in ('line','end_line','page'))
+        if any(type(value) is not int or value<1 for value in (line,end,page) if value is not None):
+            raise ValueError('行号和页码从 1 开始')
+        if (page is not None and (line is not None or end is not None)
+                or end is not None and (line is None or end<line)):
+            raise ValueError('请提供页码或有效的行号范围')
+        return {'path':name,'line':line,'end_line':end,'page':page,'modified':str(path.stat().st_mtime_ns)}
+
     def listing(self,name='',offset=0,limit=500):
         config=self.ensure();root=Path(config['root']).resolve();directory=self.target(name) if name else root
         if not directory.is_dir():raise ValueError('请选择项目内的文件夹')

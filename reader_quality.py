@@ -33,7 +33,8 @@ def format_audit(text):
     if re.search(r'(?m)^(?:原文|回答)[：:]\S',protected):issues.append('label_not_on_own_line')
     if re.search(r'(?m)^\s*(?:-{3,}|\*{3,}|_{3,})\s*\n\s*(?:-{3,}|\*{3,}|_{3,})\s*$',protected):issues.append('repeated_separator')
     if protected.count('**')%2:issues.append('unpaired_bold_marker')
-    if any(len(p)>220 and not re.match(r'^\s*(?:[|#>]|[-*]\s|\d+[.)])',p) for p in re.split(r'\n\s*\n',protected)):issues.append('dense_paragraph')
+    if any(len(line)>220 and not re.match(r'^\s*(?:[|#>]|[-*]\s|\d+[.)])',line)
+           for line in protected.splitlines()):issues.append('dense_paragraph')
     return issues
 
 def generated_prose(value):
@@ -42,7 +43,8 @@ def generated_prose(value):
     def hide(m):saved.append(m[0]);return '\ue000'+str(len(saved)-1)+'\ue001'
     text=PROTECTED.sub(hide,text)
     text=re.sub(r'。(?=[ \t]*(?:\n[ \t]*\n|$))','',text)
-    return re.sub(r'\ue000(\d+)\ue001',lambda m:saved[int(m[1])],text)
+    from reader_connected import prose_line_breaks
+    return prose_line_breaks(re.sub(r'\ue000(\d+)\ue001',lambda m:saved[int(m[1])],text))
 
 
 def lesson_display(text,quote='',alternates=()):
@@ -97,19 +99,20 @@ def _title(text):
     # 用户问句作为普通文字标题，不让其中的 Markdown 改变正文结构。
     return re.sub(r'([\\`*_<>{}\[\]#!|])',r'\\\1',re.sub(r'\s+',' ',text).strip())
 
-def answer_parts(answer,question):
+def answer_parts(answer,question,preserve_prose=False):
     """将各子问及其答案一次装配成正文，保留模型原始结构用于检查。"""
     parts=answer.get('parts',answer.get('answer_parts'));issues=[]
     if parts is None:return clean_markdown(answer.get('text','')),[],format_audit(answer.get('text',''))
     if not isinstance(parts,list) or not 1<=len(parts)<=30:raise ValueError('回答 parts 需要包含 1 至 30 个部分')
     rendered=[];clean=[]
+    format_prose=clean_markdown if preserve_prose else generated_prose
     for index,part in enumerate(parts):
         if not isinstance(part,dict):raise ValueError('回答每一部分都需要是对象')
         if isinstance(part.get('markdown'),str) and part['markdown'].strip():
             span=str(part.get('question_span') or '').strip()
             if not contains_quote(span,question):
                 issues.append({'code':'question_span_not_exact','part':index,'submitted_span':span});span=question
-            markdown=generated_prose(part['markdown'])
+            markdown=format_prose(part['markdown'])
             from reader_generation import part_id
             clean.append({'id':part_id(part,index),'unit_ids':part.get('unit_ids',[]),'question_span':span,'markdown':markdown})
             rendered.append('**'+_title(span)+'**\n\n'+markdown)
@@ -119,17 +122,19 @@ def answer_parts(answer,question):
         if not contains_quote(span,question):
             # 模型改写过问题时，显示真正的用户原话，不把改写冒充原句；答案仍及时保存。
             issues.append({'code':'question_span_not_exact','part':index,'submitted_span':span});span=question
-        direct=generated_prose(direct);explanation=generated_prose(explanation)
+        direct=format_prose(direct);explanation=format_prose(explanation)
         from reader_generation import part_id
         clean.append({'id':part_id(part,index),'unit_ids':part.get('unit_ids',[]),'question_span':span,'direct_answer':direct,'explanation':explanation,'markdown':direct+('\n\n'+explanation if explanation else '')})
         rendered.append('**'+_title(span)+'**\n\n'+direct+('\n\n'+explanation if explanation else ''))
     text='\n\n'.join(rendered)
     return text,clean,issues+format_audit(text)
 
-def lesson_parts(data,material):
+def lesson_parts(data,material,previous_blocks=()):
     """原句与讲解共用稳定来源编号；将轻量结构转成现有讲解块。"""
     if data.get('parts') is None:return data
-    data=__import__('reader_sequence').prepare_explanation(data)
+    from reader_prompts import WRITING_VERSION
+    preserve_prose=data.get('writing_version')==WRITING_VERSION
+    data=__import__('reader_sequence').prepare_explanation(data,preserve_prose)
     parts=data['parts'];sources={p['id']:p for p in material['passages'] if p.get('content_kind')!='explanation'}
     if not isinstance(parts,list) or not parts:raise ValueError('讲解 parts 需要是非空列表')
     blocks=[];issues=[]
@@ -142,11 +147,12 @@ def lesson_parts(data,material):
         if source and not any(contains_quote(span,text) for text in valid_text):
             issues.append({'code':'source_span_not_exact','part':i});span=source.get('zh') or source.get('en') or source.get('alt','')
         # 引文只作为来源保存，三栏点击定位；讲解正文不重复抄写原句。
-        text=generated_prose(markdown) if markdown else generated_prose(claim)+('\n\n'+generated_prose(body) if body else '')
+        format_prose=clean_markdown if preserve_prose else generated_prose
+        text=format_prose(markdown) if markdown else format_prose(claim)+('\n\n'+format_prose(body) if body else '')
         blocks.append({'id':part.get('id') or 'part-'+str(i+1),'unit_ids':part.get('unit_ids',[]),'markdown':clean_markdown(text),'source_quote':span,'source_ranges':[{'file_id':sources[identity].get('file_id','primary'),'passage_id':identity}for identity in source_ids],'explained_source_ids':source_ids,**({'reading_heading':str(part['heading']or'').strip().rstrip('？?')}if'heading'in part else{})})
     for part,block in zip(parts,blocks):
         if part.get('premise')and part.get('question'):block.update(heading_premise=part['premise'],heading_question=part['question'])
-    blocks=__import__('reader_sequence').frame_blocks(data,blocks)
+    blocks=__import__('reader_sequence').frame_blocks(data,blocks,previous_blocks)
     return {**data,'blocks':blocks,'format_audit':issues}
 
 def project_audit(material,state):
@@ -181,15 +187,17 @@ def generated_scope_figures(material):
 
 def public_rules():
     from reader_generation import VERSION as FRAMEWORK_VERSION,PLAN_CONTRACT,PLACEMENT_CONTRACT
-    from reader_prompts import STYLE,writing_method,WRITER_INSTRUCTIONS,NAMING_RULE,WRITING_VERSION
-    from reader_translation import TRANSLATION_RULES
-    return {'version':WRITING_VERSION,'format_version':VERSION,'framework_version':FRAMEWORK_VERSION,'plan':PLAN_CONTRACT,'practice_placement':PLACEMENT_CONTRACT,'roles':ROLES,
-      'qa':{'result_part':QA_PART_CONTRACT,'style':STYLE,'method':writing_method('answer'),'writer_system':WRITER_INSTRUCTIONS,'naming':NAMING_RULE},
-      'lesson':{'result_part':LESSON_PART_CONTRACT,'framing':__import__('reader_sequence').FRAMING_CONTRACT,'method':writing_method('lesson')},'translation':TRANSLATION_RULES,
+    from reader_prompts import STYLE,writing_section,WRITER_INSTRUCTIONS,NAMING_RULE,WRITING_VERSION
+    from reader_task_prompts import READING_ANALYSIS, TRANSLATION, PROMPT_VERSION
+    from reader_analysis import VERSION as ANALYSIS_VERSION
+    return {'version':WRITING_VERSION,'task_prompt_version':PROMPT_VERSION,'format_version':VERSION,'framework_version':FRAMEWORK_VERSION,'plan':PLAN_CONTRACT,'practice_placement':PLACEMENT_CONTRACT,'roles':ROLES,
+      'analysis':{'version':ANALYSIS_VERSION,'system':READING_ANALYSIS,'modes':['lesson','answer']},
+      'qa':{'result_part':QA_PART_CONTRACT,'style':STYLE,'method':'\n\n'.join(writing_section(number) for number in ('6','6.1','6.2')),'writer_system':WRITER_INSTRUCTIONS,'naming':NAMING_RULE},
+      'lesson':{'result_part':LESSON_PART_CONTRACT,'framing':__import__('reader_sequence').FRAMING_CONTRACT,'method':'\n\n'.join(writing_section(number) for number in ('5','5.1','5.2','5.3','5.4','5.5','5.6'))},'translation':TRANSLATION,
       'format_checks':['问题片段必须来自真实用户提问','讲解引用只保存在来源映射中，阅读正文不重复原句','原文和回答标签各占一段','重复分隔线只显示一条','每个话题只显示一个标题；显式清空的 reading_heading 不被旧排版文件恢复','代码、公式、引用和用户原话保持原样','译文按原编号保存，完整句组可以对应多个解析碎片'],
-      'testing_scope':'研究时用固定样本与其他模型做独立评价；日常写作一次输出答案、术语和练习，脚本检查，不额外审稿或循环返修'}
+      'testing_scope':'章节和问答先共用一次分析，再在同一份成稿中输出正文、术语和练习。脚本核对证据、编号和格式。'}
 
 LESSON_PART_CONTRACT=dict(LESSON_PART_CONTRACT)
-LESSON_PART_CONTRACT.update(heading='单独的短标题，建议8至16字，最多24字；不把事实和问题拼成标题',premise='读者能直接懂或前文刚讲清的具体事实，单独一段说清处境',question='单独一段接住premise刚说的对象、动作或结果，再自然问下一步；不机械重复前提，也不删除必要的因果衔接词')
+LESSON_PART_CONTRACT.update(heading='单独的短标题，最多24字',premise='单独一段，至少50字。说清上一段的对象、动作和结果怎样接到本段',question='单独一段，至少50字。接着刚才的结果，说清本段要看什么或做什么、怎样核对；按实际语气用陈述句或问句')
 
 LESSON_PART_CONTRACT['source_spans']=[{'first_source_id':'本任务sources中实际讲到的首个编号','last_source_id':'实际讲到的末个编号；按本任务输入顺序展开，不能跨过未讲内容'}]

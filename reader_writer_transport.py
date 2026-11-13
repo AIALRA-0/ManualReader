@@ -4,6 +4,9 @@ from pathlib import Path
 import json,re,threading,time,requests,zstandard
 from reader_research_transport import compact_history
 
+MAX_TRAILING_WHITESPACE = 4096
+UPSTREAM_STREAM_IDLE_SECONDS = 180
+
 def measured_usage(receipts,profile,session_id):
     """直接用服务端逐请求回执计量，避免读取客户端日志时阻塞已完成正文。"""
     requests_usage=[]
@@ -21,21 +24,35 @@ def measured_usage(receipts,profile,session_id):
             'model_started_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(receipts[0]['started_at'])),
             'model_completed_at':time.strftime('%Y-%m-%dT%H:%M:%SZ',time.gmtime(receipts[-1]['started_at']+receipts[-1].get('seconds',0)))}
 
-WEB_DESCRIPTION='''Use tools.web__run for evidence missing from the material and already opened source notes. Combine independent lookups. Start with response_length:"short" and use open:[{ref_id:"...",lineno:120}] or find:[{ref_id:"...",pattern:"..."}]. Request a broader excerpt when a needed fact is still unresolved. Open the supporting source before citing it. Reuse lines already returned. Keep research and figures available until you have the needed evidence. For text use text(await tools.web__run(args)) once. The result may be a string: NEVER iterate a string. If you expect images, use const r=await tools.web__run(args); if(typeof r==="string")text(r); else for(const b of (Array.isArray(r)?r:r.content??[])){if(b.type==="image")image(b);else if(b.type==="text")text(b.text);} A PDF figure uses screenshot:[{ref_id:"...",pageno:0}]. No tool discovery is needed.'''
+WEB_DESCRIPTION = 'You use tools.web__run to fill a concrete gap in the current question or chapter. Start from the supplied original, images, and previously opened excerpts. Use them directly when they already support the point. Batch independent searches and start with response_length:"short". Use open:[{ref_id:"...",lineno:120}] or find:[{ref_id:"...",pattern:"..."}] to read the source. Open a new source or broaden an excerpt when you can name what new evidence it may provide. If you already searched for the same fact, follow a promising lead or write from the evidence you have. Cite actual opened sources and reuse their lines across subquestions.\nFor text, call text(await tools.web__run(args)) once. The result may be a string, so check its type before iterating. For images, use const r=await tools.web__run(args); if(typeof r==="string")text(r); else for(const b of (Array.isArray(r)?r:r.content??[])){if(b.type==="image")image(b);else if(b.type==="text")text(b.text);}\nFor a PDF figure, use screenshot:[{ref_id:"...",pageno:0}]. You already have the tool names.'
 
-IMAGE_DESCRIPTION='\nFor a necessary new illustration, tools.image_gen__imagegen({prompt:"...",transparent_background:false,referenced_image_paths:["actual local source path"]}) generates or edits an image. For a new image omit referenced_image_paths and num_last_images_to_include; for edits provide one of them. Use generatedImage(result) to show a returned image, and preserve the real returned asset path when the tool provides it. For a long image call the exact FIRST line is // @exec: {"yield_time_ms":120000,"max_output_tokens":1000} followed by a newline. JSON is mandatory. After awaiting the tool use generatedImage(result); NEVER use text(result), JSON.stringify(result), Object.entries(result), or print image_url because it contains base64. If exec yields a running cell id, resume with functions.wait. Do not print base64 or invent paths; include generated_assets only when an actual asset was generated. Proactively illustrate mathematical dependencies, multi-step mechanisms and state changes beside the explanation; use an existing figure or Mermaid when suitable, and generate a bitmap for necessary visual shape or appearance. Simple definitions need no decorative picture.'
+IMAGE_DESCRIPTION = '\nAdd visuals anywhere they make the material quicker to understand, easier to compare, or easier to remember. When in doubt, add a simple visual. Put each one next to the text it explains and add more when they help with different ideas. Reuse relevant originals or use coordinate_figures or Mermaid when they convey the idea clearly. Call image generation when a new illustration or concrete visual example will help the reader.\nTo generate or edit an image, call tools.image_gen__imagegen({prompt:"...",transparent_background:false,referenced_image_paths:["actual local source path"]}). For a new image, omit referenced_image_paths and num_last_images_to_include. For an edit, provide one of them. For a long image call, start with this exact first line followed by a newline:\n// @exec: {"yield_time_ms":120000,"max_output_tokens":1000}\nUse JSON arguments. Await the result and show it with generatedImage(result). If exec returns a running cell id, resume it with functions.wait. Keep the real asset path if the tool returns one and add generated_assets only for an image that was actually generated. Leave base64 in the tool result. Avoid text(result), JSON.stringify(result), Object.entries(result), and printing image_url.'
 
-COORDINATOR_TOOLS='Run only the authorized local command using native functions.exec_command; if it returns session_id, wait with functions.write_stdin until exit_code is present. When a functions.exec wrapper is needed, text(await tools.exec_command(args)) and text(await tools.write_stdin(args)) are available. Do not search, enumerate tools, read source materials, or write answers. Inspect the compact completion record and report actual results. Native exec_command and write_stdin are preferred.'
+COORDINATOR_TOOLS = 'You run the one authorized local command with functions.exec_command. When it returns session_id, wait for the same process with functions.write_stdin until you see exit_code. Prefer the native tools. With a functions.exec wrapper, use text(await tools.exec_command(args)) or text(await tools.write_stdin(args)). Read the compact completion record and report what finished. Leave search, tool discovery, source reading, and writing to the local program.'
 
 class Gate:
     def __init__(self,spec,prompt,system,folder,research=True,allow_image_generation=True):
         self.spec,self.prompt,self.system,self.folder,self.research=spec,prompt,system,Path(folder),research
         self.receipts=[];self.tools=None;self.lock=threading.RLock();self.allow_image_generation=allow_image_generation
+        self.output_stalled = False
+        self.search_requests=[]
     def persist(self):
         """只记录传输阶段、字节数和时间，让长请求也能被观察；不保存流中的思考内容。"""
         with self.lock:
             target=self.folder/'transport.json';temporary=self.folder/'transport.next'
-            temporary.write_text(json.dumps(self.receipts,ensure_ascii=False,indent=2),'utf8');temporary.replace(target)
+            payload=json.dumps(self.receipts,ensure_ascii=False,indent=2)
+            try:
+                temporary.write_text(payload,'utf8')
+                for delay in (0,.015,.04,.1):
+                    if delay:time.sleep(delay)
+                    try:
+                        temporary.replace(target)
+                        return
+                    except PermissionError:
+                        continue
+            except OSError:
+                pass
+            # 查看进度的进程可能暂时占用旧快照；回执仍留在内存和下一份快照中。
     def prepare(self,value):
         if value.get('model')!=self.spec['model'] or value.get('reasoning',{}).get('effort')!=self.spec['effort'] or value.get('service_tier','default')!='default':raise ValueError('实际模型与本次配置不同')
         messages=value.get('input',[]);target=None;images=[]
@@ -78,11 +95,26 @@ class Gate:
                     # Codex 的检索执行也走同一服务地址；不截断这条真实工具通道。
                     raw=self.rfile.read(int(self.headers.get('Content-Length',0)))
                     raw,policy=__import__('reader_research_transport').prepare(self.path,raw,outer.spec.get('compact_search_discovery',True))
-                    with(outer.folder/'tool-routes.jsonl').open('a',encoding='utf8')as log:log.write(json.dumps({'path':self.path.split('?')[0],'bytes':len(raw),'policy':policy})+'\n')
+                    started=time.perf_counter()
                     headers={k:v for k,v in self.headers.items()if k.lower()not in('host','content-length','connection','accept-encoding')}
-                    r=requests.post('https://chatgpt.com/backend-api/codex'+self.path,data=raw,headers=headers,timeout=(30,None),allow_redirects=False)
-                    self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Content-Length',str(len(r.content)));self.end_headers();self.wfile.write(r.content);return
-                began=time.perf_counter();r=None;receipt={'started_at':time.time(),'model':outer.spec['model'],'effort':outer.spec['effort'],'service_tier':'default'}
+                    detail={'path':self.path.split('?')[0],'bytes':len(raw),'policy':policy}
+                    try:
+                        r=requests.post('https://chatgpt.com/backend-api/codex'+self.path,data=raw,headers=headers,timeout=(30,UPSTREAM_STREAM_IDLE_SECONDS),allow_redirects=False)
+                        detail.update(status=r.status_code,response_bytes=len(r.content))
+                        self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Content-Length',str(len(r.content)));self.end_headers();self.wfile.write(r.content)
+                    finally:
+                        detail['seconds']=round(time.perf_counter()-started,3)
+                        outer.search_requests.append(detail)
+                        try:
+                            with (outer.folder/'tool-routes.jsonl').open('a',encoding='utf8') as log:log.write(json.dumps(detail)+'\n')
+                        except OSError:
+                            pass
+                    return
+                if outer.output_stalled:
+                    self.send_error(422, 'Reader output stalled')
+                    return
+                began=time.perf_counter();r=None;draft=None;calls=[]
+                receipt={'started_at':time.time(),'model':outer.spec['model'],'effort':outer.spec['effort'],'service_tier':'default'}
                 try:
                     raw=self.rfile.read(int(self.headers.get('Content-Length',0)))
                     if self.headers.get('Content-Encoding')=='zstd':raw=zstandard.ZstdDecompressor().decompress(raw,max_output_size=32*1024*1024)
@@ -92,10 +124,11 @@ class Gate:
                     public['input']=[m if m.get('type')!='reasoning'else{'type':'reasoning','content_omitted':True}for m in value['input']]
                     (outer.folder/('sent-'+str(number)+'.json')).write_text(json.dumps(public,ensure_ascii=False,indent=2),'utf8')
                     receipt.update(phase='awaiting_headers',original_messages=len(original.get('input',[])),sent_messages=len(value['input']),request_bytes=len(json.dumps(value).encode()),tool_declarations=1 if outer.research else 0)
+                    receipt['research_roundtrip']=any(row.get('type')=='custom_tool_call_output' for row in value['input'])
                     headers={k:v for k,v in self.headers.items()if k.lower()not in('host','content-length','content-encoding','connection','upgrade','accept-encoding')};headers.update({'Content-Type':'application/json','Accept-Encoding':'identity'})
                     outer.persist()
-                    r=requests.post('https://chatgpt.com/backend-api/codex/responses',json=value,headers=headers,stream=True,timeout=(30,None),allow_redirects=False)
-                    receipt.update(phase='streaming',status=r.status_code,headers_seconds=round(time.perf_counter()-began,3));self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Connection','close');self.end_headers();calls=[];last_saved=0;public_items=set()
+                    r=requests.post('https://chatgpt.com/backend-api/codex/responses',json=value,headers=headers,stream=True,timeout=(30,UPSTREAM_STREAM_IDLE_SECONDS),allow_redirects=False)
+                    receipt.update(phase='streaming',status=r.status_code,headers_seconds=round(time.perf_counter()-began,3));self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Connection','close');self.end_headers();last_saved=0;public_items=set()
                     outer.persist()
                     def forwarded_chunks():
                         nonlocal last_saved
@@ -103,11 +136,16 @@ class Gate:
                         for chunk in r.iter_content(chunk_size=4096):
                             if not chunk:continue
                             receipt.setdefault('first_chunk_seconds',round(time.perf_counter()-began,3));receipt['last_progress_at']=time.time();receipt['received_bytes']=receipt.get('received_bytes',0)+len(chunk)
-                            if time.time()-last_saved>=1:outer.persist();last_saved=time.time()
+                            if time.time()-last_saved>=2:
+                                if draft is not None:
+                                    try:draft.flush()
+                                    except OSError:receipt['partial_log_unavailable']=True
+                                outer.persist();last_saved=time.time()
                             if connected:
                                 try:self.wfile.write(chunk);self.wfile.flush()
                                 except OSError:connected=False;receipt['client_disconnected']=True
                             yield chunk
+                    trailing_whitespace = 0
                     for event in __import__('reader_research_transport').events(forwarded_chunks()):
                         if event.get('type')=='response.output_item.added':
                             item=event.get('item',{})
@@ -117,14 +155,25 @@ class Gate:
                             # 只保存面向用户的正文流；检索或推理流不进入这个草稿文件。
                             delta=event.get('delta','')
                             if isinstance(delta,str):
-                                with(outer.folder/('partial-output-'+str(number)+'.txt')).open('a',encoding='utf8')as draft:draft.write(delta)
+                                trimmed = delta.rstrip()
+                                trailing_whitespace = len(delta) - len(trimmed) if trimmed else trailing_whitespace + len(delta)
+                                if trailing_whitespace >= MAX_TRAILING_WHITESPACE:
+                                    outer.output_stalled = True
+                                    break
+                                try:
+                                    if draft is None:draft=(outer.folder/('partial-output-'+str(number)+'.txt')).open('a',encoding='utf8')
+                                    draft.write(delta)
+                                except OSError:
+                                    receipt['partial_log_unavailable']=True
                         if event.get('type')=='response.output_item.done':
                             item=event.get('item',{})
                             if item.get('type')in('custom_tool_call','function_call'):calls.append({k:item.get(k)for k in('type','name','input','arguments')})
                         if event.get('type')in('response.completed','response.failed','response.incomplete'):
                             response=event.get('response',{});receipt['response']={k:response.get(k)for k in('model','status','service_tier','usage','error','incomplete_details')}
                         if event.get('type')=='error':receipt['error']=event
-                    receipt['tool_calls']=calls;receipt['phase']='complete'if receipt.get('response')else'stream_closed';r.close();self.close_connection=True
+                    receipt['tool_calls']=calls
+                    receipt['phase']='output_stalled' if outer.output_stalled else 'complete' if receipt.get('response') else 'stream_closed'
+                    r.close();self.close_connection=True
                 except Exception as e:
                     receipt.update(phase='transport_error',error_type=type(e).__name__,message=str(e))
                     try:
@@ -133,7 +182,11 @@ class Gate:
                     except OSError:pass
                 finally:
                     if r is not None:r.close()
+                    if draft is not None:
+                        try:draft.close()
+                        except OSError:receipt['partial_log_unavailable']=True
                     receipt['seconds']=round(time.perf_counter()-began,3)
+                    receipt['tool_calls']=calls
                     outer.persist()
         self.server=ThreadingHTTPServer(('127.0.0.1',0),Handler);self.port=self.server.server_address[1]
         threading.Thread(target=self.server.serve_forever,daemon=True).start();return self

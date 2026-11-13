@@ -88,7 +88,11 @@ class RemoteMixin:
         return email or user if trusted and owners.intersection([email,user]) else None
     def json(self,data,status=200,cache_tag=None):
         if ORIGIN and getattr(self,'_remote_machine',False) and getattr(self,'_mapped_path','')=='/api/guide' and status==200:
+            writing_instructions = data.get('writing', {}).get('instructions')
             data=json.loads(json.dumps(data,ensure_ascii=False).replace('/api/','/'))
+            if writing_instructions is not None:
+                # 连接地址可以适配机器接口，正式提示词按原样交给写作者。
+                data['writing']['instructions'] = writing_instructions
             data['headers']={'Authorization':'Bearer <access_token>','X-Reader-Material':getattr(self,'_grant_material',None) or self.headers.get('X-Reader-Material','')}
             data['api_base']=public_base();data['capabilities']={'read':True,'write':True,'mark_read':False,'write_user_notes':False,'answer_exercises':False,'import':bool(self._grant['can_import']),'manage':bool(self._grant['can_manage'])}
             data['project_scope']={'material_id':self._grant_material,'upload_project_files':True,'other_projects':False}

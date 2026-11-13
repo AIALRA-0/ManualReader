@@ -22,9 +22,8 @@ def chapter_progress(material,nodes,state):
     qrows={identity:[] for identity in by_node};zrows={identity:[] for identity in by_node}
     for qid,ids in memberships.items():
         for identity in ids:qrows[identity].append(questions[qid])
-    replaced={q.get('revises_quiz_id') for q in state.get('quizzes',[]) if q.get('revises_quiz_id')}
-    for quiz in state.get('quizzes',[]):
-        if quiz['id'] in replaced:continue
+    from reader_contract import current_quizzes
+    for quiz in current_quizzes(state.get('quizzes',[])):
         ids=set().union(*(memberships.get(qid,set()) for qid in quiz.get('question_ids',[])))
         for identity in quiz.get('learning_node_ids',[]):ids.update(ancestors(identity))
         if not ids:

@@ -1,6 +1,7 @@
 """学习章节独立于原文件目录；来源、讲解和旧问题均保留自己的编号。"""
 import copy,re,weakref
-from reader_reading import scope as reading_scope
+from collections import defaultdict
+from reader_reading import scope as reading_scope, scope_index
 
 
 def learning_nodes(material,stored=None):
@@ -52,6 +53,8 @@ def validate_outline(data,material,excluded=None,defer_unassigned=False):
         if not isinstance(legacy,list) or any(s not in sections for s in legacy):raise ValueError('关联的旧讲解章节不存在')
         item={'id':identity,'parent_id':parent,'title':title.strip(),'number':number,'source_links':normalized,'explanation_ids':list(dict.fromkeys(explanations)),
               'legacy_section_ids':list(dict.fromkeys(legacy)),'source_label':str(row.get('source_label',''))[:200]}
+        if row.get('title_provisional') is True and not explanations and not legacy:
+            item['title_provisional']=True
         dependencies=row.get('depends_on',[])
         if not isinstance(dependencies,list) or any(d not in known for d in dependencies):raise ValueError('前置章节必须已经出现在当前章节之前')
         item['depends_on']=list(dict.fromkeys(dependencies))
@@ -80,13 +83,21 @@ def _static_learning(material,stored):
     from reader_learning_scope import excluded_sources
     excluded,_=excluded_sources(material,stored)
     nodes,coverage_plan=complete_outline(material,nodes,excluded,stored.get('planning_mode')=='chapterwise')
+    if not nodes:return nodes,coverage_plan
+    index=scope_index(material)
+    by_explanation=defaultdict(list);by_legacy_section=defaultdict(list)
+    for i,p in enumerate(passages):
+        by_explanation[p.get('explanation_id')].append(i)
+        if p.get('file_id')=='primary':by_legacy_section[p.get('section_id')].append(i)
     for node in nodes:
-        body=[p for p in passages if p.get('explanation_id') in node.get('explanation_ids',[]) or (p.get('file_id')=='primary' and p.get('section_id') in node.get('legacy_section_ids',[]))]
+        positions={i for key in node.get('explanation_ids',[]) for i in by_explanation.get(key,())}
+        positions.update(i for key in node.get('legacy_section_ids',[]) for i in by_legacy_section.get(key,()))
+        body=[passages[i] for i in sorted(positions)]
         node['status']='ready' if any(not p.get('heading') and (p.get('zh') or p.get('en') or '').strip() for p in body) else 'planned'
         node['passage_ids']=[p['id'] for p in body]
         node['level']=node.get('number','').count('.')+1
         node['effective_source_links']=effective_links(node,nodes,material)
-        node['source_range']=reading_scope(material,node['effective_source_links'])
+        node['source_range']=reading_scope(material,node['effective_source_links'],index)
         visible=[p for p in body if p.get('explanation_id') in node.get('explanation_ids',[])] if node.get('explanation_ids') else body
         visible=[p for p in visible if not p.get('progress_exempt') and not p.get('display_omit') and not p.get('heading') and not p.get('duplicate_of') and p.get('role') not in ('page_furniture','metadata','whitespace') and not re.fullmatch(r'\s*#{1,6}\s+[^\n]+\s*',(p.get('zh') or p.get('en') or ''))]
         node['reading_passage_ids']=[p['id'] for p in visible]

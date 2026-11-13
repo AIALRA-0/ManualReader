@@ -5,7 +5,8 @@ import random
 
 def current_quizzes(quizzes):
     replaced={q.get('revises_quiz_id')for q in quizzes if q.get('revises_quiz_id')}
-    return [q for q in quizzes if q['id']not in replaced and not q.get('deleted_at')]
+    return [q for q in quizzes if q['id']not in replaced and not q.get('deleted_at')
+            and not (q.get('archived_duplicate_of') or q.get('practice_archived'))]
 
 def normalize_quiz(quiz):
     """选择题保留原选项；自行作答题保存参考答案，用同一份记录登记用户核对的结果。"""
@@ -27,6 +28,12 @@ def normalize_quiz(quiz):
 def quiz_fields(quiz):
     return {k:quiz[k]for k in ('type','reference_answer','placement','expected','calculation','tolerance','unit','unit_aliases','items','before','reference_order','objective_ids','source_ids','assessment','language','runner_id','starter_code','reference_code','variant_id')if k in quiz}
 
+def same_exercise(left,right):
+    """核对题干和实际判分所需字段；旧作答继续关联原来的题。"""
+    keys=('prompt','options','correct_index','reference_answer','expected','tolerance','unit','unit_aliases',
+          'items','before','language','runner_id','reference_code','variant_id')
+    return left.get('type','choice')==right.get('type','choice') and all(left.get(key)==right.get(key) for key in keys)
+
 def option_explanations(quiz):
     values=quiz.get('option_explanations')
     return [v.strip() for v in values] if isinstance(values,list) and len(values)==len(quiz.get('options',[])) and all(isinstance(v,str) and v.strip() for v in values) else []
@@ -40,7 +47,6 @@ def quiz_feedback(quiz,selected):
         return reason+ ('\n\n'+common if reasons[selected] not in common else '')
     return common
 
-QUIZ_WRITING_RULE='选择题默认四个选项，围绕本次原句或回答检验一个具体判断、应用或推理；干扰项来自读者可能混淆的条件、对象、步骤、因果或计算，不使用明显荒谬、答非所问的陪衬。各选项采用同一语法结构和相近的信息量，正确项不固定最详细、最长，错误项也要给出具体且看似合理的判断；选项长度明显悬殊时，在本次写作中自行调整，不填充无意义文字。正确选项位置由脚本在显示时均衡，不必自行安排ABCD；选项和解析引用选项内容，不依赖A、B等字母，不写“以上皆是”或“前两项”等依赖排列的答案。干扰项不能只是正确陈述的真实子集、等价改写或也符合题干的另一种情况；特别检查哪些、哪组、至少等问法是否允许多个选项成立。先自行确认只有一个正确选项，再输出选项、correct_index和解释。必须同时返回 option_explanations，与原始 options 按下标一一对应；每个错误选项具体说出错在什么对象、条件、步骤或因果，以及怎样判断才对，不能只复述正确答案。不另起审稿或循环修复'
 
 def quiz_display_orders(quizzes):
     """按选项数均衡答案位置，只返回显示顺序，不修改题目或用户作答。"""
@@ -120,14 +126,13 @@ def reader_context_fields(data):
 
 
 def writing_guide(role="answer"):
-    from reader_prompts import writing_method,NAMING_RULE,WRITING_VERSION,FILE_LINK_RULE
+    from reader_prompts import WRITER_INSTRUCTIONS,WRITING_VERSION,FILE_LINK_RULE
     from reader_generation import VERSION as FRAMEWORK_VERSION,PLAN_CONTRACT,PLACEMENT_CONTRACT
+    from reader_analysis import VERSION as ANALYSIS_VERSION
+    from reader_task_prompts import READING_ANALYSIS
     return {'version':WRITING_VERSION,'framework_version':FRAMEWORK_VERSION,**writer_profile(role),'writer_profiles':public_profiles(),
       'practice_policy':__import__('reader_practice_policy').practice_policy(),'plan':PLAN_CONTRACT,'practice_placement':PLACEMENT_CONTRACT,'practice_forms':{'choice':{'type':'choice','prompt':'具体题目','options':['四个同类且合理的选项'],'correct_index':0,'explanation':'解题过程','option_explanations':['逐项解释']},'recall':{'type':'recall','prompt':'请自行写出、计算、推导或操作的题目','reference_answer':'完整参考答案，可含公式、代码和图片','explanation':'核对步骤与关键判断'}},
-      'file_links':FILE_LINK_RULE,'instructions':[writing_method(role),NAMING_RULE,
-        '讲解 parts 提供稳定 id、unit_ids、heading、markdown 和真实来源编号；标题只在 heading 中写一次。回答 parts 提供稳定 id、unit_ids、question_span 与 markdown；Reader 统一显示原文与回答首部，正文不重复这两个标签。完整回答全部真实问题，不编造用户问题',
-        '新术语有中文全称和英文全称，缩写可选，采用缩写 中文全称（English Full Name）；英文默认按脚本规则大写开头，官方大小写例外明确登记。名称、定义和直观解释在同次写作中完成；新条目不编 term_id，复用才传登记表中的真实编号；改善旧定义时传 action=revise 和 expected_version，保留历史',
-        '公式使用明确 LaTeX 标记；多字母程序名用 mathtt 或 text 保留整体，数学下标用完整花括号，解释对象与每个关键计算步骤。图片、表格和原句的引用使用输入中的真实编号',
-        QUIZ_WRITING_RULE,
-        '同次输出完整 plan、正文、术语和带 placement 的练习；每个讲解 part 强制至少一题，题型遵守 practice_policy，不用全套 recall 自评题替代客观判分练习，练习栏自动汇总同编号题目，不单独生成；脚本检查编号、非空正文、标题、原句、问题缺项和插入位置，格式错误最多集中补齐一次，不起审稿 Agent 或循环修复；当前章写回后处理本章提问，只有用户手动勾选完成才进入下一章'],
-      'batching':'按 writer_profiles 为讲解与问答选择普通服务，最多两组并行；原句和输入规则去重，只传相关父回答与术语，不携带维护聊天历史；模型返回一份成稿，脚本及时保存并记录真实耗时、token、缓存和检索调用'}
+      'file_links':FILE_LINK_RULE,'instructions':[WRITER_INSTRUCTIONS],
+      'analysis':{'version':ANALYSIS_VERSION,'modes':['lesson','answer'],'system':READING_ANALYSIS,
+                  'order':['analysis','writing'],'evidence':'reader_checks 将卡点编号对应到实际正文摘句'},
+      'batching':'每组先分析再写，讲解和问答共用分析器。普通服务最多两组并行。客户端只传本组相关材料和父回答，分别记录分析与正文的耗时、token 和缓存。'}

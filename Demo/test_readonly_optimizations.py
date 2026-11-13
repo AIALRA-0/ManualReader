@@ -6,6 +6,21 @@ from reader_workspace import Workspace
 from reader_term_names import display_state
 
 class ReadonlyOptimizations(unittest.TestCase):
+    def test_asset_lookup_reuses_file_names_and_honors_updates(self):
+        with tempfile.TemporaryDirectory() as folder:
+            one=Workspace(Path(folder)/'one')
+            two=Workspace(Path(folder)/'two')
+            for store,name in ((one,'first.pdf'),(two,'second.pdf')):
+                store.write({'revision':0,'files':[{'id':'file','stored_name':name,'document':{'passages':[1,2]}}]})
+                store.read()
+            with patch.object(one,'read_snapshot',side_effect=AssertionError('已经读取过工作区，不应再次解析正文')):
+                self.assertEqual(one.registered_file_name('file'),'first.pdf')
+                self.assertIsNone(one.registered_file_name('unknown'))
+            self.assertEqual(two.registered_file_name('file'),'second.pdf')
+            one.write({'revision':0,'files':[]})
+            self.assertIsNone(one.registered_file_name('file'))
+            self.assertEqual(two.registered_file_name('file'),'second.pdf')
+
     def test_snapshot_reuses_only_unchanged_file(self):
         with tempfile.TemporaryDirectory()as folder:
             store=Workspace(folder);value={'revision':0,'files':[],'explanations':[],'presentation':{}}

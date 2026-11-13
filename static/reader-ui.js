@@ -9,6 +9,7 @@ window.ReaderUI=(()=>{
  paths.stop='M6 6h12v12H6z';
  paths.mic='M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 5v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8';
  paths.layout='M3 3h18v18H3zM11 3v18M11 12h10';
+ paths.pin='M16 3 21 8l-3 1-3 5v3l-2 2-3-3-5 5m5-5-5-5 2-2h3l5-3 1-3z';paths.columns='M3 3h18v18H3zM12 3v18';
  paths.copy='M8 8h13v13H8zM3 16V3h13';
  paths.hover='m4 3 5 16 3-6 6-3L4 3M16 16l5 5M15 3h6M19 6h2';
  paths.lock='M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4';paths.unlock='M6 11h12v10H6zM8 11V7a4 4 0 0 1 7-2';
@@ -79,7 +80,7 @@ window.ReaderUI=(()=>{
   // 一棵追问树先组装再插入页面，等本次组装结束后再清理已移除的节点。
   if(!accordionSweeps.has(group)){accordionSweeps.add(group);queueMicrotask(()=>{accordionSweeps.delete(group);for(const old of items)if(!old.isConnected)items.delete(old)})}
   const keepTitle=change=>{const pane=card.closest('.pane-scroll'),top=summary.getBoundingClientRect().top;change();if(pane){const delta=summary.getBoundingClientRect().top-top;if(Math.abs(delta)>.5)pane.scrollTop+=delta}};
-  const open=(pin=false)=>{if(!pin&&(!hoverAuto||hoverSuppressed||[...items].some(other=>other!==card&&other.isConnected&&(other.dataset.pinned==='true'||editing(other)))))return;keepTitle(()=>{for(const other of items){if(other===card||!other.isConnected)continue;other.classList.add('reader-collapse-now');other.open=false;other.dataset.pinned='false';requestAnimationFrame(()=>requestAnimationFrame(()=>other.classList.remove('reader-collapse-now')))}card.open=true;if(onChange)onChange(id)});card.dataset.pinned=String(pin);remember.open=id;remember.closed=null;remember.pinned=pin};
+  const open=(pin=false)=>{if(!pin&&(!hoverAuto||hoverSuppressed||[...items].some(other=>other!==card&&other.isConnected&&(other.dataset.pinned==='true'||editing(other)))))return;keepTitle(()=>{for(const other of items){if(other===card||!other.isConnected||!other.open)continue;other.classList.add('reader-collapse-now');other.open=false;other.dataset.pinned='false';requestAnimationFrame(()=>requestAnimationFrame(()=>other.classList.remove('reader-collapse-now')))}card.open=true;if(onChange)onChange(id)});card.dataset.pinned=String(pin);remember.open=id;remember.closed=null;remember.pinned=pin};
   card.expandReader=()=>{clearTimeout(openTimer);clearTimeout(closeTimer);initialSuppression=false;hoverSuppressed=false;open(true);remember.userPinned=true};
   card.addEventListener('pointerenter',e=>{clearTimeout(closeTimer);if(hoverAuto&&e.pointerType==='mouse'&&!document.activeElement?.matches('input,textarea,select'))openTimer=setTimeout(()=>{if(card.matches(':hover')&&getSelection()?.isCollapsed)open(card.dataset.pinned==='true')},150)});
   card.addEventListener('pointermove',e=>{if(initialSuppression&&e.pointerType==='mouse'&&(Math.abs(e.movementX)+Math.abs(e.movementY)>0)){hoverSuppressed=false;initialSuppression=false}});

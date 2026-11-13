@@ -18,3 +18,9 @@
 @media(max-width:1100px){.directory-slot-head.pane-head{min-height:46px}.directory-slot-head .reader-select-trigger{font-size:17px}.project-file-menu .reader-select-option{min-height:36px}.project-file-dialog input,.project-file-dialog textarea{font-size:16px}}
 
 .directory-divider{min-height:0!important;max-height:8px;height:8px!important;min-width:0;border-radius:0!important}
+
+.project-file-body .project-located-code {
+ background-image:linear-gradient(to bottom, transparent var(--file-line-start), var(--selected) var(--file-line-start), var(--selected) var(--file-line-end), transparent var(--file-line-end));
+ background-origin:content-box;
+ background-repeat:no-repeat;
+}

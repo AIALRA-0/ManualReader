@@ -9,9 +9,21 @@ from reader_writer_patch import apply
 from reader_writer_schema import output_schema
 from reader_writer_transport import measured_usage,Gate
 from reader_source_cache import SourceCache,for_bridge
+from reader_sequence import frame_blocks
 from objective_grading import calculation
 
 class GenerationRegression(unittest.TestCase):
+    def test_moving_first_chapter_preserves_opening_anchor(self):
+        current={'role':'current','heading':'这一节要弄明白什么','markdown':'本节问题'}
+        previous={'role':'previous','heading':'接着上一节','markdown':'上一节结果'}
+        frame={'framing':{'start':[current],'end':[],'map_heading':'阅读流程'},'narrative':{'flow':[]}}
+        original=frame_blocks(frame,[])
+        self.assertEqual(original[0]['id'],'opening')
+        frame['framing']['start']=[previous,current]
+        moved=frame_blocks(frame,[],original)
+        self.assertEqual([(b['id'],b['markdown'])for b in moved[:2]],[('opening-previous','上一节结果'),('opening','本节问题')])
+        self.assertEqual(frame_blocks(frame,[],moved),moved)
+
     def test_invalid_internal_id_updates_only_internal_references(self):
         old={'answers':[{'question_id':'original-question','parts':[{'id':'ap space','markdown':'原话 ap space'}]}],'quizzes':[{'placement':{'after_part_id':'ap space'}}]}
         new,changes=normalize(old)
@@ -47,6 +59,22 @@ class GenerationRegression(unittest.TestCase):
         output=restore_output({'answers':[{'question_id':'q-original','parts':[{'id':'src1','source_ids':['src1'],'markdown':'src1'}]}]},mapping)
         self.assertEqual(output['answers'][0]['parts'][0]['source_ids'],['actual-source-abc'])
         self.assertEqual(output['answers'][0]['parts'][0]['id'],'src1')
+
+    def test_project_file_alias_in_markdown_keeps_page_target_and_code(self):
+        original = '[原件](/content-files/doc1/original#page=3)\n![图](source:src1)\n`[示例](/content-files/doc1/original)`'
+        result = restore_output({'markdown': original}, {'doc1': 'file-actual', 'src1': 'passage-actual'})
+        self.assertEqual(result['markdown'], '[原件](/content-files/file-actual/original#page=3)\n![图](source:passage-actual)\n`[示例](/content-files/doc1/original)`')
+
+    def test_writer_input_drops_only_exact_copies_and_retains_source_ids(self):
+        packet={'sources':[{'id':'s','original':'完整原句','excerpt':'原句','translation':'完整原句'}],
+                'reference_blocks':[{'id':'s','text':'完整原句','for_source_ids':['s']},
+                                    {'id':'neighbor','text':'相关的另一句','for_source_ids':['s']}]}
+        packed,aliases=compact_packet(packet)
+        self.assertEqual(packed['sources'],[{'id':'src1','original':'完整原句','excerpt':'原句'}])
+        self.assertEqual(packed['reference_blocks'],[{'id':'src1','for_source_ids':['src1']},
+                                                      {'id':'src2','text':'相关的另一句','for_source_ids':['src1']}])
+        self.assertEqual(aliases,{'src1':'s','src2':'neighbor'})
+        self.assertEqual(packet['sources'][0]['translation'],'完整原句')
 
     def test_schema_names_do_not_restrict_body_strings(self):
         schema=output_schema({'mode':'answer','sources':[{'id':'src1'}],'questions':[{'id':'q1'}]})

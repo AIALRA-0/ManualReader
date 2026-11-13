@@ -119,3 +119,48 @@ def version_html(data,folder):
 def _inline_script(path,mtime,size):
     from pathlib import Path
     return Path(path).read_text('utf8').replace('</script','<\\/script')
+
+
+_DEFERRED_JS = re.compile(r'<script defer src="/([a-z][a-z0-9-]*\.js)(?:\?[^"]*)?"></script>')
+_MAIN_URL = '/reader-main.js'
+
+
+def reader_main_assets(folder):
+    """把阅读页自己的延迟脚本按原顺序发送，浏览器只请求一次。"""
+    index=folder/'index.html'
+    stat=index.stat()
+    html=_reader_index(str(index),stat.st_mtime_ns,stat.st_size)
+    begin=html.find('<script defer src="/reader-markdown.js')
+    if begin<0:
+        return version_html(html,folder),None
+    matches=list(_DEFERRED_JS.finditer(html,begin))
+    names=tuple(match[1] for match in matches)
+    if not names or names[-1]!='app.js':
+        return version_html(html,folder),None
+    paths=[folder/name for name in names]
+    if not all(path.is_file() for path in paths):
+        return version_html(html,folder),None
+    digest,body,compressed=_reader_bundle(str(folder),tuple((name,asset_digest(path)) for name,path in zip(names,paths)))
+    first=True
+    def script(match):
+        nonlocal first
+        if first:
+            first=False
+            return f'<script defer src="{_MAIN_URL}?v={digest}"></script>'
+        return ''
+    html=html[:begin]+_DEFERRED_JS.sub(script,html[begin:])
+    return version_html(html,folder),(digest,body,compressed)
+
+
+@lru_cache(maxsize=2)
+def _reader_index(path,mtime,size):
+    from pathlib import Path
+    return Path(path).read_text('utf8')
+
+
+@lru_cache(maxsize=3)
+def _reader_bundle(folder,files):
+    import gzip
+    from pathlib import Path
+    body=b'\n;\n'.join((Path(folder)/name).read_bytes() for name,_ in files)
+    return hashlib.sha256(body).hexdigest()[:16],body,gzip.compress(body,compresslevel=3,mtime=0)

@@ -25,7 +25,7 @@ def check_id(value, label='编号'):
     return value
 
 
-_WORKSPACE_LOCKS={};_WORKSPACE_LOCKS_GUARD=threading.Lock();_WORKSPACE_SNAPSHOTS={}
+_WORKSPACE_LOCKS={};_WORKSPACE_LOCKS_GUARD=threading.Lock();_WORKSPACE_SNAPSHOTS={};_WORKSPACE_FILE_NAMES={}
 
 class MaterialSnapshot(dict):
     """材料仍按字典读取和编码；辅助缓存只保留它的弱引用。"""
@@ -35,16 +35,46 @@ class Workspace:
         self.folder = Path(folder)
         self.path = self.folder/'reading-workspace.json'
         self.files = self.folder/'reading-files'
-        with _WORKSPACE_LOCKS_GUARD:self.lock=_WORKSPACE_LOCKS.setdefault(str(self.path.resolve()),threading.RLock())
+        self.key=str(self.path.resolve())
+        with _WORKSPACE_LOCKS_GUARD:self.lock=_WORKSPACE_LOCKS.setdefault(self.key,threading.RLock())
+
+    def _signature(self):
+        try:
+            stat=self.path.stat()
+        except FileNotFoundError:
+            return None
+        return stat.st_mtime_ns,stat.st_size,stat.st_ino
 
     def read(self):
-        return json.loads(self.path.read_text('utf8')) if self.path.exists() else {'revision':0, 'files':[], 'explanations':[], 'presentation':{}}
+        signature=self._signature()
+        if signature is None:
+            return {'revision':0, 'files':[], 'explanations':[], 'presentation':{}}
+        value=json.loads(self.path.read_text('utf8'))
+        names={row['id']:row.get('stored_name') or '' for row in value.get('files',())}
+        with _WORKSPACE_LOCKS_GUARD:
+            _WORKSPACE_FILE_NAMES.pop(self.key,None)
+            _WORKSPACE_FILE_NAMES[self.key]=(signature,names)
+            if len(_WORKSPACE_FILE_NAMES)>16:
+                _WORKSPACE_FILE_NAMES.pop(next(iter(_WORKSPACE_FILE_NAMES)))
+        return value
+
+    def registered_file_name(self, identity):
+        """从已经读过的工作区取登记文件名，读图时无需再次解析正文。"""
+        with self.lock:
+            signature=self._signature()
+            if signature is None:
+                return None
+            with _WORKSPACE_LOCKS_GUARD:
+                cached=_WORKSPACE_FILE_NAMES.get(self.key)
+                if cached and cached[0]==signature:
+                    return cached[1].get(identity)
+            return next((row.get('stored_name') or '' for row in self.read_snapshot().get('files',()) if row['id']==identity),None)
 
     def read_snapshot(self):
         """只读请求复用未变化的文件；需要修改内容时继续调用 read 取得独立对象。"""
         with self.lock:
-            if not self.path.exists():return self.read()
-            stat=self.path.stat();signature=(stat.st_mtime_ns,stat.st_size,stat.st_ino);key=str(self.path.resolve())
+            signature=self._signature();key=self.key
+            if signature is None:return self.read()
             with _WORKSPACE_LOCKS_GUARD:
                 cached=_WORKSPACE_SNAPSHOTS.get(key)
                 if cached and cached[0]==signature:return cached[1]
@@ -151,6 +181,7 @@ class Workspace:
         __import__('reader_framework_legacy').project(result,value,self.folder)
         result['legacy_math_display_groups']=__import__('reader_blocks').project_legacy_math(result['passages'])
         result['learning']=learning_payload(result,value,{})
+        __import__('reader_sequence').project_endings(result)
         result['association_rules']=RULES
         attach_reading_segments(result)
         result['reading_view']=prepare_reading(result,self.folder,original,value['files'])
@@ -229,20 +260,29 @@ class Workspace:
         row['document']=apply_translations(copy.deepcopy(row['document']),data.get('translations'),data.get('complete',False))
         self.write(value,data.get('expected_revision'));return row['document']['coverage']
 
-    def explain(self,data,material,used_passages=None):
+    def explain(self,data,material,used_passages=None,finalize_chapter_title=False):
         from reader_quality import lesson_parts,clean_markdown
-        data=lesson_parts(data,material)
-        if isinstance(data.get('markdown'),str):data={**data,'markdown':clean_markdown(data['markdown'])}
         value=self.read();identity=check_id(data.get('id') or 'explain-'+uuid.uuid4().hex[:12],'讲解编号')
+        old=next((r for r in value['explanations'] if r['id']==identity),None)
+        if old and data.get('expected_version')!=old['version']:raise ValueError('修改讲解时请提供最新的 expected_version')
+        data=lesson_parts(data,material,(old or {}).get('blocks',[]))
+        if isinstance(data.get('markdown'),str):data={**data,'markdown':clean_markdown(data['markdown'])}
         node_id=data.get('learning_node_id');node=None
         if node_id is not None:
             check_id(node_id,'学习章节编号')
             node=next((n for n in value.get('learning_outline',[]) if n['id']==node_id),None)
             if not node:raise ValueError('学习章节不存在，请先通过 /api/learning/outline 登记目录，再提供 learning_node_id')
-        old=next((r for r in value['explanations'] if r['id']==identity),None)
-        if old and data.get('expected_version')!=old['version']:raise ValueError('修改讲解时请提供最新的 expected_version')
         title=data.get('title') or (old or {}).get('title')
         if not isinstance(title,str) or not title.strip() or len(title)>300:raise ValueError('讲解标题需要是最多 300 字的文字')
+        if finalize_chapter_title and node:
+            if node.get('title_provisional') is True:
+                candidate=title.strip().rstrip('？?')
+                if ('\n' in candidate or '\r' in candidate or len(candidate)>60 or
+                    not candidate or re.fullmatch(r'(?:第\s*[\d一二三四五六七八九十]+\s*[题章节]|待讲解|本节讲解|阅读材料)',candidate)):
+                    raise ValueError('请用本章实际回答的问题作标题，题号继续保留在原件中')
+                node['title']=candidate
+                node.pop('title_provisional',None)
+            title=node['title']
         inherited=next((n.get('effective_source_links',[]) for n in material.get('learning',{}).get('nodes',[]) if n['id']==node_id),[])
         links=data.get('source_links', (old or {}).get('source_links',inherited))
         if not isinstance(links,list) or len(links)>300 or any(not isinstance(link,dict) for link in links):raise ValueError('原文引用需要是对象列表')

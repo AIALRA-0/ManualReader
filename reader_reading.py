@@ -24,18 +24,35 @@ def page_ids(material,ids,pages_for=None):
     selected=set(ids)
     found=set().union(*(pages_for.get(identity,set())for identity in selected))if pages_for is not None else {r['page_id'] for p in material['passages'] if p['id'] in selected for r in p.get('refs',[]) if r.get('page_id') in material.get('pages',{})}
     return [pid for pid in material.get('pages',{}) if pid in found]
-def scope(material,links):
+def scope_index(material):
     sources={p['id']:p for p in material['passages'] if p.get('content_kind')!='explanation'}
+    positions=defaultdict(list);pages_for=defaultdict(set);sources_on_page=defaultdict(set)
+    for i,p in enumerate(material['passages']):
+        positions[p['id']].append(i)
+        pages_for[p['id']].update(r['page_id'] for r in p.get('refs',[]) if r.get('page_id') in material.get('pages',{}))
+    for p in sources.values():
+        for ref in p.get('refs',[]):
+            sources_on_page[ref.get('page_id')].add(p['id'])
+    return sources,positions,pages_for,sources_on_page
+
+def scope(material,links,index=None):
+    sources,positions,pages_for,sources_on_page=index if index is not None else scope_index(material)
     ids=list(dict.fromkeys(l['passage_id'] for l in links if l.get('passage_id') in sources))
-    pages=page_ids(material,ids);slide_pages={pid for pid in pages if material['pages'][pid].get('kind')=='slide' or material['pages'][pid].get('width',1)>1.15*material['pages'][pid].get('height',1)}
+    pages=page_ids(material,ids,pages_for);slide_pages={pid for pid in pages if material['pages'][pid].get('kind')=='slide' or material['pages'][pid].get('width',1)>1.15*material['pages'][pid].get('height',1)}
     # 幻灯片以整页为阅读范围，竖版文档仍保留用户选择的题目或段落范围。
     selected=set(ids)
-    if slide_pages:ids.extend(p['id'] for p in sources.values() if p['id'] not in selected and any(r.get('page_id') in slide_pages for r in p.get('refs',[])))
-    ids=set(ids);ordered=[p['id'] for p in material['passages'] if p['id'] in ids]
+    for pid in slide_pages:selected.update(sources_on_page.get(pid,()))
+    ordered=[material['passages'][i]['id'] for i in sorted(i for identity in selected for i in positions[identity])]
     return {'passage_ids':ordered,'page_ids':pages,'pages':[{'id':pid,'number':material['pages'][pid]['number'],'file_id':material['pages'][pid].get('file_id','primary')} for pid in pages]}
 
-def mapped_links(p,material,fallback=()):
-    sources={s['id']:s for s in material['passages'] if s.get('content_kind')!='explanation'};sentences={s['id']:x['id'] for x in sources.values() for s in x.get('sentences',[]) if not s.get('historical')};atoms={a:x['id'] for x in sources.values() for a in x.get('source_ids',[])}
+def link_index(material):
+    sources={s['id']:s for s in material['passages'] if s.get('content_kind')!='explanation'}
+    sentences={s['id']:x['id'] for x in sources.values() for s in x.get('sentences',[]) if not s.get('historical')}
+    atoms={a:x['id'] for x in sources.values() for a in x.get('source_ids',[])}
+    return sources,sentences,atoms
+
+def mapped_links(p,material,fallback=(),index=None):
+    sources,sentences,atoms=index if index is not None else link_index(material)
     rows=list(p.get('source_ranges',[]))
     rows.extend({'passage_id':identity if identity in sources else sentences.get(identity) or atoms.get(identity),'sentence_id':identity if identity in sentences else None} for identity in p.get('explained_source_ids',[]))
     result=[];seen=set()
@@ -62,9 +79,11 @@ def mapped_links(p,material,fallback=()):
 
 def annotate_explanations(material):
     owners={e['id']:e for e in material.get('explanations',[])}
+    index=None
     for p in material['passages']:
         if p.get('content_kind')=='explanation':
-            owner=owners.get(p.get('explanation_id'),{});links,precision=mapped_links(p,material,owner.get('source_links',p.get('source_links',[])))
+            if index is None:index=link_index(material)
+            owner=owners.get(p.get('explanation_id'),{});links,precision=mapped_links(p,material,owner.get('source_links',p.get('source_links',[])),index)
             p.update(source_links=links,source_link_precision=precision)
 
 def _sources(folder,original,files):

@@ -1,9 +1,9 @@
 """旧正文只增加显示结构，原文段落、问题来源及用户记录保持原样。"""
 from pathlib import Path
 import copy,hashlib,json,re
+from reader_connected import recap_markdown
 
 VERSION='reader-framework-v3'
-FIELDS=('context','problem','claim','reason','evidence','implication')
 def fingerprint(explanation):return hashlib.sha256(json.dumps(explanation,ensure_ascii=False,sort_keys=True,separators=(',',':')).encode()).hexdigest()
 def heading(text):
     text=text.strip()
@@ -48,7 +48,7 @@ def project(material,stored,folder):
         start=[]
         for i,item in enumerate(row['start']):start.append(scaffold('start-'+str(i),'接着上一节'if item['role']=='previous'else'这一节要弄明白什么',item['markdown']))
         route=scaffold('route','阅读流程','')
-        recap='\n\n'.join('- **'+part['heading']+'**：'+''.join(part['recap'][k].strip().rstrip('。；;')+'；'for k in FIELDS)for part in row['parts'])
+        recap=recap_markdown((part['heading'],part['recap']) for part in row['parts'])
         e['narrative']['opening']='\n\n'.join(item['markdown']for item in row['start'])
         e['narrative']['closing']=recap
         end=[scaffold('recap','把这一节串起来',recap)]
@@ -56,12 +56,13 @@ def project(material,stored,folder):
         e['passage_ids']=start+[route]+e['passage_ids']+end
     material['framework_migration']={'version':VERSION,'stale_explanation_ids':stale,'content_policy':'既有正文与用户记录保留，只补缺少的显示结构'}
 
-def practice_overlay(result,material,known,successors=None):
+def practice_overlay(result,material,known,successors=None,explicit=()):
     """旧题只增加正文展示位置，题号和同一份作答记录继续复用。"""
     passages={p['id']:p for p in material['passages']};valid=set(passages)
     successors=successors or {}
     def current(identity,visited=frozenset()):
         if identity in visited:return []
+        if identity in explicit:return []
         if identity in known:return [identity]
         return list(dict.fromkeys(qid for child in successors.get(identity,[])for qid in current(child,visited|{identity})))
     remapped={qid for e in material.get('explanations',[])for link in e.get('practice_links',[])for qid in current(link.get('quiz_id'))}

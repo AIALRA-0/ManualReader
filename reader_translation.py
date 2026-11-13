@@ -4,7 +4,10 @@ import copy,hashlib,json,re,time,threading
 
 _VISUAL_LOCK=threading.RLock()
 
-TRANSLATION_RULES='将本次相邻原文作为一个连续片段译成自然中文。逐句保留事实、动作次序、数量、公式、否定、条件和指代；上下文只帮助理解，不进入本次译文。不加入解释、背景、类比或练习。\n原文单元可能只是 PDF 的半句或换行，ID 是定位标记，不是中文分段边界。一个完整中文句可以对应多个 source_ids；同一原句拆成多句中文时可共享该 ID。列表和步骤分开，标题只按真正标题处理，不照搬误判。同一原ID里若有多个项目符号，每一项单独返回segment，允许共用source_id，不用分号把不同条目压成一项。只写一份译文，不再另写每ID的重复版本。\n技术名称使用准确中文，首次可附原名；人名、代码和变量保留。修饰关系要说清，动作的先后顺序不能改成静态方位。疑似 OCR 或公式上下标缺失，只报告并保留原符号，不猜改。\n只输出 {"segments":[{"source_ids":["本次原ID"],"role":"heading/paragraph/list_item/equation/figure_caption","text":"完整中文句或条目"}],"issues":[{"source_ids":["原ID"],"reason":"需要核对原件的具体问题"}]}。segments中来源的并集必须恰好覆盖本次全部原ID；禁止引用上下文ID。每句只挂真正支持它的ID，不把整页挂到每一句。\n输入中的 source_id 是原单元编号；sentence_id 是已登记句子编号，两个字段不要混用。不同中文句可以共用原段 source_id，另列准确 sentence_ids。定位句不是显示段落：属于同一自然段或同一条目的句子共享 block_id，role 保留 heading/paragraph/list_item/equation/figure_caption，页面将相同 block_id 的句子放在同一自然段或条目内。\n请求提供 expected_source_ids 时，输出引用的 source_id 并集必须完整覆盖这批编号；context_only 不得进入结果。\n写回时按连续阅读组放入 reading_groups:[{source_ids,kind,segments}]，只写这一份正文。附 expected_source_ids 核对整批覆盖，partial=true 仅保存已完成部分。页面不自动调用模型，由用户在 Codex 对话中触发。原文含受损公式或不明方向时，读取原图后用 Terra high 定向完成本批，不增加审稿或循环返修。'
+from reader_task_prompts import TRANSLATION, section
+
+VISUAL_TRANSLATION_RULES = section(TRANSLATION, 7)
+TRANSLATION_RULES = TRANSLATION[:TRANSLATION.index(VISUAL_TRANSLATION_RULES)].rstrip()
 
 TRANSLATION_RULES+='\n人名或编号因保留原名而占比较高时，可在对应 segment 加 preserved_tokens:[{text,reason}]；reason 只取 person_name 或 identifier，且每项必须在该原文与译文中逐字存在。不可将外文整句标成保留项。'
 
@@ -96,7 +99,7 @@ def packets(material,file_id='primary',wanted=None,max_chars=9000):
         result.append({'id':'translation-'+str(index+1),'source_ids':[p['id'] for p in batch],'units':units,'context_only':context})
     visuals=[{'source_id':p['id'],'refs':p.get('refs',[]),'src':p.get('src',''),'alt':p.get('alt',''),'ocr_text':p.get('ocr_text',''),'existing_translation':p.get('zh',''),'original_signature':visual_signature(p)} for p in passages if p['id'] in chosen and p.get('kind') in ('image','visual','page_image','figure','scan')]
     return {'material_id':material['id'],'file_id':file_id,'instructions':TRANSLATION_RULES,'batches':result,'visual_units':visuals,
-        'visual_instructions':'图片的 OCR 为空不代表没有文字。先读取原图；图内已有可定位文字与译文时复用其编号，否则补译可辨认标签、图例和表格文字，并保留整图来源。无法看清时如实记录，不猜译，不标为已完成。原图不需要重画。',
+        'visual_instructions':VISUAL_TRANSLATION_RULES,
         'model_trigger':'用户在Codex对话中手动触发，网页不调用模型'}
 
 def apply_sentence_alignment(p,row):

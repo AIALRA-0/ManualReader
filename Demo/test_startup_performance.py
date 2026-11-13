@@ -2,7 +2,7 @@
 from pathlib import Path
 import json,subprocess,sys,tempfile,unittest
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
-from reader_performance import ReadCache,asset_digest,version_html
+from reader_performance import ReadCache,asset_digest,reader_main_assets,version_html
 
 class StartupPerformance(unittest.TestCase):
     def test_cache_keeps_projects_and_versions_separate(self):
@@ -50,6 +50,25 @@ class StartupPerformance(unittest.TestCase):
             script.write_text('window.test=2; // changed')
             self.assertIn('window.test=2;',version_html(html,folder))
 
+    def test_main_bundle_preserves_dependency_order_and_updates_its_url(self):
+        from gzip import decompress
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)
+            (folder/'index.html').write_text(
+                '<script defer src="/vendor/reader-text.js"></script>'
+                '<script defer src="/reader-markdown.js?v=old"></script>'
+                '<main></main><script defer src="/app.js"></script>','utf8')
+            (folder/'reader-markdown.js').write_text('window.ReaderMarkdown = {}','utf8')
+            (folder/'app.js').write_text('window.app = ReaderMarkdown','utf8')
+            html,(digest,body,compressed)=reader_main_assets(folder)
+            self.assertIn('/vendor/reader-text.js',html)
+            self.assertIn('/reader-main.js?v='+digest,html)
+            self.assertNotIn('src="/app.js',html)
+            self.assertEqual(decompress(compressed),body)
+            self.assertEqual(body,b'window.ReaderMarkdown = {}\n;\nwindow.app = ReaderMarkdown')
+            (folder/'app.js').write_text('window.app = ReaderMarkdown.render','utf8')
+            self.assertNotEqual(reader_main_assets(folder)[1][0],digest)
+
     def test_http_assets_use_snapshot_and_browser_cache(self):
         code=r'''
 import os,json,sys,threading,urllib.request,urllib.error,copy
@@ -94,6 +113,14 @@ except urllib.error.HTTPError as e:assert e.code in (401,403)
 
 try:get('/api/progress',{'If-None-Match':progress_tag});raise AssertionError('未变化的进度应复用浏览器原记录')
 except urllib.error.HTTPError as e:assert e.code==304
+
+with patch.object(app,'learning_payload',wraps=app.learning_payload)as prepare_learning:
+ h,b=get('/api/learning');learning_tag=h['ETag'];first_learning=json.loads(b)
+ h,b=get('/api/learning');assert json.loads(b)==first_learning and prepare_learning.call_count==1
+ try:get('/api/learning',{'If-None-Match':learning_tag});raise AssertionError('未变化的目录应复用浏览器原记录')
+ except urllib.error.HTTPError as e:assert e.code==304
+ app.core.mutate(lambda state:None)
+ h,b=get('/api/learning');assert h['ETag']!=learning_tag and prepare_learning.call_count==2
 
 with patch.object(app,'coverage_payload',wraps=app.coverage_payload)as coverage:
  h,b=get('/api/coverage?summary=true');first=json.loads(b)

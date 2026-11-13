@@ -5,7 +5,10 @@ from reader_web_sources import HEADER, SOURCE, pieces
 
 
 WEB_CALL = re.compile(r'\btools\s*\.\s*(?:web__run|web\.run)\s*\(')
-SOURCE_LINE = re.compile(r'(?m)^L(\d+):[ \t]*([^\r\n]*)(?:\r?\n|$)')
+SOURCE_LINE = re.compile(r'(?m)^L(\d+(?:@P\d+)?):[ \t]*([^\r\n]*)(?:\r?\n|$)')
+DISCOVERY = re.compile(r'\bsearch_query["\']?\s*:')
+EVIDENCE_CALL = re.compile(r'\b(?:open|find|click|screenshot|image_query|literature_search_query)["\']?\s*:')
+SEARCH_REFERENCE = re.compile(r'\bturn\w*search\d+\b')
 
 
 def _join_character_output(text):
@@ -60,11 +63,26 @@ def _deduplicate_source_lines(text, seen):
     return ''.join(blocks)
 
 
+def _discovery_snippets(text):
+    """搜索只用于挑来源。保留原题名、地址、引用编号和摘要首行。"""
+    headers = list(HEADER.finditer(text))
+    if not headers or SOURCE.search(text):
+        return text
+    chunks = [text[:headers[0].start()]]
+    for index, header in enumerate(headers):
+        end = headers[index+1].start() if index+1<len(headers) else len(text)
+        snippet = text[header.end():end].lstrip('\r\n \t').splitlines()
+        if not snippet or not SEARCH_REFERENCE.search(snippet[0]):
+            return text
+        chunks.append(header[0].strip()+'\n'+snippet[0][:600]+'\n\n')
+    compact = ''.join(chunks).rstrip()+'\n'
+    return compact if len(compact)<len(text) else text
+
+
 def compact_history(items):
     """Keep the first exact copy of every source line and keep each tool call and citation handle."""
-    calls = {item.get('call_id') for item in items
-             if item.get('type')=='custom_tool_call' and WEB_CALL.search(str(item.get('input','')))}
-    calls.discard(None)
+    calls = {item['call_id']:str(item.get('input','')) for item in items
+             if item.get('type')=='custom_tool_call' and item.get('call_id') and WEB_CALL.search(str(item.get('input','')))}
     seen = set()
     rows = []
     for item in items:
@@ -72,8 +90,11 @@ def compact_history(items):
         if item.get('type')!='custom_tool_call_output' or item.get('call_id') not in calls:
             rows.append(item)
             continue
+        request = calls[item['call_id']]
+        discovery = DISCOVERY.search(request) and not EVIDENCE_CALL.search(request)
         def normalize(text):
-            return _deduplicate_source_lines(_join_character_output(text), seen)
+            decoded = _join_character_output(text)
+            return _discovery_snippets(decoded) if discovery else _deduplicate_source_lines(decoded, seen)
         if isinstance(output,str):
             updated = normalize(output)
         elif isinstance(output,list):

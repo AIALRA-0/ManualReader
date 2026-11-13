@@ -63,4 +63,27 @@ class ResearchTransportTests(unittest.TestCase):
         self.assertEqual(after[3]['output'][1],image)
         self.assertEqual(compact_history(after),after)
 
+    def test_discovery_keeps_the_handles_but_drops_long_duplicate_previews(self):
+        search = 'One result (https://example.test/paper)\nturn0search1 Published yesterday. Abstract preview.\n'
+        search += 'Long preview that will be read from the original after selecting the source.\n'*10
+        calls = [{'type':'custom_tool_call','call_id':'one','input':'text(await tools.web__run({search_query:[]}))'},
+                 {'type':'custom_tool_call_output','call_id':'one','output':search}]
+        compact = compact_history(calls)[1]['output']
+        self.assertIn('turn0search1 Published yesterday. Abstract preview.',compact)
+        self.assertIn('https://example.test/paper',compact)
+        self.assertNotIn('Long preview',compact)
+        calls[0]['input'] = 'text(await tools.web__run({search_query:[],open:[]}))'
+        self.assertEqual(compact_history(calls),calls)
+
+    def test_pdf_page_labels_stay_distinct(self):
+        original = 'Preserve this exact piece of primary evidence from the source.'
+        def tool(identity, locator):
+            return [{'type':'custom_tool_call','call_id':identity,'input':'text(await tools.web__run({open:[]}))'},
+                    {'type':'custom_tool_call_output','call_id':identity,
+                     'output':f'Paper (https://example.test/paper)\nSource: open({{}})\nL{locator}: {original}\n'}]
+        rows = tool('first','4@P1')+tool('second','4@P2')+tool('repeat','4@P1')
+        after = compact_history(rows)
+        self.assertEqual(after[:4],rows[:4])
+        self.assertIn('present above: 4@P1',after[5]['output'])
+
 if __name__=='__main__':unittest.main()

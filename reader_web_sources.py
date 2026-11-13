@@ -10,6 +10,6 @@ def pieces(text):
 
 def opened(block):
     header=HEADER.search(block);source=SOURCE.search(block)
-    lines=re.findall(r'(?m)^L(\d+):\s*(.*)$',block)
+    lines=re.findall(r'(?m)^L(\d+(?:@P\d+)?):[ \t]*([^\r\n]*)',block)
     if not header or not source or not lines:return None
     return {'title':header[1],'url':header[2],'kind':source[1],'lines':lines}

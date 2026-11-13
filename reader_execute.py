@@ -11,10 +11,11 @@ MODEL=writer_profile('answer')['model']
 EFFORT=writer_profile('answer')['effort']
 from contextvars import ContextVar
 WRITER_ROLE=ContextVar('reader_writer_role',default='answer')
-from reader_prompts import STYLE as WRITING_STYLE, TEACHING_METHOD, writing_method, WRITER_INSTRUCTIONS, NAMING_RULE, WRITING_VERSION
-from reader_media import ensure_visible_sources
+from reader_prompts import WRITER_INSTRUCTIONS, WRITING_VERSION
+from reader_task_prompts import DAILY_QA_SUMMARY, READING_ANALYSIS, TERM_NAME_CORRECTION, section, section_body
+from reader_media import check_visuals,ensure_visible_sources,publish_coordinate_figures
 from reader_quality import answer_parts
-from reader_generation import normalize_output,VERSION as FRAMEWORK_VERSION
+from reader_generation import answer_evidence_sources,normalize_output,VERSION as FRAMEWORK_VERSION
 
 def stamp():return datetime.datetime.now(datetime.timezone.utc).isoformat()
 
@@ -22,37 +23,42 @@ def save(path,value):
     path=Path(path);temporary=path.with_suffix(path.suffix+'.next')
     temporary.write_text(json.dumps(value,ensure_ascii=False,indent=2),'utf8');temporary.replace(path)
 
-def build_prompt(payload,reference,style=WRITING_STYLE):
-    payload=dict(payload);payload['writing_version']=WRITING_VERSION
-    for key in ('output_file','publish_command','reference_file'):payload.pop(key,None)
-    # 服务端已按原句及依赖准备 reference_blocks；不再按文件把整篇原文追加回来。
-    payload.pop('full_original_reference',None)
-    payload['instructions']=[s for s in payload['instructions'] if not any(k in s for k in ('reference.json','result JSON 文件','本地 JSON','本地文件','最终只返回文件路径','文件路径和条数','问题、原句和规则已写入'))]
-    payload['instructions']=[s for s in payload['instructions']if s!=TEACHING_METHOD and not s.startswith('读者懂普通中文与四则运算；')]
-    payload['instructions'].append(writing_method(payload.get('mode','answer')))
-    needs_visual = any(q.get('visual_requirement',{}).get('explicit') for q in payload.get('questions',[])) or any(
-        source.get('source_kind',source.get('kind')) in ('image','visual','page_image','table','formula','equation') for source in payload['sources'])
-    payload['instructions']+=['原文、必要写作规则和可用原图已经放入这一次输入，不再为了读取它们调用工具',
-      '直接输出最终JSON对象，包含本组全部回答、术语和本组选择题；客户端负责保存，不写文件，不输出收尾消息',
-      '理解原句所必需的前置必须在回答里讲清；简单问题简洁，复杂问题充分，不限制回答字数',
-      '公式中的多字母程序标识使用LaTeX的mathtt或text保留整个名称，并说明其含义；数学下标使用完整花括号。程序标识与数学下标要区分，不把程序名称擅自改成另一种变量，也不把多字母名称当成几个字母相乘',
-      ('当前题需要原图。查看附上的原图，保留估计值和标记。'
-       if needs_visual else '先看当前提问。只有当前结论需要图中证据时才查相关原图，上一轮的配图无需重新打开。'),
-      NAMING_RULE]
-    payload['instructions'].append('必要时可使用可用的图片生成工具，一组最多生成一张新插图，优先已有原图或Mermaid。通过generated_assets返回实际工具产生的path、alt、question_ids；内置工具默认写入本次会话的generated_images目录，脚本会核对会话编号，复制到本组目录并上传，再插入对应回答，不要编造已保存路径。没有实际生成成功时不要写虚构地址。多步数学、逻辑、状态和空间关系按writing_method中的图示要求主动处理；Mermaid直接放入对应part的markdown，不另调绘图判断模型。')
-    payload['instructions'].append('同次输出 plan 及其 unit_ids，每道练习用 placement 声明插入哪个回答 part 后；正文、术语和练习之外不输出重复成稿')
-    payload['instructions'].append('新术语只提交名称、定义、直观解释和问题编号，不自行编造term_id；只有复用registered_terms中已有条目时才返回其真实term_id，新编号由脚本分配')
-    if not payload.get('registered_terms'):
-        payload['result_contract']={**payload['result_contract'],'terms':[{k:v for k,v in t.items() if k!='term_id'} for t in payload['result_contract']['terms']]}
-    payload['instructions']=list(dict.fromkeys(payload['instructions']))
-    return '请用 '+writer_label('answer')+' 完成本组阅读回答，直接返回结果JSON\n'+style+'\n任务与原材料：\n'+json.dumps(payload,ensure_ascii=False,separators=(',',':'))
+def writer_task(payload):
+    """直接调用时，系统指令已提供正式写作规则。"""
+    task = dict(payload)
+    instructions = task.get('instructions', [])
+    task['instructions'] = [rule for rule in instructions if rule != WRITER_INSTRUCTIONS]
+    return task
 
-def command(executable,folder,target,images,writer=True,role=None,allow_image_generation=True,research=True):
+
+def build_prompt(payload, reference):
+    task = writer_task(payload)
+    task['writing_version'] = WRITING_VERSION
+    # 这些字段供手动派发使用。直接调用的写作者只返回成稿。
+    for key in ('output_file', 'publish_command', 'reference_file', 'full_original_reference',
+                'result_contract', 'writer', 'schema_version'):
+        task.pop(key, None)
+    task['instructions'] = [rule for rule in task['instructions'] if not any(
+        marker in rule for marker in ('reference.json', 'result JSON 文件', '本地 JSON', '本地文件',
+                                      '最终只返回文件路径', '文件路径和条数', '问题、原句和规则已写入'))]
+    visual_kinds = ('image','visual','page_image','table','formula','equation')
+    needs_visual = any(q.get('visual_requirement',{}).get('explicit') for q in task.get('questions',[])) or any(
+        source.get('source_kind',source.get('kind')) in visual_kinds for source in task['sources'])
+    if needs_visual:
+        task['instructions'].append('你回答这组问题前要查看附上的原图，保留图中的估计值和标记\n图打不开时，你从原文页找能核对的版本，同一失败地址只请求一次')
+    else:
+        task['instructions'].append('你先读当前提问，只有这次的结论需要图中证据时才查看相关原图，上一轮的配图按本题需要取用')
+    task['instructions'].append('你直接返回最终 JSON，新图用 generated_assets 返回真实 path、alt 和 question_ids，客户端负责核对并保存')
+    return ('你用 ' + writer_label('answer') + ' 回答本组问题，直接返回结果 JSON\n\n'
+            + json.dumps(task, ensure_ascii=False, separators=(',', ':')))
+
+
+def command(executable,folder,target,images,writer=True,role=None,allow_image_generation=True,system_instructions=WRITER_INSTRUCTIONS,research=True):
     profile=writer_profile(role or(WRITER_ROLE.get()if writer else'coordinator'))
     args=[executable,'exec','--ignore-user-config','--ignore-rules','--skip-git-repo-check','--json','--color','never','-m',profile['model'],'-c','model_reasoning_effort='+json.dumps(profile['effort']),'-c','service_tier="default"','-c','web_search='+json.dumps('live' if research else 'disabled'),'-c','approval_policy="never"','-s','workspace-write','-C',str(folder),'-o',str(target)]
     if writer:
         writer_instructions=Path(folder)/'writer-instructions.txt'
-        writer_instructions.write_text(WRITER_INSTRUCTIONS,'utf8')
+        writer_instructions.write_bytes(system_instructions.encode('utf8'))
         args+=['-c','model_instructions_file='+json.dumps(str(writer_instructions.resolve()))]
     for flag in ('apps','plugins','multi_agent','shell_tool','browser_use','computer_use','workspace_dependencies','hooks','fast_mode'):
         args+=['--disable',flag]
@@ -61,20 +67,20 @@ def command(executable,folder,target,images,writer=True,role=None,allow_image_ge
     return args+['-']
 
 
-def store_generated_assets(bridge,value,folder,session_id=None):
+def store_generated_assets(bridge,value,folder,session_id=None,*,supplement_session=None):
     """只上传本组实际生成的图片，不接受指向其他目录的文件名。"""
     import io,hashlib
     from PIL import Image
     issues=[];known={a['question_id']:a for a in value.get('answers',[])};assets=value.get('generated_assets') or []
     if not isinstance(assets,list):return ['插图清单格式不正确，正文已保留']
-    for item in assets[:1]:
+    for item in assets:
         if not isinstance(item,dict) or not isinstance(item.get('path'),str) or not isinstance(item.get('question_ids'),list):
             issues.append('插图缺少实际文件或关联问题，正文已保留');continue
         path=Path(item['path'].replace('\\\\','\\') if os.name=='nt' else item['path']);path=path if path.is_absolute() else folder/path
         built_in=False
-        if session_id and path.is_file():
+        if (session_id or supplement_session) and path.is_file():
             homes=[Path(os.environ.get('CODEX_HOME',Path.home()/'.codex'))/'generated_images',Path.home()/'.codex/generated_images']
-            built_in=any(path.resolve().is_relative_to(home.resolve()) and path.resolve().relative_to(home.resolve()).parts[0]==session_id for home in homes)
+            built_in=any(path.resolve().is_relative_to(home.resolve()) and path.resolve().relative_to(home.resolve()).parts[0] in (session_id,supplement_session) for home in homes)
         if (not path.resolve().is_relative_to(folder.resolve()) and not built_in) or not path.is_file():
             issues.append('插图文件不在本组输出目录，正文已保留');continue
         if path.stat().st_size>12*1024*1024:issues.append('插图超过12MB，正文已保留');continue
@@ -118,8 +124,9 @@ def codex_executable():
 def source_images(bridge,payload,folder):
     images=[];seen=set()
     needed={q['source_id'] for q in payload.get('questions',[]) if q.get('visual_requirement',{}).get('explicit')}
-    entries=[m for source in payload['sources'] if payload.get('mode')=='lesson' or source.get('id') in needed or source.get('source_kind',source.get('kind')) in ('image','visual','page_image','table','formula','equation') for m in (source.get('media_items') or [source.get('media') or ({'src':source['src']}if source.get('src')else{})])]
-    for media in entries:
+    entries=[(m,False) for source in payload['sources'] if payload.get('mode')=='lesson' or source.get('id') in needed or source.get('source_kind',source.get('kind')) in ('image','visual','page_image','table','formula','equation') for m in (source.get('media_items') or [source.get('media') or ({'src':source['src']}if source.get('src')else{})])]
+    nearby=[row for row in payload.get('reference_blocks',[]) if row.get('src')]
+    for media, optional in entries+[(row,True) for row in nearby[:2]]:
         url=media.get('src')
         if url in seen:continue
         seen.add(url)
@@ -134,11 +141,18 @@ def source_images(bridge,payload,folder):
         if parsed.netloc==urlsplit(bridge.base).netloc:headers={k:v for k,v in bridge.headers.items() if k!='Content-Type'}
         path=folder/('source-'+str(len(images)+1)+'.image')
         opener=bridge.opener.open if headers else urlopen
-        with opener(Request(url,headers=headers),timeout=60) as response:
-            kind=response.headers.get_content_type();suffix={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif'}.get(kind)
-            if not suffix:raise ValueError('原图地址没有返回可读取的图片')
-            raw=response.read(30*1024*1024+1)
-            if len(raw)>30*1024*1024:raise ValueError('原图超过30MB，请提供对应区域的原始图文件')
+        def download():
+            with opener(Request(url,headers=headers),timeout=8 if optional else 60) as response:
+                kind=response.headers.get_content_type();suffix={'image/png':'.png','image/jpeg':'.jpg','image/webp':'.webp','image/gif':'.gif'}.get(kind)
+                if not suffix:raise ValueError('原图地址没有返回可读取的图片')
+                raw=response.read(30*1024*1024+1)
+                if len(raw)>30*1024*1024:raise ValueError('原图超过30MB，请提供对应区域的原始图文件')
+                return suffix,raw
+        try:
+            suffix,raw=bridge.source_image(url,download) if hasattr(bridge,'source_image') else download()
+        except (OSError,ValueError):
+            if optional:continue
+            raise
         path=path.with_suffix(suffix);path.write_bytes(raw);images.append(path)
     return images
 
@@ -149,17 +163,19 @@ def result_json(raw,group,payload=None,reference=None,source_aliases=None):
     if len(answers)!=len(expected) or {a.get('question_id') for a in answers}!=expected:raise ValueError('回答编号存在缺项或重复，原始输出已保留')
     if not isinstance(value.get('terms'),list) or not isinstance(value.get('quizzes'),list):raise ValueError('术语和练习需要使用列表，原始输出已保留')
     if payload is not None:
-        sources=list(payload.get('sources',[]))+list((reference or{}).get('passages',[]))
-        value=normalize_output(value,questions=payload['questions'],sources=sources)
+        sources=answer_evidence_sources(payload,(reference or{}).get('passages',[]))
+        value=normalize_output(value,questions=payload['questions'],sources=sources,
+                               registered_terms=payload.get('registered_terms',[]))
     return value
 
 def normalize_terms(value,payload):
-    known={t['id'] for t in payload.get('registered_terms',[])};changes=[]
+    from reader_term_quality import validate_asset_term
+    known=payload.get('registered_terms',[]);changes=[]
     for term in value['terms']:
-        identity=term.get('term_id')
-        if identity and identity not in known:
-            if not term.get('name') or not (term.get('professional_definition') or term.get('definition')) or not term.get('intuitive_explanation'):raise ValueError('术语引用不在登记表中，且缺少创建新条目所需的内容')
-            changes.append({'model_proposed_id':identity,'name':term['name'],'action':'保留完整定义和直观解释，由阅读器分配真实编号'});term.pop('term_id')
+        old=validate_asset_term(term,known)
+        if old and (term.get('term_id'),term.get('name'))!=(old['id'],old['name']):
+            term.update(term_id=old['id'],name=old['name'])
+            changes.append({'term_id':old['id'],'name':old['name']})
     return changes
 
 def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True,research=True):
@@ -167,17 +183,19 @@ def invoke_writer(folder,prompt,images,executable,system_override=None,allow_ima
     from reader_worker import runtime_usage,external_tool_usage
     folder=Path(folder);folder.mkdir(exist_ok=True,parents=True);target=folder/'final.txt';events=folder/'events.jsonl'
     if events.exists():raise ValueError('本次调用已有日志，请读取原任务，不重复生成')
-    (folder/'input.txt').write_text(prompt,'utf8');args=command(executable,folder,target,images,allow_image_generation=allow_image_generation,research=research)
+    system=section_body(TERM_NAME_CORRECTION, 1) if WRITER_ROLE.get()=='term_repair' else WRITER_INSTRUCTIONS
+    if system_override is not None:system=system_override
+    (folder/'input.txt').write_text(prompt,'utf8')
+    args=command(executable,folder,target,images,allow_image_generation=allow_image_generation,system_instructions=system,research=research)
     if(folder/'output-schema.json').exists():args[-1:-1]=['--output-schema',str(folder/'output-schema.json')]
     from reader_writer_transport import Gate
-    system='只根据本任务定义修正术语名称；不要重写定义或回答，只返回本任务要求的updates和unresolved。必要时可检索核对名称。'if WRITER_ROLE.get()=='term_repair'else WRITER_INSTRUCTIONS
-    if system_override is not None:system=system_override
-    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,research=research,allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair').start()
+    gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,research=research,
+              allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair').start()
     args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
     save(folder/'invocation.json',{'arguments':args,**writer_profile(WRITER_ROLE.get()),'images':[str(p)for p in images],'prompt_characters':len(prompt),'framework_version':FRAMEWORK_VERSION})
     environment=dict(os.environ)
     for key in ('CODEX_THREAD_ID','CODEX_SESSION_ID','MANUAL_READER_TOKEN','MANUAL_READER_PAIRING_CODE'):environment.pop(key,None)
-    session_id=None;started=time.perf_counter()
+    session_id=None;started=time.perf_counter();failure=None;code=None
     try:
         with events.open('w',encoding='utf8')as log,(folder/'stderr.txt').open('w',encoding='utf8')as err:
             process=subprocess.Popen(args,stdin=subprocess.PIPE,stdout=subprocess.PIPE,stderr=err,text=True,encoding='utf8',env=environment,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0));process.stdin.write(prompt);process.stdin.close()
@@ -188,19 +206,127 @@ def invoke_writer(folder,prompt,images,executable,system_override=None,allow_ima
                 if not isinstance(event,dict):continue
                 if event.get('type')=='thread.started':session_id=event.get('thread_id')
             code=process.wait()
+    except (OSError, UnicodeError) as error:
+        failure=error
     finally:gate.stop()
     from reader_writer_transport import measured_usage
     usage=measured_usage(gate.receipts,writer_profile(WRITER_ROLE.get()),session_id)or runtime_usage({'session_id':session_id,'configured_service_tier':'default'})
-    if usage:save(folder/'usage.json',usage)
+    if usage:
+        usage.update(seconds=round(time.perf_counter()-started,3),writing_version=WRITING_VERSION,
+                     tool_usage=external_tool_usage(events.read_text('utf8').splitlines()),
+                     research_requests=gate.search_requests,
+                     research_model_calls=sum(row.get('research_roundtrip',False) for row in gate.receipts),
+                     transport_policy='current-task-web-and-images-v1' if research else 'current-task-analysis-v1',
+                     actual_request_receipts='transport.json')
+        save(folder/'usage.json',usage)
+    if gate.output_stalled:
+        raise RuntimeError('写作服务持续返回空白，客户端已停止等待。部分草稿和收到的用量回执已保留；未写回阅读器。')
+    if failure is not None:
+        raise RuntimeError('客户端读取写作流时中断，草稿及已收到的用量回执已保留') from failure
     if code or not target.exists():raise RuntimeError('本次写作未完成，已生成的内容、实际用量和日志保留，继续核对原任务')
     expected=writer_profile(WRITER_ROLE.get())
     if not usage or(usage.get('model'),usage.get('effort'),usage.get('configured_service_tier'))!=(expected['model'],expected['effort'],'default'):raise RuntimeError('实际模型或档位与当前写作配置不同，原始结果保留，请更新客户端后继续原任务')
-    usage.update(seconds=round(time.perf_counter()-started,3),writing_version=WRITING_VERSION,tool_usage=external_tool_usage(events.read_text('utf8').splitlines()),transport_policy='current-task-web-and-images-v1',actual_request_receipts='transport.json')
-    save(folder/'usage.json',usage);return target.read_text('utf8'),usage,session_id
+    return target.read_text('utf8'),usage,session_id
 
-def checked_writing(folder,prompt,images,executable,validate):
+def analyze_task(folder, packet, executable):
+    from reader_analysis import analysis_packet, analysis_schema, reading_plan_markdown, validate_analysis
+    analysis_dir=Path(folder)/'analysis'
+    analysis_dir.mkdir()
+    task=analysis_packet(packet)
+    save(analysis_dir/'task.json',task)
+    save(analysis_dir/'output-schema.json',analysis_schema(task))
+    raw,usage,_=invoke_writer(analysis_dir,json.dumps(task,ensure_ascii=False,separators=(',',':')),[],executable,
+                             system_override=READING_ANALYSIS,allow_image_generation=False,research=False)
+    result=validate_analysis(task,json.loads(raw))
+    save(analysis_dir/'result.json',result)
+    (analysis_dir/'plan.md').write_text(reading_plan_markdown(task,result),'utf8')
+    return {**packet,'reader_analysis':result},usage
+
+
+def with_analysis_evidence(validate, task):
+    from reader_analysis import writing_evidence_issues
+    from reader_term_quality import cover_planned_terms
+    def checked(raw):
+        value=json.loads(raw)
+        problems=[]
+        for check in (
+            lambda:cover_planned_terms(value,task['reader_analysis'],task.get('registered_terms',[])),
+            lambda:writing_evidence_issues(value,task['reader_analysis']),
+            lambda:check_visuals(value,task['reader_analysis'],[*task.get('sources',[]),*task.get('reference_blocks',[])]),
+        ):
+            try:problems.extend(check() or [])
+            except (ValueError,KeyError,TypeError,AttributeError) as error:problems.append(str(error))
+        try:result=validate(json.dumps(value,ensure_ascii=False))
+        except (ValueError,KeyError,TypeError,AttributeError) as error:
+            for issue in str(error).splitlines():
+                # 术语在恢复来源编号之前已核对，避免同一条报错带着两个数组索引返回。
+                if re.match(r'/terms/\d+[「/]',issue) and any(
+                    re.sub(r'^/terms/\d+','/terms',issue)==re.sub(r'^/terms/\d+','/terms',previous)
+                    for previous in problems):
+                    continue
+                problems.append(issue)
+        if problems:
+            raise ValueError('\n'.join(dict.fromkeys(problems)))
+        return result
+    return checked
+
+
+def combined_stage_usage(analysis, writing):
+    from collections import Counter
+    from reader_analysis import VERSION
+    total=Counter(analysis['usage'])
+    total.update(writing['usage'])
+    return {**writing,'usage':dict(total),'requests':analysis.get('requests',[])+writing.get('requests',[]),
+            'usage_complete':analysis.get('usage_complete',False) and writing.get('usage_complete',False),
+            'http_requests':analysis.get('http_requests',0)+writing.get('http_requests',0),
+            'model_started_at':analysis['model_started_at'],'seconds':round(analysis['seconds']+writing['seconds'],3),
+            'analysis_version':VERSION,
+            'stages':{name:{k:receipt[k] for k in ('session_id','seconds','usage','http_requests') if k in receipt}
+                      for name,receipt in {'analysis':analysis,'writing':writing,**writing.get('extra_stages',{})}.items()}}
+
+
+def parse_draft(raw):
+    return json.loads(re.sub(r'^\x60\x60\x60(?:json)?\s*|\s*\x60\x60\x60$','',raw.strip()))
+
+
+def load_usage(folder):
+    path=Path(folder)/'usage.json'
+    return json.loads(path.read_text('utf8')) if path.is_file() else None
+
+
+def supplemental_patch(folder,draft,task,issues,images,executable):
+    patching=__import__('reader_writer_patch')
+    reference={key:value for key,value in task.items() if key not in
+               ('instructions','writing','writing_tool_policy','writer','result_contract',
+                'output_file','reference_file','publish_command','full_original_reference')}
+    prompt=json.dumps({'validation_errors':issues,'original_draft':draft,'task_reference':reference},
+                      ensure_ascii=False,separators=(',',':'))
+    supplement=folder/'supplement';supplement.mkdir(exist_ok=True)
+    save(supplement/'output-schema.json',patching.schema(__import__('reader_writer_schema').output_schema(task)))
+    raw,usage,session=invoke_writer(supplement,prompt,images,executable,system_override=patching.INSTRUCTION)
+    result=patching.apply(draft,parse_draft(raw))
+    save(supplement/'merged.json',result)
+    return result,usage,session
+
+
+def combine_supplement(usage,extra,session):
+    from collections import Counter
+    total=Counter(usage['usage']);total.update(extra['usage'])
+    return {**usage,'usage':dict(total),'requests':usage.get('requests',[])+extra.get('requests',[]),
+            'http_requests':usage.get('http_requests',0)+extra.get('http_requests',0),
+            'model_completed_at':extra['model_completed_at'],'seconds':usage['seconds']+extra['seconds'],
+            'tool_usage':{'web_search_calls':usage.get('tool_usage',{}).get('web_search_calls',0)+extra.get('tool_usage',{}).get('web_search_calls',0)},
+            'image_tools':usage.get('image_tools',[])+extra.get('image_tools',[]),
+            'research_requests':usage.get('research_requests',[])+extra.get('research_requests',[]),
+            'research_model_calls':usage.get('research_model_calls',0)+extra.get('research_model_calls',0),
+            'usage_complete':usage.get('usage_complete',False)and extra.get('usage_complete',False),
+            'supplements_used':1,'supplement_session_id':session,
+            'extra_stages':{'writing':usage,'supplement':extra}}
+
+
+def checked_writing(folder,prompt,images,executable,validate,task=None):
     raw,usage,session=invoke_writer(folder,prompt,images,executable)
-    original=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip()))
+    original=parse_draft(raw)
     original,format_changes=__import__('reader_writer_format').normalize(original)
     if format_changes:
         save(folder/'format-normalization.json',format_changes)
@@ -208,46 +334,228 @@ def checked_writing(folder,prompt,images,executable,validate):
     try:return validate(raw),usage,session
     except(ValueError,KeyError,TypeError)as error:
         save(folder/'validation.json',{'complete':False,'missing':str(error),'raw_preserved':True,'max_supplements':1})
-        patching=__import__('reader_writer_patch')
-        prompt+='\n'+patching.INSTRUCTION+'\n脚本发现的缺项：'+str(error)+'\n原稿JSON：\n'+json.dumps(original,ensure_ascii=False,separators=(',',':'))
-        supplement=folder/'supplement';supplement.mkdir(exist_ok=True)
-        save(supplement/'output-schema.json',patching.SCHEMA)
-        raw_patch,extra,_=invoke_writer(supplement,prompt,images,executable)
-        patch=json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw_patch.strip()))
-        merged={**usage,'usage':{k:usage['usage'].get(k,0)+extra['usage'].get(k,0)for k in usage['usage']},'requests':usage.get('requests',[])+extra.get('requests',[]),'model_completed_at':extra['model_completed_at'],'seconds':usage['seconds']+extra['seconds'],'tool_usage':{'web_search_calls':usage.get('tool_usage',{}).get('web_search_calls',0)+extra.get('tool_usage',{}).get('web_search_calls',0)},'image_tools':usage.get('image_tools',[])+extra.get('image_tools',[]),'usage_complete':usage.get('usage_complete',False)and extra.get('usage_complete',False),'supplements_used':1}
+        patched,extra,supplement_session=supplemental_patch(folder,original,task,str(error).splitlines(),images,executable)
+        merged=combine_supplement(usage,extra,supplement_session)
         save(folder/'combined-usage.json',merged)
-        patched=patching.apply(original,patch);save(supplement/'merged.json',patched)
         raw2=json.dumps(patched,ensure_ascii=False)
         try:value=validate(raw2)
         except(ValueError,KeyError,TypeError)as again:
             save(folder/'validation.json',{'complete':False,'missing':str(again),'raw_preserved':True,'supplements_used':1,'next_action':'按记录中的准确缺项继续原任务，不重新生成已保存内容'})
             raise
-        save(folder/'validation.json',{'complete':True,'supplements_used':1,'review_agents':0});return value,merged,session
+        save(folder/'validation.json',{'complete':True,'supplements_used':1,'review_agents':0})
+        merged['supplement_session_id']=supplement_session
+        return value,merged,session
+
+def validate_answer_draft(draft,packed,payload,reference,aliases,required,already=()):
+    from reader_generation import answer_fragment,practice_owner,practice_prompt_key
+    from reader_term_quality import link_draft_terms
+    link_draft_terms(draft,payload.get('registered_terms',[]))
+    sources=answer_evidence_sources(payload,reference.get('passages',[]))
+    tasks={q['id']:q for q in payload['questions']}
+    valid,issues={},{}
+    seen=set(already)
+    from collections import Counter
+    counts=Counter(a.get('question_id') for a in draft.get('answers',[]) if isinstance(a,dict))
+    for qid in required:
+        try:
+            if counts[qid]!=1:
+                raise ValueError('写作结果必须包含当前问题的一条回答')
+            fragment,analysis=answer_fragment(draft,[qid],packed['reader_analysis'])
+            def normalize(raw):
+                value=__import__('reader_writer_input').restore_output(json.loads(raw),aliases)
+                return normalize_output(value,questions=[tasks[qid]],sources=sources,
+                                        registered_terms=payload.get('registered_terms',[]),check_practice_mix=False)
+            value=with_analysis_evidence(normalize,{**packed,'reader_analysis':analysis})(json.dumps(fragment,ensure_ascii=False))
+            prompts={practice_prompt_key(quiz) for quiz in value['quizzes']}
+            if prompts & seen:
+                raise ValueError('本回答的练习与另一回答重复，请给本部分换一个实际能检验的情境')
+            seen.update(prompts)
+            valid[qid]=value
+        except (ValueError,KeyError,TypeError,AttributeError) as error:
+            issues[qid]=str(error)
+    # 确保题型规则在整组成立，仅标出需要换题型的回答。
+    quizzes=[q for value in valid.values() for q in value['quizzes']]
+    complete_quizzes=quizzes+list(already.values()) if isinstance(already,dict) else quizzes
+    policy=__import__('reader_practice_policy').practice_policy()
+    total=len(complete_quizzes)
+    needed=(total//2+1 if total>1 else 0)-sum(q.get('type')=='choice' for q in complete_quizzes)
+    objective=(3*total+3)//4-sum(q.get('type') in policy['objective_types'] for q in complete_quizzes)
+    for quiz in sorted(quizzes,key=lambda q:q.get('type') in policy['objective_types']):
+        if needed<=0 and objective<=0:
+            break
+        qid=practice_owner(quiz)[0]
+        if quiz.get('type')=='choice':
+            continue
+        if qid in valid:
+            valid.pop(qid)
+        issue=f"{practice_owner(quiz)[1]} 的练习改为能检验原能力的选择题，确保本组选择题过半且至少四分之三可客观判分"
+        issues[qid]='\n'.join(filter(None,(issues.get(qid),issue)))
+        needed-=1
+        objective-=int(quiz.get('type') not in policy['objective_types'])
+    return valid,issues
+
+
+def submit_answers(bridge,folder,run_id,identity,valid,usage,session,index):
+    if not valid:
+        return None,{}
+    fragments=list(valid.values());first=fragments[0]
+    combined={key:first[key] for key in ('writing_version','framework_version','plan')}
+    by_id={u['id']:u for frag in fragments for u in frag['plan']['units']}
+    order=dict.fromkeys(uid for frag in fragments for uid in frag['plan']['order'])
+    # 单题片段都已核对依赖。合并时让公共前置继续排在所有使用它的单元之前。
+    ready=set()
+    sorted_ids=[]
+    def place(uid):
+        if uid in ready:
+            return
+        for parent in by_id[uid]['needs']:
+            if parent in by_id:
+                place(parent)
+        ready.add(uid)
+        sorted_ids.append(uid)
+    for uid in order:
+        place(uid)
+    combined['plan']={**first['plan'],'units':list(by_id.values()),'order':sorted_ids}
+    for field in ('answers','terms','quizzes'):
+        combined[field]=[]
+    issues={}
+    for qid,value in valid.items():
+        try:
+            publish_coordinate_figures(bridge,value)
+            failures=store_generated_assets(bridge,value,folder,session,supplement_session=usage.get('supplement_session_id'))
+            if failures:
+                raise ValueError('；'.join(failures))
+            for field in ('answers','terms','quizzes'):
+                combined[field].extend(value[field])
+        except (ValueError,KeyError,OSError) as error:
+            issues[qid]=str(error)
+    if not combined['answers']:
+        return None,issues
+    save(folder/f'writeback-{index}.json',combined)
+    path=f'/api/runs/{run_id}/groups/{identity}/result'
+    receipt=post_answer_batch(bridge,path,combined)
+    save(folder/f'receipt-{index}.json',receipt)
+    issues.update({row['question_id'] or 'placement':row['message'] for row in receipt.get('issues',[])})
+    return receipt,issues
+
+
+def post_answer_batch(bridge,path,payload):
+    """重交同一份已核对的写回，使用服务端回执防止重复保存。"""
+    try:
+        return bridge.request(path,payload)
+    except (OSError, ValueError) as error:
+        from urllib.error import HTTPError
+        if isinstance(error,HTTPError) and error.code<500:
+            raise
+        # 写回带事务回执；响应丢失时可重交原稿，已保存的回答沿用原编号。
+        return bridge.request(path,payload)
+
+
+def cache_saved_answer_sources(cache,folder,index,receipt,source_folder):
+    if not receipt or not receipt.get('saved'):
+        return
+    try:
+        saved=set(receipt['saved'])
+        payload=json.loads((folder/f'writeback-{index}.json').read_text('utf8'))
+        answers=[answer for answer in payload['answers'] if answer['question_id'] in saved]
+        stats=__import__('reader_source_cache').remember(cache,source_folder,answers)
+        save(folder/f'source-cache-{index}.json',stats)
+    except (OSError,ValueError):
+        # 回答已提交，临时缓存失败不会改变其写回结果。
+        return
+
+
+def resume_writeback(bridge,out):
+    """响应中断时重交已落盘的批次；本次命令不会调用模型。"""
+    out=Path(out)
+    manifest=json.loads((out/'run.json').read_text('utf8'))
+    if manifest.get('material_id')!=bridge.headers.get('X-Reader-Material'):
+        raise ValueError('原任务不属于当前项目')
+    bridge.run_id=manifest['id']
+    report=bridge.request('/api/runs/'+bridge.run_id)
+    receipts=[]
+    for group in report['groups']:
+        if group.get('saved_at'):
+            continue
+        folder=out/('writer-'+group['id'])
+        path=f"/api/runs/{bridge.run_id}/groups/{group['id']}/result"
+        for draft in sorted(folder.glob('writeback-*.json')):
+            payload=json.loads(draft.read_text('utf8'))
+            receipts.append(bridge.request(path,payload))
+    run=bridge.request('/api/runs/'+bridge.run_id)
+    missing={g['id']:[qid for qid in g['question_ids'] if qid not in g.get('saved_question_ids',[])]
+             for g in run['groups'] if not g.get('saved_at')}
+    return {'run':run,'receipts':receipts,'missing_question_ids':missing,'model_calls':0}
+
 
 def run_group(bridge,out,group,payload,reference,executable):
     identity=group['id'];folder=out/('writer-'+identity);folder.mkdir(exist_ok=True)
     cache=__import__('reader_source_cache').for_bridge(bridge)
-    payload=__import__('reader_source_cache').augment(payload,cache)
     packed,aliases=__import__('reader_writer_input').compact_packet(payload);save(folder/'source-aliases.json',aliases)
+    bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'dispatch'})
+    try:
+        packed,analysis_usage=analyze_task(folder,packed,executable)
+    except Exception:
+        if analysis_usage:=load_usage(folder/'analysis'):
+            total=combined_stage_usage(analysis_usage,{'usage':{},'seconds':0,'usage_complete':False})
+            total.update(group_id=identity,type='usage',writing_version=WRITING_VERSION,configured_service_tier='default',model=MODEL,effort=EFFORT)
+            save(out/('usage-'+identity+'.json'),total)
+            bridge.request('/api/runs/'+bridge.run_id+'/events',total)
+        raise
+    packed=__import__('reader_source_cache').augment(packed,cache)
     save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
     prompt=build_prompt(packed,reference);(folder/'input.txt').write_text(prompt,'utf8')
     images=source_images(bridge,payload,folder)
-    bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'dispatch'})
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'writer_started'})
-    value,usage,session_id=checked_writing(folder,prompt,images,executable,lambda raw:result_json(raw,group,payload,reference,source_aliases=aliases))
-    save(folder/'source-cache.json',__import__('reader_source_cache').remember(cache,folder,value))
-    save(out/('worker-'+identity+'.json'),{'session_id':session_id,'configured_service_tier':'default'})
-    usage.update(group_id=identity,type='usage',writing_version=WRITING_VERSION,configured_service_tier='default',model=MODEL,effort=EFFORT)
-    bridge.request('/api/runs/'+bridge.run_id+'/events',usage);save(out/('usage-'+identity+'.json'),usage)
-    questions={q['id']:q for q in payload['questions']}
-    for answer in value['answers']:
-        text,parts,issues=answer_parts(answer,questions[answer['question_id']]['text']);answer['text']=text;answer['format_audit']=issues
-        if parts:answer['answer_parts']=parts;answer.pop('parts',None)
-    before_answers={a['question_id']:a.get('text','') for a in value['answers']};asset_issues=store_generated_assets(bridge,value,folder,session_id);changes=normalize_terms(value,payload);media_changes=ensure_visible_sources(value,payload);save(folder/'script-processing.json',{'generated_asset_issues':asset_issues,'media_changes':media_changes,'term_id_changes':changes,'answer_text_changed':any(a.get('text','')!=before_answers[a['question_id']] for a in value['answers']),'definitions_changed':False});save(out/('result-'+identity+'.json'),value)
-    bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'output_ready'})
-    receipt=bridge.request('/api/runs/'+bridge.run_id+'/groups/'+identity+'/result',value);save(out/('saved-'+identity+'.json'),receipt)
-    if receipt.get('issues') or receipt.get('missing_question_ids'):raise RuntimeError('部分结果未保存，准确缺项已写入本组保存记录；不重跑已完成内容')
-    return {'group_id':identity,'saved':len(receipt['saved']),'session_id':session_id}
+    usage=None
+    saved=[]
+    issues={}
+    session_id=None
+    try:
+        raw,usage,session_id=invoke_writer(folder,prompt,images,executable)
+        draft,changes=__import__('reader_writer_format').normalize(parse_draft(raw))
+        if changes:
+            save(folder/'format-normalization.json',changes)
+        save(folder/'draft.json',draft)
+        valid,issues=validate_answer_draft(draft,packed,payload,reference,aliases,group['question_ids'])
+        bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'output_ready'})
+        receipt,write_issues=submit_answers(bridge,folder,bridge.run_id,identity,valid,usage,session_id,1)
+        issues.update(write_issues)
+        saved.extend((receipt or {}).get('saved',[]))
+        cache_saved_answer_sources(cache,folder,1,receipt,folder)
+        if issues and set(saved)!=set(group['question_ids']):
+            save(folder/'validation.json',{'saved':saved,'issues':issues})
+            from reader_generation import answer_fragment,practice_prompt_key
+            remaining=[qid for qid in group['question_ids'] if qid not in saved]
+            fragment,analysis=answer_fragment(draft,remaining,packed['reader_analysis'])
+            task=__import__('reader_writer_input').answer_repair_packet(packed,remaining,analysis)
+            task=__import__('reader_source_cache').augment(task,cache)
+            repair_folder=folder/'supplement';repair_folder.mkdir(exist_ok=True)
+            original_scope=__import__('reader_writer_input').answer_repair_packet(payload,remaining,analysis)
+            repair_images=source_images(bridge,original_scope,repair_folder)
+            fragment,extra,supplement_session=supplemental_patch(folder,fragment,task,issues,repair_images,executable)
+            fragment,_=__import__('reader_writer_format').normalize(fragment)
+            usage=combine_supplement(usage,extra,supplement_session)
+            stems={practice_prompt_key(quiz):quiz for qid in saved for quiz in valid[qid]['quizzes']}
+            repaired,issues=validate_answer_draft(fragment,task,payload,reference,aliases,remaining,stems)
+            receipt,write_issues=submit_answers(bridge,folder,bridge.run_id,identity,repaired,usage,session_id,2)
+            issues.update(write_issues)
+            saved.extend((receipt or {}).get('saved',[]))
+            cache_saved_answer_sources(cache,folder,2,receipt,repair_folder)
+    finally:
+        if usage is None:
+            usage=load_usage(folder)
+        if usage and not usage.get('supplements_used') and (extra:=load_usage(folder/'supplement')):
+            usage=combine_supplement(usage,extra,extra.get('session_id'))
+        save(out/('saved-'+identity+'.json'),{'saved':saved,'issues':issues,
+                                            'missing_question_ids':[qid for qid in group['question_ids'] if qid not in saved]})
+        total=combined_stage_usage(analysis_usage,usage or {'usage':{},'seconds':0,'usage_complete':False})
+        total.update(group_id=identity,type='usage',writing_version=WRITING_VERSION,configured_service_tier='default',model=MODEL,effort=EFFORT)
+        save(out/('usage-'+identity+'.json'),total)
+        bridge.request('/api/runs/'+bridge.run_id+'/events',total)
+    if set(saved)!=set(group['question_ids']):
+        raise RuntimeError('未写回的问题与准确原因已留在本组回执：'+json.dumps(issues,ensure_ascii=False))
+    return {'group_id':identity,'saved':len(saved),'session_id':session_id}
 
 def repair_term_names(bridge,out,question_ids,executable):
     from reader_worker import runtime_usage,external_tool_usage
@@ -255,7 +563,7 @@ def repair_term_names(bridge,out,question_ids,executable):
     report={'script_normalized':len(normalized['changed']),'duplicate_redirects':normalized['duplicate_redirects'],'pending_before':len(pending),'model_calls':0}
     if not pending:return report
     folder=out/'term-name-repair';folder.mkdir(exist_ok=True);target=folder/'final.txt'
-    prompt='只修正下面术语名称，返回JSON：{"updates":[{"term_id":"真实编号","name":"中文全称（English Full Name）"}],"unresolved":[]}。有缩写时使用“缩写 中文全称（English Full Name）”，中文全称也需展开缩写的含义，不得只把缩写挪到中文部分。不修改定义、问题、编号或其他内容。根据给出的定义确定中英文对应，括号里只保留英文全称，除明确标记的例外外每个英文单词首字母大写。不得重复中文、颠倒中英文、编造缩写展开。无法确认的编号放入unresolved，不猜测。只做这一次批量处理，不再添加审稿或修复循环。必要时可以检索名称，已有规则无需读取文件。\n'+json.dumps(pending,ensure_ascii=False,separators=(',',':'))
+    prompt=section(TERM_NAME_CORRECTION, 2)+'\n\n'+json.dumps(pending,ensure_ascii=False,separators=(',',':'))
     session=None;metadata=None;role_token=WRITER_ROLE.set('term_repair')
     schema={'type':'object','properties':{'updates':{'type':'array','items':{'type':'object','properties':{'term_id':{'type':'string','enum':[p['term_id']for p in pending]},'name':{'type':'string'}},'required':['term_id','name'],'additionalProperties':False}},'unresolved':{'type':'array','items':{'type':'string'}}},'required':['updates','unresolved'],'additionalProperties':False}
     save(folder/'output-schema.json',schema)
@@ -317,6 +625,17 @@ def execute(bridge,out,include_answered=False,reader_context=None,*,observe_call
         save(out/'execution-state.json',{**state,'state':'stopped','completed_at':stamp(),'message':str(error),'completed_outputs_preserved':True})
         raise
 
+def build_lesson_prompt(payload):
+    task = writer_task(payload)
+    # 客户端已经核对本章能否开始，写作者只需要本章材料和成稿规则。
+    for key in ('instructions', 'writing', 'ingestion_queue', 'current_task', 'translation_queue',
+                'translation_writeback', 'lesson_task_id', 'writing_tool_policy', 'writer', 'result_contract'):
+        task.pop(key, None)
+    task['research_scope'] = '你先用本章原文和已核对的来源\n当前结论缺少依据时，合并查找需要的事实，后续章节的细节留到实际讲到时再查'
+    return ('你用 ' + writer_label('lesson') + ' 普通服务完成当前章，直接返回讲解、术语和练习的 JSON\n\n'
+            + json.dumps(task, ensure_ascii=False, separators=(',', ':')))
+
+
 def teach(bridge,out,reader_context=None,research_file=None):
     """用户手动触发当前章；复用问答的模型调用和校验，不自动翻到下一章。"""
     began=stamp();clock=time.perf_counter();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
@@ -343,23 +662,31 @@ def teach(bridge,out,reader_context=None,research_file=None):
     packet['source_groups']=__import__('reader_generation').source_groups(packet['sources'])
     cache=__import__('reader_source_cache').for_bridge(bridge)
     packed,aliases=__import__('reader_writer_input').compact_packet(packet);save(folder/'source-aliases.json',aliases)
-    save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
-    prompt='用 '+writer_label('lesson')+' 普通服务，只完成给定当前章；先按同一次输出中的 plan 组织正文，再提取术语和练习，直接返回 result_contract 规定的 JSON。\n'+WRITING_STYLE+'\n'+json.dumps(packed,ensure_ascii=False,separators=(',',':'))
     source_rows=[s for s in packet['sources']if s.get('content_kind')!='explanation']
     def validate(raw):
         value=__import__('reader_writer_input').restore_output(json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip())),aliases)
         value['writing_version']=WRITING_VERSION
-        value=normalize_output(value,sources=source_rows,lesson=True,required_source_ids=[s['id']for s in source_rows],reading_context=packet.get('reading_context'))
+        value=normalize_output(value,sources=source_rows,lesson=True,required_source_ids=[s['id']for s in source_rows],
+                               reading_context=packet.get('reading_context'),registered_terms=packet.get('registered_terms',[]))
         value.update(learning_node_id=node['id'],lesson_task_id=packet['lesson_task_id'],writing_version=WRITING_VERSION)
         value['explanation'].setdefault('id','lesson-'+node['id']);value['explanation'].setdefault('title',node['title'])
         return value
     role_token=WRITER_ROLE.set('lesson')
-    try:result,usage,session=checked_writing(folder,prompt,images,executable,validate)
+    try:
+        packed,analysis_usage=analyze_task(folder,packed,executable)
+        packed=__import__('reader_source_cache').augment(packed,cache)
+        save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
+        result,usage,session=checked_writing(folder,build_lesson_prompt(packed),images,executable,
+                                             with_analysis_evidence(validate,packed),task=packed)
+        usage=combined_stage_usage(analysis_usage,usage)
     finally:WRITER_ROLE.reset(role_token)
     save(folder/'source-cache.json',__import__('reader_source_cache').remember(cache,folder,result))
-    asset_issues=store_generated_assets(bridge,result,folder,session)
+    publish_coordinate_figures(bridge,result)
+    asset_issues=store_generated_assets(bridge,result,folder,session,supplement_session=usage.get('supplement_session_id'))
     changes=normalize_terms(result,packet);save(out/'script-processing.json',{'term_id_changes':changes,'generated_asset_issues':asset_issues,'body_changed':bool(result.get('generated_assets'))})
-    save(out/'lesson-checked.json',result);receipt=bridge.apply(out/'lesson-checked.json',out)
+    save(out/'lesson-checked.json',result)
+    if asset_issues:raise ValueError('这节讲解的图尚未保存：'+'；'.join(asset_issues))
+    receipt=bridge.apply(out/'lesson-checked.json',out)
     report={'state':'complete'if receipt.get('complete')else'needs_completion','learning_node_id':node['id'],'started_at':began,'seconds':round(time.perf_counter()-clock,3),'usage':usage,'receipt':receipt,'review_agents':0,'automatic_navigation':False}
     save(out/'lesson-report.json',report);return report
 
@@ -404,9 +731,6 @@ def compact_result(report):
     """只向主调度返回运行摘要，完整输入、输出和日志继续保存在本轮目录。"""
     run=report['run']
     return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json',**{k:report[k] for k in ('question_pool','message') if k in report}}
-
-DAILY_QA_SUMMARY = '''本地程序已经处理本轮阅读问题。只根据提供的统计，用中文简短汇报实际处理的问题数、耗时、用量和存在的错误。以记录中的状态为准，写入失败就说明哪一组失败。不要复述正文，也不要启动任何任务。'''
-
 
 def summarize_daily(folder, summary, executable):
     """让干净的汇报会话只读统计结果，实际用量单独登记。"""

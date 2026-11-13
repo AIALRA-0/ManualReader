@@ -126,8 +126,10 @@ def save_result(state,rid,data):
    if qid not in existing['question_ids']:existing['question_ids'].append(qid)
    if existing['id'] not in known[qid]['term_ids']:known[qid]['term_ids'].append(existing['id'])
  for quiz in quizzes:
-  existing=next((x for x in state['quizzes'] if x['round_id']==rid and x['prompt']==quiz['prompt'].strip() and x.get('question_ids')==quiz.get('question_ids') and x.get('options')==quiz.get('options') and x.get('correct_index')==quiz.get('correct_index') and (not quiz.get('placement')or x.get('placement')==quiz['placement'])),None)
-  if not existing:state['quizzes'].append({'id':'z-'+uuid.uuid4().hex[:16],'round_id':rid,'prompt':quiz['prompt'].strip(),'options':quiz['options'],'correct_index':quiz['correct_index'],'explanation':quiz['explanation'].strip(),'option_explanations':__import__('reader_contract').option_explanations(quiz),'question_ids':quiz['question_ids'],'selected':None,**__import__('reader_contract').quiz_fields(quiz)})
+  from reader_contract import current_quizzes,same_exercise,option_explanations,quiz_fields
+  existing=next((x for x in current_quizzes(state['quizzes']) if x['round_id']==rid and same_exercise(x,quiz)
+                 and x.get('question_ids')==quiz.get('question_ids') and (not quiz.get('placement') or x.get('placement')==quiz['placement'])),None)
+  if not existing:state['quizzes'].append({'id':'z-'+uuid.uuid4().hex[:16],'round_id':rid,'prompt':quiz['prompt'].strip(),'options':quiz['options'],'correct_index':quiz['correct_index'],'explanation':quiz['explanation'].strip(),'option_explanations':option_explanations(quiz),'question_ids':quiz['question_ids'],'selected':None,**quiz_fields(quiz)})
  for q in r['questions']:update_round_status(state,q['id'])
  r['updated_at']=stamp();return r
 

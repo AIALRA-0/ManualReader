@@ -55,4 +55,32 @@ class WriterHTTPTests(unittest.TestCase):
     def test_upstream_break_closes_response_without_fake_completion(self):
         row=self.run_request(broken=True);self.assertEqual(row['phase'],'transport_error')
         self.assertNotIn('response',row);self.assertIsNone(measured_usage([row],SPEC,'test'))
+    def test_infinite_whitespace_keeps_draft_and_stops_model_retries(self):
+        class StalledResponse(Response):
+            def iter_content(self, chunk_size):
+                yield event({'type':'response.output_item.added','item':{'id':'m1','type':'message','role':'assistant','channel':'final'}})
+                yield event({'type':'response.output_text.delta','item_id':'m1','delta':'{"draft":true'})
+                while True:
+                    yield event({'type':'response.output_text.delta','item_id':'m1','delta':' \n' * 600})
+
+        with tempfile.TemporaryDirectory() as folder:
+            response = StalledResponse()
+            with patch('reader_writer_transport.requests.post',return_value=response) as upstream:
+                gate = Gate(SPEC,'当前任务','只处理当前任务',folder,research=False).start()
+                try:
+                    raw = json.dumps({'model':SPEC['model'],'reasoning':{'effort':'high'},'input':[{'role':'user','content':[{'type':'input_text','text':'当前任务'}]}]}).encode()
+                    for status in (200, 422):
+                        client = http.client.HTTPConnection('127.0.0.1',gate.port,timeout=3)
+                        client.request('POST','/responses',raw,{'Content-Type':'application/json'})
+                        result = client.getresponse()
+                        self.assertEqual(result.status,status)
+                        result.read()
+                        client.close()
+                    self.assertTrue(response.closed)
+                    self.assertEqual(upstream.call_count,1)
+                    self.assertEqual(gate.receipts[0]['phase'],'output_stalled')
+                    self.assertEqual(Path(folder,'partial-output-1.txt').read_text('utf8').rstrip(),'{"draft":true')
+                    self.assertIsNone(measured_usage(gate.receipts,SPEC,'test'))
+                finally:
+                    gate.stop()
 if __name__=='__main__':unittest.main()

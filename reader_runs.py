@@ -46,24 +46,50 @@ class Runs:
                 group=row['groups'].get(str(data['group_id']))
                 if group is None:raise ValueError('写作组不属于这次任务')
             kind=data.get('type')
-            if kind not in ('prepared','dispatch','writer_started','output_ready','writeback_started','group_saved','completed','usage','observation','coordinator','term_repair','caller'):raise ValueError('没有这种阶段记录')
+            if kind not in ('prepared','dispatch','writer_started','output_ready','writeback_started','answers_saved','group_saved','completed','usage','observation','coordinator','term_repair','caller'):raise ValueError('没有这种阶段记录')
             event={'type':kind,'at':stamp}
             if group is not None:
                 event['group_id']=group['id']
                 if kind!='usage':group['state']=kind
                 key={'dispatch':'dispatched_at','writer_started':'started_at','output_ready':'output_ready_at','writeback_started':'writeback_started_at','group_saved':'saved_at'}.get(kind)
                 if key:group.setdefault(key,stamp)
+                if kind=='answers_saved':
+                    accepted=data.get('question_ids',[])
+                    if not accepted or not set(accepted)<=set(group['question_ids']):
+                        raise ValueError('保存回执需要包含本组实际写入的问题编号')
+                    group['saved_question_ids']=list(dict.fromkeys(group.get('saved_question_ids',[])+accepted))
+                    group.setdefault('first_saved_at',stamp)
+                    if set(group['saved_question_ids'])==set(group['question_ids']):
+                        group.setdefault('saved_at',stamp)
+                        group['state']='group_saved'
             if kind=='usage':
                 usage=data.get('usage');target=group if group is not None else row
                 if not isinstance(usage,dict):raise ValueError('用量需要使用实际运行记录中的对象')
                 target['usage']={k:v for k,v in usage.items() if k in ('input_tokens','cached_input_tokens','cache_write_input_tokens','output_tokens','reasoning_output_tokens','model_calls') and isinstance(v,int) and not isinstance(v,bool) and v>=0}
                 target['usage_source']=str(data.get('source','client_runtime'))[:80]
-                for key in ('model','effort','configured_service_tier','writing_version'):
+                for key in ('model','effort','configured_service_tier','writing_version','analysis_version'):
                     if data.get(key):target[key]=str(data[key])[:100]
+                stages=data.get('stages')
+                if isinstance(stages,dict):
+                    measured={}
+                    for name in ('analysis','writing','supplement'):
+                        stage=stages.get(name)
+                        if not isinstance(stage,dict) or not isinstance(stage.get('usage'),dict):continue
+                        entry={'usage':{k:v for k,v in stage['usage'].items() if k in target['usage'] and type(v) is int and v>=0}}
+                        if type(stage.get('seconds')) in (int,float) and 0<=stage['seconds']<86400:entry['seconds']=stage['seconds']
+                        if type(stage.get('http_requests')) is int and stage['http_requests']>=0:entry['http_requests']=stage['http_requests']
+                        if isinstance(stage.get('session_id'),str):entry['session_id']=stage['session_id'][:100]
+                        measured[name]=entry
+                    if measured:target['stages']=measured
                 if isinstance(data.get('usage_complete'),bool):target['usage_complete']=data['usage_complete']
                 if isinstance(data.get('image_tools'),list):target['image_tools']=data['image_tools']
                 if isinstance(data.get('requests'),list):target['requests']=[{k:v for k,v in item.items() if k in target['usage'] and isinstance(v,int) and v>=0} for item in data['requests'] if isinstance(item,dict)]
                 if isinstance(data.get('tool_usage'),dict) and isinstance(data['tool_usage'].get('web_search_calls'),int) and data['tool_usage']['web_search_calls']>=0:target['tool_usage']=data['tool_usage']
+                if isinstance(data.get('research_requests'),list):
+                    calls=[entry for entry in data['research_requests'] if isinstance(entry,dict) and entry.get('path')=='/alpha/search']
+                    target['research']={'requests':len(calls),
+                                        'seconds':round(sum(r['seconds'] for r in calls if type(r.get('seconds')) in (float,int) and 0<=r['seconds']<86400),3),
+                                        'model_roundtrips':data.get('research_model_calls',0) if type(data.get('research_model_calls')) is int else 0}
                 for key in ('model_started_at','model_completed_at','session_id'):
                     if data.get(key):
                         value=str(data[key])[:100]

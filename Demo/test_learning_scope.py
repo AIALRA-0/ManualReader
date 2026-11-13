@@ -54,6 +54,14 @@ class LearningScope(unittest.TestCase):
         with self.assertRaises(ValueError):chapterwise_outline_guard(self.w,next_nodes,{'main'},False)
         chapterwise_outline_guard(self.w,next_nodes,{'main'},True)
         chapterwise_outline_guard(self.w,next_nodes,{'main','next'},False)
+    def test_only_current_chapter_can_receive_new_subsections(self):
+        nodes=[{'id':'main','parent_id':None},{'id':'main-child','parent_id':'main'},
+               {'id':'later','parent_id':None},{'id':'later-child','parent_id':'later'}]
+        saved={'main','later'}
+        chapterwise_outline_guard(self.w,nodes[:3],saved,False,'main')
+        with self.assertRaises(ValueError):chapterwise_outline_guard(self.w,nodes,saved,False,'main')
+        with self.assertRaises(ValueError):chapterwise_outline_guard(self.w,nodes,{'main','later','main-child'},True,'main-child')
+        chapterwise_outline_guard(self.w,nodes,{'main','later','main-child'},False,'later')
     def test_unplanned_material_is_reported_without_exposing_every_chapter(self):
         nodes,plan=complete_outline(self.m,self.nodes,defer_unassigned=True)
         self.assertEqual([n['id']for n in nodes],['main']);self.assertEqual(set(plan['deferred']),{'footer','logo'});self.assertLess(plan['percent'],100)

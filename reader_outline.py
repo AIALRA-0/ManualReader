@@ -1,10 +1,10 @@
 """按原编号修改学习目录；删除待讲单元时保留已经写下的讲解。"""
 import copy
 
-NODE_FIELDS=('id','parent_id','title','source_links','explanation_ids','legacy_section_ids','source_label','depends_on')
+NODE_FIELDS=('id','parent_id','title','source_links','explanation_ids','legacy_section_ids','source_label','depends_on','title_provisional')
 OUTLINE_RULES={
     'hierarchy':'X. 是一个可独立学习的主题章，不是包住整个项目的容器；X.X 与更深层级是本章内部的步骤或子问题。不要为了只新增一个顶层章，把其他独立章降成这个章的子节',
-    'creation':'每次最多新增一个 X. 顶层章；这个章内可以同时新增多个 X.X 及更深单元，也可以逐个新增。尚未规划的其他独立章留待后续创建，不提前塞进当前章',
+    'creation':'可以先在本轮暂排全书顺序。每次只登记一个 X. 顶层章和实际需要的子节，正文只写当前单元。后续主题轮到时再按材料与进度确定',
     'editing':'保留稳定 id；未讲单元可以新增、改名、移动和删除。已讲单元可以改名、移动和调整来源，但不能删除，也不能移除已登记的讲解归属；不重写正文、提问、笔记或已读记录',
     'numbering':'接口按 parent_id 和同级顺序生成编号，顶层从 0 开始，子节从 1 开始；新增、删除、移动后按实际位置计算显示编号，稳定 id 不变；不要把编号当作 id',
     'progress':'新建下一顶层章与切到下一学习单元仍遵守用户手动完成的规则；编辑待讲目录不会自动切章或标记已读',
@@ -62,6 +62,8 @@ def edit_nodes(before, data):
             if kind=='update':
                 changes=action.get('changes')
                 if not isinstance(changes,dict)or not changes or set(changes)-set(NODE_FIELDS[2:]):raise ValueError('update 只修改标题、来源、讲解归属和前置关系；移动请使用 move，id 保持不变')
+                if 'title' in changes and 'title_provisional' not in changes:
+                    rows[identity].pop('title_provisional',None)
                 rows[identity].update(copy.deepcopy(changes))
             elif kind=='move':place(identity,action.get('parent_id')or None,action)
             else:

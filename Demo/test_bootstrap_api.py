@@ -9,7 +9,7 @@ from pathlib import Path
 import os,sys,json,threading,urllib.request,urllib.error,copy
 root=Path(sys.argv[1]);folder=Path(sys.argv[2]);sys.path.insert(0,str(root))
 from Demo.test_term_quality import DEFINITION,INTUITION
-material={'id':'synthetic','title':'合成项目','passages':[{'id':'p1','en':'Source','zh':'原句','sentences':[]}],'outline':[]}
+material={'id':'synthetic','title':'合成项目','passages':[{'id':'p1','en':'Source','zh':'原句','section_id':'one','sentences':[]},{'id':'p2','en':'Next','zh':'下一段','section_id':'two','sentences':[]}],'outline':[{'id':'one','title':'第一段','passage_id':'p1'},{'id':'two','title':'第二段','passage_id':'p2'}]}
 (folder/'material.json').write_text(json.dumps(material),'utf8');(folder/'pin.txt').write_text('123456','utf8')
 os.environ.update(MANUAL_READER_MATERIAL=str(folder/'material.json'),MANUAL_READER_DB=str(folder/'state.sqlite3'),MANUAL_READER_PIN_FILE=str(folder/'pin.txt'),MANUAL_READER_LIBRARY=str(folder/'library'),MANUAL_READER_SETTINGS=str(folder/'settings.json'))
 import reader_server as app
@@ -25,8 +25,20 @@ def request(path,data=None):
 status,terms=request('/api/terms?needs_revision=1');assert status==200 and terms['material_id']=='synthetic'and terms['terms'][0]['id']=='t1'
 status,bootstrap=request('/api/guide?view=bootstrap');assert status==200,bootstrap
 assert bootstrap['view']=='bootstrap'and bootstrap['project']['id']=='synthetic'
+assert bootstrap['project']['current_chapter'] is None
 assert 'writing'not in bootstrap and 'notes'not in bootstrap and 'reader_research_transport.py'in json.dumps(bootstrap)
 status,full=request('/api/guide');assert status==200 and len(json.dumps(bootstrap))<len(json.dumps(full))
+assert full['writing']['analysis']['order']==['analysis','writing']
+assert 'reader_analysis.py' in bootstrap['client_files']
+from reader_task_prompts import OUTLINE_PLANNING
+assert OUTLINE_PLANNING in bootstrap['initial_action'] and OUTLINE_PLANNING in full['learning_scope']['planning']
+assert 'connection_template' not in bootstrap and 'reader_task_prompts.py' in bootstrap['client_files']
+status,preview=request('/api/learning');assert status==200 and len(preview['nodes'])==2 and not preview['scope_active']
+status,_=request('/api/work?mode=lesson');assert status==400
+status,_=request('/api/learning/outline',{'nodes':preview['nodes']});assert status==400
+first=preview['nodes'][0]
+status,plan=request('/api/learning/outline',{'nodes':[first,{'id':'detail','parent_id':first['id'],'title':'检验一步'}]})
+assert status==200 and [n['number']for n in plan['nodes']]==['0','0.1'] and plan['coverage_plan']['deferred']==['p2'],plan
 assert app.core.read_state()==before
 status,_=request('/api/terms',{'repair_only':True,'updates':[{'term_id':'t1','expected_version':1,'professional_definition':DEFINITION,'intuitive_explanation':INTUITION}]});assert status==400
 assert app.core.read_state()==before
@@ -35,6 +47,8 @@ after=app.core.read_state()
 assert after['notes']==before['notes']and after['read_passages']==before['read_passages']
 assert after['terms'][0]['professional_definition']==DEFINITION
 status,remaining=request('/api/terms?needs_revision=1');assert status==200 and not remaining['terms']
+status,task=request('/api/work?mode=lesson');assert status==200 and task['learning_node']['id']==first['id'] and task['required_source_ids']==['p1'],task
+assert app.core.read_state()['read_passages']==before['read_passages']
 server.shutdown();print('API_OK')
 '''
         with tempfile.TemporaryDirectory()as folder:

@@ -62,13 +62,13 @@ def mark_answers_seen(state,rows,stamp):
     return {'seen':seen,'skipped':skipped}
 
 
-def source_for(material,question):
-    p=next((p for p in material['passages'] if p['id']==question.get('passage_id')), {})
+def source_for(material,question,*,passage=None,files=None):
+    p=passage if passage is not None else next((p for p in material['passages'] if p['id']==question.get('passage_id')), {})
     s=next((s for s in p.get('sentences',[]) if s['id']==question.get('sentence_id')), {})
     snapshot=question.get('target') or {}
     original=snapshot.get('original') or s.get('en') or p.get('aligned_original') or p.get('en') or ''
     translation=snapshot.get('translation') or s.get('zh') or p.get('zh') or ''
-    file=next((f for f in material.get('reading_files',[]) if f['id']==p.get('file_id')), {})
+    file=files.get(p.get('file_id'),{}) if files is not None else next((f for f in material.get('reading_files',[]) if f['id']==p.get('file_id')), {})
     label=p.get('alt') or p.get('path') or file.get('name') or '素材 '+str(p.get('id') or question.get('passage_id'))
     return {'original':original,'translation':translation,'text':snapshot.get('text') or translation or original or label,
             'kind':p.get('content_kind','source'),'file_id':p.get('file_id'),

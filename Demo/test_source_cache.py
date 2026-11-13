@@ -6,6 +6,21 @@ from reader_source_cache import SourceCache
 from reader_web_sources import opened,pieces
 
 class SourceCacheTests(unittest.TestCase):
+    def test_keeps_text_from_distinct_pages_of_an_opened_pdf(self):
+        a='One method places every sensor beside the control module.'
+        b='The next method routes each signal through a shared connector.'
+        source=f'Paper (https://example.test/paper.pdf)\nSource: open({{}})\nL3@P2: {a}\nL3@P3: {b}'
+        with tempfile.TemporaryDirectory() as tmp:
+            folder=Path(tmp)
+            request={'input':[{'type':'custom_tool_call','call_id':'read','input':'tools.web__run({open:[]})'},
+                              {'type':'custom_tool_call_output','call_id':'read','output':source}]}
+            (folder/'sent-1.json').write_text(json.dumps(request),'utf8')
+            (folder/'cache-citations.json').write_text(json.dumps(['https://example.test/paper.pdf']),'utf8')
+            cache=SourceCache(folder/'cache.json')
+            self.assertEqual(cache.collect([folder])['added'],2)
+            self.assertEqual([(row['line_start'],row['line_end'],row['text']) for row in cache.read()],
+                             [('3@P2','3@P2',a),('3@P3','3@P3',b)])
+
     def test_separator_without_leading_newline_keeps_urls_with_their_own_text(self):
         first='资料甲 (https://example.com/a)\nSource: open({"ref_id":"a"})\nL1: '+('甲页事实与动作 '*15)
         second='资料乙 (https://example.com/b)\nSource: open({"ref_id":"b"})\nL1: '+('乙页独立事实 '*15)
