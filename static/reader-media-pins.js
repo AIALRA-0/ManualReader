@@ -250,7 +250,7 @@ function createReaderMediaPins(pane){
   entry.snapshot=ReaderMediaView.snapshot(item.node);
  }
  function addControls(item){
-   const {node,label,name}=item;
+  const {node,label,name}=item;
   const bar=el('span','reader-media-number');
   bar.dataset.readerMediaControls='';
   const number=el('span','reader-media-label');
@@ -265,6 +265,7 @@ function createReaderMediaPins(pane){
   if(node.matches('table,pre,hr,.reader-mermaid,.reader-learning-route,div.reader-source-crop,div.reader-math-display')){
    bar.classList.add('is-block');
    const target=node.matches('table')&&table?.querySelector('table')===node?table:node;
+   if(node.matches('table'))node.setAttribute('data-reader-media-numbered','');
    target.after(bar);
    if(target!==node){
     const question=node.nextElementSibling;
@@ -276,10 +277,6 @@ function createReaderMediaPins(pane){
   const partSelector=inAnswer?'.reader-answer-part':'article';
   const inlineTarget=link&&link.closest(partSelector)===node.closest(partSelector)?link:node;
   const wrap=el('span','reader-media-inline');
-  if(node.matches(displayMath)||node.matches('video,audio,canvas,.reader-source-crop,.reader-page-preview')||
-     node.matches('img,picture,svg')&&!inlineTarget.closest('p')?.textContent.trim()){
-   wrap.classList.add('is-block');
-  }
   inlineTarget.before(wrap);
   wrap.append(inlineTarget,bar);
   if(node.matches('.reader-math')){
