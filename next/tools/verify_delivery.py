@@ -68,7 +68,7 @@ async def verify(root, sample):
                 'replayed':True},upstream=[browser_event])
 
             await page.reload(wait_until='domcontentloaded')
-            await page.get_by_role('button',name='已交稿',exact=True).wait_for(timeout=30000)
+            await page.locator('.reader-next-delivery').wait_for(state='hidden',timeout=30000)
             query=urlencode({'material':material})
             await page.goto(base+'/quality-review?'+query,wait_until='domcontentloaded')
             await page.get_by_text('Next 运行记录',exact=True).first.wait_for(timeout=30000)
@@ -101,9 +101,15 @@ async def await_preview(root, sample):
 def main():
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument('root',type=Path)
-    parser.add_argument('--sample',default='new-material-normal')
+    parser.add_argument('--sample')
     args=parser.parse_args()
-    asyncio.run(verify(args.root,args.sample))
+    sample=args.sample
+    if sample is None:
+        samples=read_json(args.root/'whiteboard-inputs.json')['samples']
+        if len(samples)!=1:
+            parser.error('运行目录包含多个项目，请提供 --sample')
+        sample=next(iter(samples))
+    asyncio.run(verify(args.root,sample))
 
 
 if __name__=='__main__':

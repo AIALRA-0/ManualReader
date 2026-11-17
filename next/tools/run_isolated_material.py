@@ -100,7 +100,7 @@ def register(root, original):
     write(project_dir/'registered-context.json',{'glossary_status':'registered_snapshot',
         'existing_terms':[],'existing_quizzes':[],'available_code_runners':[],
         'sourced_from_registered_project_state':True})
-    sample='new-material-normal'
+    sample='material-'+checksum[:16]+'-normal'
     manifest={'run_id':'reader-'+uuid4().hex,'started_at':time(),'data_root':str(data),
               'samples':{sample:{'sample_id':sample,'project_id':project_id,'mode':'NORMAL','question_id':None}},
               'deep_browser_samples':[sample],'original_projects':{project_id:{'verified_files':files,

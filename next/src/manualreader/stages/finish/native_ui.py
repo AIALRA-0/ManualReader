@@ -37,9 +37,7 @@ def install(static, legacy):
         app=substitute(app,r"  const handoff=\(\)=>writingHandoff\([^\n]+\);\n",'')
         app=substitute(app,r",\['导出给 ChatGPT',handoff\]",'')
     app=substitute(app,r'(?<=   )for\(const unit of units\)\{const copy=unit\.cloneNode\(true\);',
-        """units=[...units.filter(unit=>!unit.matches('[data-next-resource-body]')&&
-        !(unit.matches('table,pre,.reader-math-display,.katex-display')&&unit.querySelector('[data-next-resource-body]'))),
-        ...(window.ReaderPostprocessPreview?.questionUnits(article)||[])];
+        """units=window.ReaderPostprocessPreview?.questionUnits(article,units)??units;
    for(const unit of units){const copy=unit.cloneNode(true);""")
     app=substitute(app,r'!p\.progress_exempt\|\|p\.inline_questions',
         "!p.progress_exempt||p.inline_questions||(docId.startsWith('next-final-')&&/^postprocess-preview--(?:block-|source-extra-)/.test(p.id))")
@@ -101,9 +99,8 @@ def install(static, legacy):
         'function restoreTerms(){clearTimeout(termTimer);termClickId=null;')
     app=substitute(app,r'termHoverId=null;termRestore=null;termQuery=\x27\x27;syncQuestionScope\(\)',
         "termHoverId=null;termRestore=null;termClickId=null;termQuery='';syncQuestionScope()")
-    app=substitute(app,r"rich\(body,text,true\)\};(?=\n\s*d\.addEventListener\('pointerenter',ensureBody)",
-        """rich(body,text,true);
-      window.ReaderPostprocessPreview?.addTermLocations(body,t,{
+    app=substitute(app,r"(?<=ReaderUI\.accordion\(d,'terms',t\.id,termOpen\);)",
+        """window.ReaderPostprocessPreview?.bindTermLocation(d.querySelector('summary'),t,{
         showPane:pane=>{
           if(mobile?mobilePanel!==pane:!contentUI.snapshot().columns.flat().includes(pane))selectPanel(pane);
         },
@@ -115,8 +112,7 @@ def install(static, legacy):
             ReaderTerms.includes(state.terms,id,p.en||p.raw_text||p.zh||'')).map(p=>p.id);
         },
         locateSource:id=>sourceFlow?.link({passage_id:id},'term-location',{toggle:false})
-      });
-    };""")
+      });""")
     page.write_text(app,'utf8')
 
     page=static/'reader-terms.js'
@@ -194,8 +190,6 @@ button:where(:hover:not(:disabled)),button.secondary:where(:hover:not(:disabled)
 .reader-recap-row{display:flex;align-items:baseline;gap:.55rem;margin:.35rem 0}
 .reader-recap-icon{flex:none;color:var(--muted);cursor:help}
 .reader-recap-icon svg{height:15px;width:15px;vertical-align:middle}
-.reader-term-locations{display:flex;flex-wrap:wrap;gap:.35rem;margin-top:.55rem}
-.reader-term-locations .small-btn{margin:0}
 a.reader-term-located{animation:reader-term-location 2.8s ease-out}
 @keyframes reader-term-location{0%,65%{background-color:var(--selected);outline:1px solid var(--muted)}}
 .reading-handle.vertical::after{content:"";position:absolute;inset:calc(50% - 12px) 3px;height:24px;

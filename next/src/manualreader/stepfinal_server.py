@@ -88,8 +88,19 @@ def server_handler(backend, script, run=None, *, production_runs=None):
                     return self.send_error(404)
                 folder=backend.mpath().parent/'postprocess-preview'
                 if path=='/api/postprocess-preview':
-                    target=folder/'manifest.json'
-                    return self.file(target,'application/json; charset=utf-8') if target.is_file() else self.send_error(404)
+                    document=optional(folder,'manifest.json',None)
+                    if document is None:
+                        return self.send_error(404)
+                    if document.get('mode')!='ANSWER' and document.get('sample_id')==backend.mid().removeprefix('next-final-'):
+                        from .steps.step_15_chapter_guidance import next_reading
+                        run_root=self.next_run_root()
+                        sample=document['sample_id']
+                        inputs=run_root/'inputs'/sample
+                        card=optional(inputs,'task-card.json',{})
+                        guide=optional(run_root/'jobs'/sample,'chapter-guidance.json',{})
+                        following=optional(inputs,'reader-context.json',{}).get('adjacent_chapters',{}).get('next')
+                        document['next_reading']=next_reading(guide,card,following)
+                    return self.json(document)
                 name=path.removeprefix('/postprocess-preview-asset/')
                 if not re.fullmatch(r'[a-f0-9]{64}\.(?:png|jpe?g|webp|gif|svg)',name):
                     return self.send_error(404)

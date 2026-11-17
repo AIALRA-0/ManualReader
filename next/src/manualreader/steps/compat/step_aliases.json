@@ -33,7 +33,7 @@
     "step": "step_13_terminology",
     "variant": "terminology",
     "prompt": "prompts/step_13_terminology.md",
-    "sha256": "091a815f7f355198ace0e2909b5b7c216dd98badf0e4949c155e3e28b0b476c5"
+    "sha256": "69789e91dcbacc52a3e1564805c4667de87cba03b71e9f04fc69524e97382a99"
   },
   "F3": {
     "step": "step_14_practice",
@@ -45,7 +45,7 @@
     "step": "step_15_chapter_guidance",
     "variant": "chapter_guidance",
     "prompt": "prompts/step_15_chapter_guidance.md",
-    "sha256": "e67419d7a83556e9e1b1ca77765c4d2eceaf153369bfaf8f2eee9141d9fbda0c"
+    "sha256": "4ed3b3f6851c80c49c026ba7ac7076c1c57a61c5efa76af587742cf6a7da081a"
   },
   "C1": {
     "step": "step_16_final_formatting",

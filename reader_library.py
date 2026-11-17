@@ -27,6 +27,39 @@ def clean_name(value):
     return value.strip()
 
 
+def new_folder(tree, parent, name):
+    folders=tree['folders']
+    if not any(row['id']==parent and not row.get('deleted') and not row.get('archived') for row in folders):
+        raise ValueError('请选择仍在材料树中的文件夹')
+    name=clean_name(name)
+    if any(row['parent_id']==parent and row['name'].casefold()==name.casefold()
+           and not row.get('deleted') and not row.get('archived') for row in folders):
+        raise ValueError('此位置已经有同名文件夹')
+    folder={'id':'folder-'+uuid.uuid4().hex[:14],'name':name,'parent_id':parent,'deleted':False}
+    folders.append(folder)
+    return folder
+
+
+def folder_for_new_project(path, materials, identity):
+    tree=catalog(path,materials)
+    project=next(row for row in tree['materials'] if row['id']==identity)
+    if project['folder_id']!='root':
+        return project['folder_id']
+    name=clean_name(project['name'])
+    names={row['name'].casefold() for row in tree['folders'] if row.get('parent_id')=='root'
+           and not row.get('deleted') and not row.get('archived')}
+    candidate=name
+    number=1
+    while candidate.casefold() in names:
+        number+=1
+        suffix=f'（{number}）'
+        candidate=name[:300-len(suffix)]+suffix
+    folder=new_folder(tree,'root',candidate)
+    project['folder_id']=folder['id']
+    save_catalog(path,tree)
+    return folder['id']
+
+
 def descendants(tree, identity):
     ids={identity}
     while True:
@@ -41,11 +74,7 @@ def change(path, materials, kind, identity, action, data):
     rows=tree['folders'] if kind=='folder' else tree['materials']
     row=next((item for item in rows if item['id']==identity),None)
     if action=='create' and kind=='folder':
-        parent=data.get('parent_id','root')
-        if parent not in folders or folders[parent].get('deleted'):raise ValueError('请选择仍在材料树中的文件夹')
-        name=clean_name(data.get('name'))
-        if any(item['parent_id']==parent and item['name'].casefold()==name.casefold() and not item.get('deleted') for item in tree['folders']):raise ValueError('此位置已经有同名文件夹')
-        row={'id':'folder-'+uuid.uuid4().hex[:14],'name':name,'parent_id':parent,'deleted':False};rows.append(row)
+        row=new_folder(tree,data.get('parent_id','root'),data.get('name'))
     else:
         if not row or row.get('archived'):raise ValueError('没有找到这个材料树项目')
         if identity=='root':raise ValueError('根目录不能修改或回收')

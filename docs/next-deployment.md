@@ -15,7 +15,7 @@ PYTHONPATH=next/src python next/tools/run_isolated_material.py \
   <原件.html> <新的私有运行目录> --legacy . --preview-url http://127.0.0.1:9115
 ```
 
-工具接受 HTML、PDF 或 DOCX。它登记原件哈希和真实 Source ID，调用已配置的模型，并把正文、附件和实际回执保存在指定目录。部署方将运行目录放在批准的私有实例中，再用下列命令登记一个新项目。批量材料可在各自的运行目录并行执行。
+工具接受 HTML、PDF 或 DOCX。它登记原件哈希和真实 Source ID，调用已配置的模型，并把正文、附件和实际回执保存在指定目录。部署方将运行目录放在批准的私有实例中，再用下列命令登记一个新项目。新项目有独立目录。批量材料可在各自的运行目录并行执行，样本编号可在运行目录中的 `whiteboard-inputs.json` 查到。
 
 可使用 `--resume-attachments` 在核对完原件和已有首稿后继续处理本轮附件。翻译仍优先走 DS。允许使用 Sol High 补译时，设置 `MANUAL_READER_DS_FALLBACK=sol`。它只处理 DS 返回 524 超时或连续两次成功响应没有正文的批次，回执会记录两条线路的实际结果。
 

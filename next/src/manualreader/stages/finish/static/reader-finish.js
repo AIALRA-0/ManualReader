@@ -40,6 +40,16 @@
     if (paragraph && article.contains(paragraph)) {
       let part=media && paragraph.contains(media)?media:node;
       while (part.parentElement!==paragraph) part=part.parentElement;
+      const leading=[];
+      for (let sibling=paragraph.firstChild;sibling && sibling!==part;sibling=sibling.nextSibling) {
+        if (!sibling.matches?.('.inline-question,[data-reader-media-controls]')) leading.push(sibling);
+      }
+      if (leading.some(x=>x.textContent.trim() || x.querySelector?.('img,code,math'))) {
+        const before=paragraph.cloneNode(false);
+        before.append(...leading);
+        paragraph.before(before);
+      }
+      paragraph.dataset.nextResourceAnchor='true';
       const trailing=[];
       for (let sibling=part.nextSibling;sibling;sibling=sibling.nextSibling) trailing.push(sibling);
       if (trailing.some(x=>x.nodeType===Node.ELEMENT_NODE && x.tagName!=='BR' || x.textContent.trim())) {
@@ -198,11 +208,10 @@
     const base='/api/next-finish/delivery';
     const headers={'X-Reader-Material':material,'X-Reader-Finish':'isolated-test'};
     const state=await ctx.api(base,{headers}).catch(()=>null);
-    if (!state || generations.get(root)!==token) return;
+    if (!state || state.delivery || generations.get(root)!==token) return;
     const panel=el('div','reader-next-delivery');
-    const button=el('button','small-btn',state.delivery?'已交稿':'交稿');
+    const button=el('button','small-btn','交稿');
     button.type='button';
-    button.disabled=!!state.delivery;
     button.onclick=async ()=>{
       if (!window.confirm('保存这一版讲解并提交已讲解范围？')) return;
       button.disabled=true;
@@ -211,16 +220,14 @@
         const draft=await post('/prepare',{});
         const published=await post('/commit',{preview_token:draft.preview_token,
           commit_id:draft.commit_id,confirmed:true});
-        if (published.status==='applied') button.textContent='已交稿';
+        if (published.status==='applied') panel.remove();
       } catch {
         // Reader only shows confirmed changes. The service retains its receipt for retry.
       } finally {
-        button.disabled=button.textContent==='已交稿';
+        button.disabled=false;
       }
     };
-    const review=el('a',null,'运行质检');
-    review.href='/quality-review?material='+encodeURIComponent(material);
-    panel.append(button,review);
+    panel.append(button);
     root.append(panel);
   }
 
@@ -249,6 +256,11 @@
     if (!doc || generations.get(root)!==token) return;
     showRecaps(root,doc.chapter_recaps,ctx);
     showStudy(root,doc,ctx);
+    const nextReading=root.querySelector('article[data-passage-id="postprocess-preview--framework-next"] > .chinese');
+    if (nextReading && doc.next_reading && nextReading.dataset.markdownSource!==doc.next_reading) {
+      nextReading.dataset.markdownSource=doc.next_reading;
+      ctx.rich(nextReading,doc.next_reading);
+    }
     void showDelivery(root,material.id,doc,ctx,token);
     const blocks=new Map();
     for (const article of root.querySelectorAll('article[data-passage-id]')) {
@@ -271,6 +283,7 @@
         used.add(node);
         node.dataset.nextResourceBody=item.resource_id;
         const target=adjacent(node,article);
+        target.dataset.nextResourceAnchor='true';
         const anchor=byContainer.get(target) || target;
         const hasExplanation=item.overview || item.components?.length || item.steps?.length || item.summary;
         const slot=el('div','reader-resource-question');
@@ -289,55 +302,46 @@
     ctx.inlineQuestions?.(root);
   }
 
-  function addTermLocations(container, term, {showPane, pdfSources, locateSource}) {
-    const bar=el('div','reader-term-locations');
+  function bindTermLocation(summary, term, {showPane, pdfSources, locateSource}) {
     const selector='a[data-reader-term][data-term-id="'+CSS.escape(term.id)+'"]';
-    for (const [pane,label,rootId] of [
-      ['original','原文','original-reading'], ['translation','译文','translation'],
-      ['explanation','讲解','explanation']
-    ]) {
-      const links=()=>{
-        const root=document.getElementById(rootId);
-        if (!root) return [];
-        const occurrences=[...root.querySelectorAll(selector)];
-        const chapterBody='article[data-passage-id^="postprocess-preview--block-"]';
-        if (pane!=='explanation' || !root.querySelector(chapterBody)) return occurrences;
-        return occurrences.filter(link=>link.closest(chapterBody) &&
-          !link.closest('.reader-resource-details,.reader-inline-quiz,.inline-question'));
-      };
-      const sources=pane==='original' ? pdfSources(term.id) : [];
-      if (!links().length && !sources.length) continue;
-      const button=el('button','small-btn','定位'+label);
-      button.type='button';
-      button.setAttribute('aria-label','在'+label+'中定位此术语');
-      let next=0;
-      button.onclick=async ()=>{
-        showPane(pane);
-        await new Promise(requestAnimationFrame);
-        const targets=[...links(),...sources];
-        if (!targets.length) return;
-        const target=targets[next++ % targets.length];
-        if (typeof target==='string') {
-          await locateSource(target);
-          return;
-        }
-        target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
-        for (const link of links()) link.classList.remove('reader-term-located');
-        // 再次定位同一个词时，重新显示高亮。
-        void target.offsetWidth;
-        target.classList.add('reader-term-located');
-      };
-      bar.append(button);
+    function links(root) {
+      const occurrences=[...root?.querySelectorAll(selector)||[]].filter(link=>
+        !link.closest('.reader-resource-details,.reader-inline-quiz,.inline-question'));
+      if (root?.id!=='explanation') return occurrences;
+      const chapter=occurrences.filter(link=>link.closest('article[data-passage-id^="postprocess-preview--block-"]'));
+      return chapter.length?chapter:occurrences;
     }
-    if (bar.children.length) container.append(bar);
+    function targets() {
+      const visibleText=[['explanation','explanation'],['translation','translation'],['original','original-reading']]
+        .flatMap(([pane,id])=>links(document.getElementById(id)).map(node=>({pane,node})));
+      return [...visibleText,...pdfSources(term.id).map(id=>({pane:'original',id}))];
+    }
+    let next=0;
+    summary.addEventListener('click',async ()=>{
+      const available=targets();
+      if (!available.length) return;
+      const selected=available[next++ % available.length];
+      showPane(selected.pane);
+      await new Promise(requestAnimationFrame);
+      if (selected.id) return locateSource(selected.id);
+      const target=selected.node.isConnected?selected.node:targets().find(x=>x.pane===selected.pane)?.node;
+      if (!target) return;
+      document.querySelector('.reader-term-located')?.classList.remove('reader-term-located');
+      target.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
+      void target.offsetWidth;
+      target.classList.add('reader-term-located');
+    });
   }
 
-  window.ReaderPostprocessPreview={attach,attachPdfQuestions,addTermLocations,applyQuestionContext(input,block){
+  window.ReaderPostprocessPreview={attach,attachPdfQuestions,bindTermLocation,applyQuestionContext(input,block){
     const item=questionResources.get(block.material_id+'|'+input.dataset.segmentId);
     if(!item) return;
     block.source_refs=[...new Set([block.passage_id,...(item.source_ids||[])].filter(Boolean))];
     if(!block.value.trim()) block.source_excerpt=questionExcerpt(item);
-  },questionUnits(article){
-    return (slots.get(article)||[]).filter(node=>node.isConnected);
+  },questionUnits(article,units){
+    const resources=(slots.get(article)||[]).filter(node=>node.isConnected);
+    if (!resources.length) return units;
+    const anchor='[data-next-resource-anchor],[data-next-resource-body],.reader-resource-question,.reader-resource-details';
+    return [...units.filter(unit=>!unit.closest(anchor)&&!unit.querySelector(anchor)),...resources];
   }};
 })();

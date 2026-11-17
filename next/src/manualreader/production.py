@@ -37,8 +37,13 @@ def project(backend, run, sample):
     identity='next-final-'+sample
     if backend.mpath(identity).exists():
         raise FileExistsError('请为新材料运行指定一个未使用的样本编号')
-    return project_native(run,sample,backend.LIBRARY.parent,backend,run/'original-inputs'/'projects',
+    result=project_native(run,sample,backend.LIBRARY.parent,backend,run/'original-inputs'/'projects',
                           destination_library=backend.LIBRARY)
+    from reader_library import folder_for_new_project
+    with backend.CATALOG_LOCK:
+        result['folder_id']=folder_for_new_project(backend.LIBRARY/'library-index.json',
+                                                   backend.library_sources(names_only=True),identity)
+    return result
 
 
 def main(argv=None):

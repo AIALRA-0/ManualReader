@@ -20,3 +20,6 @@ vendor/code-highlight/highlight.min.js -whitespace
 next/src/manualreader/stages/step04/markdown-vendor* -whitespace
 next/src/manualreader/stages/step07/vendor/** -whitespace
 next/tests/fixtures/golden-card.md whitespace=-blank-at-eol
+
+# These prompt manifests verify the exact bytes, including line endings.
+next/src/manualreader/stages/finish/prompts/*.md -text !eol whitespace=cr-at-eol

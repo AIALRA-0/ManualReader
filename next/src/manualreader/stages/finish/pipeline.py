@@ -228,6 +228,16 @@ async def finish_batch(root,providers,timing,sample_sources=None,*,write_result=
         async def final_terms():
             outcome=await terms_task or {}
             rows=terminology.bind(outcome,structure)
+            mandatory=terminology.missing_explicit(terminology.explicit_terms(
+                [block for block in structure['blocks'] if block.get('surface')=='body']),rows)
+            if mandatory:
+                extra=await replayable(timing,name,'step_13_bilingual_name_recovery',side/'terminology-bilingual.json',
+                    lambda:terminology.generate(root,name,card,ask,structure,existing=rows,remaining=[],mandatory=mandatory))
+                supplements=terminology.bind(extra or {},structure)
+                for term in supplements:
+                    remaining=terminology.missing_explicit(mandatory,rows)
+                    if len(terminology.missing_explicit(remaining,[term]))<len(remaining):
+                        rows.append(term)
             async def fix_term_references(stage,payload):
                 return await providers.ask(name,stage,payload,
                         prompt=providers.prompts[stage]+terminology.STANDALONE_REPAIR)

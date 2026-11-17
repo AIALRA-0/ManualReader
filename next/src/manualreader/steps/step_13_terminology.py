@@ -6,6 +6,40 @@ from manualreader.stages.finish.content import _objects, _request, _strings
 from manualreader.artifacts import read_json as read
 
 
+EXPLICIT_NAME = re.compile(
+    r'(?:(?<![A-Za-z0-9])(?P<abbreviation>[A-Z][A-Z0-9-]{1,14})[ \t]+)?'
+    r'(?P<chinese>[\u3400-\u9fff]+)[ \t]*[（(][ \t]*'
+    r"(?P<english>[A-Za-z][A-Za-z0-9 \t.'’&,/–-]*?)[ \t]*[）)]"
+)
+MARKDOWN_LITERAL = re.compile(r'```[\s\S]*?```|~~~[\s\S]*?~~~|`[^`\n]+`')
+
+
+def explicit_terms(blocks):
+    names = {}
+    for block in blocks:
+        for match in EXPLICIT_NAME.finditer(MARKDOWN_LITERAL.sub(' ',block['markdown'])):
+            if len(match['english'].strip())<2:
+                continue
+            entry={**match.groupdict(),'block_ids':[],'evidence':match[0]}
+            identity=(entry['chinese'],entry['english'].casefold())
+            saved=names.setdefault(identity,entry)
+            if entry['abbreviation'] and not saved['abbreviation']:
+                saved.update(abbreviation=entry['abbreviation'],evidence=entry['evidence'])
+            if block['block_id'] not in saved['block_ids']:
+                saved['block_ids'].append(block['block_id'])
+    return list(names.values())
+
+
+def missing_explicit(names, terms):
+    def matches(expected, term):
+        name=EXPLICIT_NAME.fullmatch(term.get('name','').strip())
+        if not name or name['english'].casefold()!=expected['english'].casefold():
+            return False
+        return expected['chinese'].endswith(name['chinese'])
+    return [expected for expected in names if not any(matches(expected,t) for t in terms
+                                                     if t.get('status')!='needs_review')]
+
+
 def glossary(root, sample):
     file = root / 'inputs' / sample / 'reader-context.json'
     return read(file) if file.is_file() else {}
@@ -17,7 +51,7 @@ def planned_terms(goals):
             if isinstance(topic,str) and topic.strip()]
 
 
-async def generate(root, sample, card, ask, structure=None, existing=None, remaining=None):
+async def generate(root, sample, card, ask, structure=None, existing=None, remaining=None, mandatory=None):
     context = glossary(root, sample)
     if 'existing_terms' not in context:
         return {'terms': [], 'issues': [{'reason': 'glossary_unavailable'}]}
@@ -39,6 +73,7 @@ async def generate(root, sample, card, ask, structure=None, existing=None, remai
         'block_contexts': [{'block_id':b['block_id'],'part_id':b['part_id'],'text':b['markdown'][:360]} for b in blocks],
         'planned_term_goals':planned_terms(card.get('goals',{})) if remaining is None else remaining,
         'existing_chapter_candidates':existing or [],
+        'required_bilingual_names':explicit_terms(blocks) if mandatory is None else mandatory,
     }
 
     raw, error = await _request(ask, 'F2', payload)
@@ -51,6 +86,8 @@ def matching_term_blocks(term, blocks):
     for value in list(literal):
         if match:=re.fullmatch(r'(.+?)\s*[（(]([^()（）]+)[）)]',value.strip()):
             literal.extend(x.strip() for x in match.groups() if len(x.strip())>1)
+        if match:=EXPLICIT_NAME.fullmatch(value.strip()):
+            literal.extend(x for x in (match['chinese'],match['english'],match['abbreviation']) if x)
     patterns=[re.compile(r'(?<![a-zA-Z0-9])'+re.escape(name)+r'(?![a-zA-Z0-9])',re.I)
               if name.isascii() else re.compile(re.escape(name),re.I)
               for name in dict.fromkeys(x.strip() for x in literal) if len(name)>1]

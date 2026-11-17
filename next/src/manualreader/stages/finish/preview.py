@@ -638,7 +638,7 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
         blocks.append({'id':'framework-deferred','markdown':'## 延伸阅读','progress_exempt':True})
         blocks.extend({**row,'progress_exempt':True} for row in deferred)
     from reader_connected import recap_markdown
-    from ...steps.step_15_chapter_guidance import RECAP_FIELDS, recap_groups
+    from ...steps.step_15_chapter_guidance import RECAP_FIELDS, next_reading, recap_groups
     recap_parts={key:{**p,'title':part_title(p)} for key,p in parts.items()}
     recaps=list(recap_groups(guide,recap_parts)) if run['mode']!='ANSWER' else []
     synthesis=guide.get('chapter_synthesis') or guide.get('chapter_outro')
@@ -652,20 +652,10 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
     if run['mode']!='ANSWER' and synthesis:
         blocks.append({'id':'framework-synthesis','markdown':synthesis,
                        'reading_heading':'章节总结','progress_exempt':True})
-    ending_kind=guide.get('ending_kind') or 'complete'
-    transition=guide.get('next_transition')
-    if not transition and run['mode']=='INTRO':
-        following=optional(inputs,'reader-context.json',{}).get('adjacent_chapters',{}).get('next',{})
-        if following and following.get('title'):
-            transition='接下来进入「'+following['title']+'」，从原文开始逐步展开。'
-            ending_kind='next'
-    if not transition:
-        transition={
-            'INTRO':'导读到这里结束。进入已登记的正式章节后，可以沿着刚才的阅读路线对照原文。',
-            'NORMAL':'目前没有登记紧邻的下一章。继续阅读时，可以先回到本章引用的原文，核对还想深入的问题。',
-            'FINALE':'本次阶段性讲解到这里结束。之后可以从尚未解决的问题出发，选择需要继续阅读的部分。',
-            'ANSWER':'如果还需要理解某一步，可以在对应段落或资源下继续追问。',
-        }[run['mode']]
+    following=optional(inputs,'reader-context.json',{}).get('adjacent_chapters',{}).get('next')
+    ending_kind=('complete' if run['mode']=='ANSWER' else 'next' if following else 'open')
+    transition=('如果还需要理解某一步，可以在对应段落或资源下继续追问。' if run['mode']=='ANSWER'
+                else next_reading(guide,card,following))
     blocks.append({'id':'framework-next','markdown':transition,
                    'reading_heading':'章际承接' if run['mode']!='ANSWER' else '继续追问','progress_exempt':True})
     if not blocks:

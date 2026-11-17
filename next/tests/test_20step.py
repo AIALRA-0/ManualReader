@@ -2,8 +2,8 @@ from hashlib import sha256
 
 
 from manualreader.steps.events import RunJournal
-from manualreader.steps.step_13_terminology import bind
-from manualreader.steps.step_15_chapter_guidance import RECAP_FIELDS, recap_groups
+from manualreader.steps.step_13_terminology import bind, explicit_terms, missing_explicit
+from manualreader.steps.step_15_chapter_guidance import RECAP_FIELDS, next_reading, recap_groups
 from manualreader.stages.finish.provider import frozen_prompts
 
 
@@ -44,6 +44,36 @@ def test_recap_stays_in_real_part_order_and_skips_empty_slots():
     recaps=list(recap_groups(rows,parts))
     assert [title for title,_ in recaps]==['第一节','第二节','第三节']
     assert recaps[1][1]=={'context':'还有缺项'}
+
+
+def test_bilingual_full_names_include_optional_abbreviation_and_reuse_existing_entry():
+    blocks=[{'block_id':'one','markdown':'ABC 测量标准研究院（Applied Benchmarks Council）给出校准规则'},
+            {'block_id':'two','markdown':'测量标准研究院（Applied Benchmarks Council）也说明了温度计（Thermometer）'},
+            {'block_id':'three','markdown':'`字符（Value）` 和温度（T）用于演示'}]
+    names=explicit_terms(blocks)
+    assert [(n['chinese'],n['abbreviation'],n['block_ids']) for n in names]==[
+        ('测量标准研究院','ABC',['one','two']),('也说明了温度计',None,['two'])]
+    assert missing_explicit(names,[{'name':'测量标准研究院（Applied Benchmarks Council）','status':'reused'}])==names[1:]
+    assert missing_explicit(names,[{'name':'温度计（Thermometer）','status':'candidate'}])==names[:1]
+
+
+def test_next_reading_uses_real_chapter_or_actionable_recap():
+    guide={'next_transition':'目前没有登记紧邻的下一章','part_recaps':[{'implication':'比较两支温度计的读数'}]}
+    assert '比较两支温度计' in next_reading(guide,{})
+    assert '测量误差' in next_reading(guide,{}, {'title':'测量误差'})
+    assert '量化误差' in next_reading({}, {'goals':{'reader':['怎样量化误差']}})
+
+
+def test_next_project_gets_its_own_folder(tmp_path):
+    from reader_library import change, folder_for_new_project, catalog
+    index=tmp_path/'library-index.json'
+    materials=[{'id':'first','title':'温标'},{'id':'second','title':'温标'}]
+    demo=change(index,materials,'folder',None,'create',{'name':'Demo'})['id']
+    change(index,materials,'material','first','move',{'parent_id':demo})
+    separate=folder_for_new_project(index,materials,'second')
+    tree=catalog(index,materials)
+    assert separate!=demo
+    assert {row['id']:row['folder_id'] for row in tree['materials']}=={'first':demo,'second':separate}
 
 
 def test_translation_layout_follows_the_original_boundary_without_splitting_a_shared_sentence():
