@@ -1,0 +1,6 @@
+.postprocess-banner { color: var(--muted,#aaa); padding: .55rem .8rem; border-block-end: 1px solid var(--line,#484848); font-size: .8rem; }
+.postprocess-resources { margin: .55rem 0 1rem; }
+.postprocess-resource { padding: .28rem .55rem; margin-block: .22rem; border: 1px solid var(--line,#484848); border-radius: .35rem; }
+.postprocess-resource > summary { cursor: pointer; font-size: .84rem; }
+.postprocess-detail-body { padding: .55rem .65rem; }
+.postprocess-detail-body section { margin-block: .7rem; padding-block-start: .7rem; border-block-start: 1px solid var(--line,#484848); }

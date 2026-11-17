@@ -391,14 +391,17 @@ def coordinate_png(panels):
     return result.getvalue()
 
 
-def source_media(material, passage, *, by_id=None):
+def source_media(material, passage, *, by_id=None, classify=False):
     result=[]
-    def add(src,alt,identity):
+    def add(src,alt,identity,kind):
         if src and src not in {x['src'] for x in result}:
-            result.append({'src':src,'alt':alt or '原文图片','source_id':identity})
+            result.append({'src':src,'alt':alt or '原文图片','source_id':identity,
+                           **({'kind':kind} if classify else {})})
     def original(p):
         src=p.get('src') or ('/asset/'+p['asset'] if p.get('asset') else '')
-        if src:add(src,p.get('alt') or p.get('path'),p['id'])
+        if src:
+            kind = 'reference_page' if p.get('kind')=='page_image' else 'original'
+            add(src,p.get('alt') or p.get('path'),p['id'],kind)
     original(passage)
     if by_id is None:
         by_id={p['id']:p for p in material.get('passages',[])}
@@ -411,7 +414,7 @@ def source_media(material, passage, *, by_id=None):
             if not page.get('image'):continue
             name=page['image'].replace('\\','/').split('/')[-1]
             src=('/content-files/'+page['file_id']+'/asset/'+name) if page.get('file_id') else '/page/'+name
-            add(src,'原文第 '+str(page.get('number',''))+' 页',passage['id'])
+            add(src,'原文第 '+str(page.get('number',''))+' 页',passage['id'],'reference_page')
     return result
 
 

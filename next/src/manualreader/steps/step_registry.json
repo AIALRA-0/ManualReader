@@ -1,0 +1,248 @@
+[
+  {
+    "step_id": "STEP-01",
+    "slug": "step_01_project_files",
+    "entry": "manualreader.stages.step01.lifecycle:Step01",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "source_file",
+    "depends_on": [],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-02",
+    "slug": "step_02_task_planning",
+    "entry": "manualreader.planning:plan",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "task",
+    "depends_on": [
+      "file_version_verified"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-03",
+    "slug": "step_03_source_recovery",
+    "entry": "manualreader.stages.step03.engine:Engine",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "source_unit",
+    "depends_on": [
+      "file_version_verified"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-04",
+    "slug": "step_04_drafting",
+    "entry": "manualreader.stages.step04.jobs:Jobs",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "selected_scope_ready"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-05",
+    "slug": "step_05_source_mapping",
+    "entry": "manualreader.stages.step05.inference",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "draft_sealed"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-06",
+    "slug": "step_06_additions",
+    "entry": "manualreader.stages.step06.pipeline",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "branch",
+    "depends_on": [
+      "draft_sealed",
+      "mapping_ready (source branch)"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-07",
+    "slug": "step_07_local_fusion",
+    "entry": "manualreader.stages.step07.fusion",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "additions_branch_ready (both)"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-08",
+    "slug": "step_08_structure",
+    "entry": "manualreader.stages.finish.structure:build_structure",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "part",
+    "depends_on": [
+      "body_fused_sealed"
+    ],
+    "model_aliases": [
+      "D1"
+    ]
+  },
+  {
+    "step_id": "STEP-09",
+    "slug": "step_09_source_reading_layout",
+    "entry": "manualreader.stages.finish.structure:reading_groups",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "source_group",
+    "depends_on": [
+      "source_unit_ready"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-10",
+    "slug": "step_10_source_translation",
+    "entry": "manualreader.stages.finish.content:translate",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "source_unit",
+    "depends_on": [
+      "selected_scope_ready"
+    ],
+    "model_aliases": [
+      "B1"
+    ]
+  },
+  {
+    "step_id": "STEP-11",
+    "slug": "step_11_visual_label_translation",
+    "entry": "manualreader.stages.finish.content:translate_labels",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "visual_label",
+    "depends_on": [
+      "label_verified"
+    ],
+    "model_aliases": [
+      "B2"
+    ]
+  },
+  {
+    "step_id": "STEP-12",
+    "slug": "step_12_resource_explanation",
+    "entry": "manualreader.stages.finish.content:explain_math/explain_visual",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "resource_instance",
+    "depends_on": [
+      "resource_instance_ready"
+    ],
+    "model_aliases": [
+      "A1",
+      "A2"
+    ]
+  },
+  {
+    "step_id": "STEP-13",
+    "slug": "step_13_terminology",
+    "entry": "manualreader.steps.step_13_terminology",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "body_fused_sealed",
+      "glossary_ready"
+    ],
+    "model_aliases": [
+      "F2"
+    ]
+  },
+  {
+    "step_id": "STEP-14",
+    "slug": "step_14_practice",
+    "entry": "manualreader.steps.step_14_practice",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "part",
+    "depends_on": [
+      "part_ready"
+    ],
+    "model_aliases": [
+      "F3"
+    ]
+  },
+  {
+    "step_id": "STEP-15",
+    "slug": "step_15_chapter_guidance",
+    "entry": "manualreader.steps.step_15_chapter_guidance",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "part_ready (all)",
+      "chapter_context_ready"
+    ],
+    "model_aliases": [
+      "F1"
+    ]
+  },
+  {
+    "step_id": "STEP-16",
+    "slug": "step_16_final_formatting",
+    "entry": "manualreader.stages.finish.formatting:finalize",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "text_artifact",
+    "depends_on": [
+      "text_artifact_sealed"
+    ],
+    "model_aliases": [
+      "C1"
+    ]
+  },
+  {
+    "step_id": "STEP-17",
+    "slug": "step_17_reader_assembly",
+    "entry": "manualreader.stages.finish.preview:project_native",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "part_ready",
+      "reading_group_ready"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-18",
+    "slug": "step_18_alignment_coverage",
+    "entry": "manualreader.stages.finish.pipeline:relations",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "chapter",
+    "depends_on": [
+      "source_map_ready",
+      "translation_ready",
+      "formatted_ready"
+    ],
+    "model_aliases": [
+      "E1"
+    ]
+  },
+  {
+    "step_id": "STEP-19",
+    "slug": "step_19_isolated_acceptance",
+    "entry": "tools/check_whiteboard_browser.py",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "task",
+    "depends_on": [
+      "reader_preview_ready",
+      "reader_delivery_sealed (final)"
+    ],
+    "model_aliases": []
+  },
+  {
+    "step_id": "STEP-20",
+    "slug": "step_20_commit_progress",
+    "entry": "manualreader.stages.finish.commit:commit",
+    "schema_version": "step-artifact-v1",
+    "unit_type": "commit",
+    "depends_on": [
+      "acceptance_complete",
+      "commit_authorized",
+      "files_reconciled"
+    ],
+    "model_aliases": []
+  }
+]

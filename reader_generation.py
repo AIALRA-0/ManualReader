@@ -180,6 +180,12 @@ def display_parts(question,quizzes=(),quiz_index=None):
         if not part['markdown']:return question
         if quizzes:
             part['display_markdown']=__import__('reader_practice_text').clean(part['markdown'],quizzes,quiz_index)[0]
+        if question.get('answer_writing_version')=='external-author-v1':
+            from reader_handoff_layout import split_notes
+            display, notes = split_notes(part.get('display_markdown',part['markdown']))
+            if notes:
+                part['display_markdown'] = display
+                part['source_notes'] = list(dict.fromkeys([*part.get('source_notes',[]),*notes]))
         parts.append(part)
     return {**question,'answer_parts':parts}
 

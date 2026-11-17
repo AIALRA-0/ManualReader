@@ -37,7 +37,7 @@ class ProjectFiles(FileActions):
             root.mkdir(parents=True,exist_ok=True)
             # 只有原件进入文件根目录，数据库、令牌和笔记不会被当作项目文件展示。
             work=self.folder/'reading-workspace.json';signature=[work.stat().st_mtime_ns if work.exists() else 0,self.original.get('original_file'),'project-files-v1']
-            if value.get('seed_revision')==signature:return value
+            if value.get('seed_revision')==signature and 'derived_paths' in value:return value
             workspace=json.loads(work.read_text('utf8')) if work.exists() else {'files':[]}
             candidates=[]
             name=self.original.get('original_file')
@@ -48,9 +48,16 @@ class ProjectFiles(FileActions):
             for row in workspace.get('files',[]):
                 source=self.folder/'reading-files'/row['id']/row['stored_name']
                 if source.is_file():candidates.append((row['id'],row['name'],source,source.parent/row.get('source_tree','source')))
-            changed=not self.config.exists()
+            changed=not self.config.exists() or 'derived_paths' not in value
+            derived=set(value.get('derived_paths', []))
             for fid,label,source,tree in candidates:
-                if fid in value['sources']:continue
+                if fid in value['sources']:
+                    if 'derived_paths' not in value and tree and tree.is_dir() and source.suffix=='.zip':
+                        registered=root/relative(value['sources'][fid])
+                        extracted=registered.with_name(registered.stem+'-files')
+                        if registered.is_file() and extracted.is_dir():
+                            derived.add(extracted.relative_to(root).as_posix())
+                    continue
                 try:label=relative(label)
                 except ValueError:label=source.name
                 target=root/'sources'/label
@@ -58,8 +65,10 @@ class ProjectFiles(FileActions):
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
                 if tree and tree.is_dir() and source.suffix=='.zip':
                     destination=target.with_name(target.stem+'-files');shutil.copytree(tree,destination,dirs_exist_ok=True,symlinks=True)
+                    derived.add(destination.relative_to(root).as_posix())
                 value['sources'][fid]=target.relative_to(root).as_posix();changed=True
             if changed or value.get('seed_revision')!=signature:
+                value['derived_paths']=sorted(derived)
                 value['seed_revision']=signature
                 self.folder.mkdir(parents=True,exist_ok=True);temporary=self.config.with_suffix('.next.json');temporary.write_text(json.dumps(value,ensure_ascii=False,indent=2),'utf8');os.replace(temporary,self.config)
             return value

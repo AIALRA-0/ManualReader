@@ -15,6 +15,10 @@ def project(material,stored,folder):
     metadata=read(folder);byid={p['id']:p for p in material['passages']};raw={e['id']:e for e in stored.get('explanations',[])};stale=[]
     for e in material.get('explanations',[]):
         e['display_framework_version']=VERSION
+        if e.get('writing_version')=='external-author-v1':
+            from reader_handoff_layout import project as handoff_layout
+            handoff_layout(e,material,byid)
+            continue
         if e.get('framework_version')==VERSION and e.get('framing'):continue
         row=metadata.get('explanations',{}).get(e['id'])
         if not row:

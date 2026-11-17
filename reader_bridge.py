@@ -292,7 +292,15 @@ if __name__=='__main__':
     caller=sub.add_parser('watch-caller');caller.add_argument('--out',required=True)
     for name in ('run','run-compact','daily','teach'):
         run=sub.add_parser(name);run.add_argument('--out',required=True);run.add_argument('--include-answered',action='store_true');run.add_argument('--reader-feedback-file')
-    sub.choices['teach'].add_argument('--research-file',help='当前Codex已经搜索核对的补充事实，JSON中notes各项提供text和url')
+    sub.choices['teach'].add_argument('--plan-only',action='store_true',help='只核对当前章节并生成任务卡')
+    sub.choices['teach'].add_argument('--legacy-plan',action='store_true',help='仅在旧服务上按原方式生成任务卡')
+    planning=sub.add_parser('plan',help='只生成写作任务卡')
+    planning.add_argument('--mode',choices=('NORMAL','INTRO','FINALE','ANSWER'),required=True)
+    planning.add_argument('--question',action='append',default=[])
+    planning.add_argument('--confirm-finale',action='store_true')
+    planning.add_argument('--out',required=True)
+    planning.add_argument('--reader-feedback-file')
+    planning.add_argument('--cache-dir')
     args=parser.parse_args()
     if args.action=='forget':
         from reader_credentials import delete
@@ -305,9 +313,37 @@ if __name__=='__main__':
         result=__import__('reader_term_maintenance').maintain(bridge,args.out)
     elif args.action=='resume-writeback':
         result=__import__('reader_execute').resume_writeback(bridge,args.out)
+    elif args.action=='plan' or args.action=='teach' and args.plan_only and not args.legacy_plan:
+        from reader_step02_client import plan
+        from pathlib import Path
+        mode=getattr(args,'mode','NORMAL')
+        questions=getattr(args,'question',[])
+        if (mode=='ANSWER') != bool(questions):
+            parser.error('ANSWER 需要一个或多个真实问题编号；其他模式不接收 --question')
+        if len(set(questions))!=len(questions):
+            parser.error('本轮问题编号重复')
+        import re
+        if any(not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',q) for q in questions):
+            parser.error('问题编号不合法')
+        feedback=(reader_context or {}).get('reader_feedback_latest')
+        if isinstance(feedback,dict):feedback=feedback.get('text')
+        if isinstance(feedback,list):feedback='\n'.join(str(v) for v in feedback)
+        if questions:
+            def one(qid):
+                sibling=Bridge(args.base,args.material,bridge.headers.get('Authorization','').removeprefix('Bearer ') or None)
+                return plan(sibling,Path(args.out)/qid,mode,question_id=qid,custom_instruction=feedback,
+                            cache_dir=args.cache_dir)
+            with ThreadPoolExecutor(max_workers=len(questions)) as pool:
+                result={'mode':mode,'results':list(pool.map(one,questions))}
+        else:
+            result=plan(bridge,args.out,mode,explicit_finale=getattr(args,'confirm_finale',False),
+                        custom_instruction=feedback,cache_dir=getattr(args,'cache_dir',None))
     elif args.action in ('run','run-compact','daily','teach'):
         from reader_execute import execute,compact_result,daily,teach
-        result=teach(bridge,args.out,reader_context,getattr(args,'research_file',None))if args.action=='teach'else daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)
+        if args.action=='teach':
+            result=teach(bridge,args.out,reader_context,plan_only=args.plan_only)
+        else:
+            result=daily(bridge,args.out,args.include_answered,reader_context) if args.action=='daily' else execute(bridge,args.out,args.include_answered,reader_context)
         if args.action=='run-compact':result=compact_result(result)
     else:result=bridge.prepare(args.out,args.round,args.include_answered,args.lesson,reader_context=reader_context,question_ids=args.question_ids) if args.action=='prepare' else bridge.collect(args.out) if args.action=='collect' else bridge.watch(args.out) if args.action=='watch' else bridge.watch_caller(args.out) if args.action=='watch-caller' else bridge.apply(args.result,args.out,args.metrics)
     print(json.dumps(result,ensure_ascii=False,indent=2))

@@ -151,7 +151,7 @@ def legacy_segments(p,block_id=None):
         return result
     return [{'id':p['id']+'-legacy-translated','source_ids':[p['id']],'text':text,'role':role,'block_id':block_id or p['id'],'precision':'unit'}]
 
-def save_groups(folder,material,rows,expected_source_ids=None,partial=False):
+def save_groups(folder,material,rows,expected_source_ids=None,partial=False,*,dry_run=False):
     if rows is None:return {'saved':0}
     if not isinstance(rows,list) or len(rows)>3000:raise ValueError('连贯译文组需要使用列表')
     known={p['id']:p for p in material['passages'] if p.get('content_kind')!='explanation'};used=set();clean=[]
@@ -202,9 +202,11 @@ def save_groups(folder,material,rows,expected_source_ids=None,partial=False):
     for g in old['groups']:
         if used.intersection(g['source_ids']) and not set(g['source_ids'])<=used:raise ValueError('修改连贯译文时需要一并提交原组的全部编号，避免拆掉同一句中的其他来源：'+','.join(g['source_ids']))
     remaining=[g for g in old['groups'] if not used.intersection(g['source_ids'])]
-    if path.exists():
+    if path.exists() and not dry_run:
         history=Path(folder)/'translation-history';history.mkdir(exist_ok=True);(history/(str(time.time_ns())+'.json')).write_bytes(path.read_bytes())
-    value={'revision':old['revision']+1,'groups':remaining+clean};tmp=path.with_suffix('.next.json');tmp.write_text(json.dumps(value,ensure_ascii=False),'utf8');tmp.replace(path)
+    value={'revision':old['revision']+1,'groups':remaining+clean}
+    if not dry_run:
+        tmp=path.with_suffix('.next.json');tmp.write_text(json.dumps(value,ensure_ascii=False),'utf8');tmp.replace(path)
     return {'saved':len(clean),'revision':value['revision'],'source_ids':sorted(used),'missing_source_ids':sorted(expected-used),'complete_for_requested_ids':not bool(expected-used)}
 
 def active_groups(folder,material):

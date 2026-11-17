@@ -306,7 +306,7 @@ function createReaderMediaPins(pane){
   }
   items=[];
   const counts=new Map(),position=new Map();
-  const nodes=body.querySelectorAll((inAnswer?'.reader-answer-prose':'article')+' :is('+candidates+')');
+  const nodes=body.querySelectorAll((inAnswer?'.reader-answer-prose':'article .markdown-body')+' :is('+candidates+')');
   for(const node of nodes){
    if(node.parentElement.closest(atomic)||node.closest('.inline-question,.reader-inline-quiz,[data-reader-media-controls]'))continue;
    const article=node.closest(inAnswer?'[data-answer-part-id]':'[data-passage-id]');

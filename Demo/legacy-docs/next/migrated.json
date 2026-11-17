@@ -1,0 +1,78 @@
+{
+  "src/manualreader/__init__.py": {
+    "origin": "ManualReader-Next 实现",
+    "sha256_at_import": "5040c3883ca443eb004af5728cbd7f6d543cef1818af0376137ab84e9bf88b97"
+  },
+  "src/manualreader/stages/__init__.py": {
+    "origin": "ManualReader-Next 实现",
+    "sha256_at_import": "5040c3883ca443eb004af5728cbd7f6d543cef1818af0376137ab84e9bf88b97"
+  },
+  "src/manualreader/stages/step01/__init__.py": {
+    "origin": "ManualReader-Next 实现",
+    "sha256_at_import": "5040c3883ca443eb004af5728cbd7f6d543cef1818af0376137ab84e9bf88b97"
+  },
+  "src/manualreader/stages/step02/__init__.py": {
+    "origin": "ManualReader-Next 实现",
+    "sha256_at_import": "5040c3883ca443eb004af5728cbd7f6d543cef1818af0376137ab84e9bf88b97"
+  },
+  "src/manualreader/stages/step01/paths.py": {
+    "origin": "reader_project_files.py: file type lists and relative()",
+    "sha256_at_import": "74291aa3b075394138bfea0ac951339e1fc939d91682a5a91562ec60abd2b6b5"
+  },
+  "src/manualreader/stages/step01/scan.py": {
+    "origin": "reader_step01_scan.py; standalone lexical path dependency",
+    "sha256_at_import": "efe3667bbb53a15c0780658468f1596d3e03988891c6c435844488ef7767e654"
+  },
+  "src/manualreader/stages/step01/lifecycle.py": {
+    "origin": "reader_step01.py: manifest/state machine only; no formal commit",
+    "sha256_at_import": "b38374d8f0aed26436a7beddebaad10995633609fc27496a7315367d4347d6c2"
+  },
+  "src/manualreader/stages/step02/card.py": {
+    "origin": "整改包 reader_step02_card.py; points to independent renderer",
+    "sha256_at_import": "762f6289298c2490375caa698181934116ebf8a0caafdc30fd5713558a36abcb"
+  },
+  "src/manualreader/stages/step02/renderer.py": {
+    "origin": "reader_v21.py: task_markdown()/RECAP_KEYS only",
+    "sha256_at_import": "89c483132e8ac0061fc26bbe775d480e2e0797fd1dea845a8b7a3e5727631d1c"
+  },
+  "src/manualreader/stages/step02/reader_step02_normal.txt": {
+    "origin": "reader_step02_normal.txt (original bytes)",
+    "sha256_at_import": "fbbbc5495d981a65487372716facbfe1ca02ea470bd8ab08aa7473be44e2ad40"
+  },
+  "src/manualreader/stages/step02/reader_step02_intro.txt": {
+    "origin": "reader_step02_intro.txt (original bytes)",
+    "sha256_at_import": "46fa97bd1cda80fee9f7d95d624d886ed92d71e921fa268e6b34655e6beb73d2"
+  },
+  "src/manualreader/stages/step02/reader_step02_finale.txt": {
+    "origin": "reader_step02_finale.txt (original bytes)",
+    "sha256_at_import": "eadc6a0791ce1c430d6c27120df80df5fc884fb07cc27468d9e841edc11cdd50"
+  },
+  "src/manualreader/stages/step02/reader_step02_answer.txt": {
+    "origin": "reader_step02_answer.txt (original bytes)",
+    "sha256_at_import": "1330da7c6606d724167204b4f5913d5f592a935bfe597e358eb79c5c487d7817"
+  },
+  "src/manualreader/stages/step02/reader_step02_policies.json": {
+    "origin": "v2-frozen-1 (same bytes)",
+    "sha256_at_import": "c71c10d7348401cf49b9fcc38dd3af2023378fd81d0775852f79ba9af5cec31f"
+  },
+  "src/manualreader/stages/step02/original.py": {
+    "origin": "reader_step02_original.py; Reader HTML numbering projection",
+    "sha256_at_import": "e07e7b4f27e21c7947d69d984ae5cb00d0fbcc6ea5a7bf160268ab12ba842986"
+  },
+  "src/manualreader/stages/step02/html_view.py": {
+    "origin": "source_parser.py:_html lexical DOM ordering; no import/translation/workspace system",
+    "sha256_at_import": "d2b96a1da7235922a4aca90238d2cc51d3ba17738fd981c3fb7af6d80be4bcb0"
+  },
+  "src/manualreader/stages/step02/read_tool.py": {
+    "origin": "reader_step02_mcp.py: bounded pure reader; no desktop MCP process",
+    "sha256_at_import": "40900d24ea5bf7321c1098b5de611f75e9fb3a2f68d92554a9cc6ddababda422"
+  },
+  "tests/fixtures/golden-card.json": {
+    "origin": "STEP-02 approved historical immutable fields and formatting only",
+    "sha256_at_import": "b6b4446092d977af602067b42858d5d70c29683de161e40a20ae7ef9850be37f"
+  },
+  "tests/fixtures/golden-card.md": {
+    "origin": "stable formatting and inherited text baseline",
+    "sha256_at_import": "d93485bd5a40051441548d6484dc582112cae0158656c2e0fa78722d1eb6fe76"
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "version": "v2-frozen-1",
+  "writing_preferences": [
+    {
+      "rule_id": "explicit-subject",
+      "requirement": "当执行者发生变化时，清楚交代谁完成了什么、结果交给谁。",
+      "bad": "收齐订单后开始计算，算完发给商家",
+      "good": "订单服务收齐订单后，会把这一批订单交给计费程序；计费程序按每笔订单的金额和费率算出手续费，再把账单发给商家",
+      "source": "reader_prompts.py:110–113",
+      "enforcement": "现有写作提示词；主语与动作由作者重读核对"
+    },
+    {
+      "rule_id": "fact-led-transition",
+      "requirement": "当前事实应当解释后续动作为什么发生，避免机械宣布写作步骤。",
+      "bad": "甲店一周卖了 100 件，乙店卖了 120 件，接下来算日均",
+      "good": "甲店一周卖了 100 件，乙店卖了 120 件；可甲店只开了 4 天，乙店开了 6 天；营业天数不同，需要分别除以实际营业天数，才能比较两家店每天平均卖了多少",
+      "source": "reader_prompts.py:115–119",
+      "enforcement": "现有写作提示词；段落之间是否读得顺，由作者重读核对"
+    },
+    {
+      "rule_id": "concrete-process",
+      "requirement": "关键过程需要明确对象、动作、触发条件与结果。",
+      "bad": "先看柜门，想想为什么没有短信，再分析传感器",
+      "good": "快递员把包裹放进柜子后关上柜门；传感器确认门已关闭，系统才发送取件码；所以包裹即使已经放进柜内，只要柜门还没关，收件人就可能尚未收到短信",
+      "source": "reader_prompts.py:121–128",
+      "enforcement": "现有写作提示词；由作者核对实际过程是否讲完整"
+    },
+    {
+      "rule_id": "no-unneeded-defensiveness",
+      "requirement": "直接讲述材料已有的事实和判断，不反复反驳材料没有提出的观点。",
+      "bad": "没有完整财务数据，因此不能证明所有初创公司都存在融资问题，也不能根据一次欠薪推断整个行业经营困难",
+      "good": "嘉宾把公司欠薪归因于后续融资没有接上；第一次欠薪时他选择继续等待，第二次再次发生后决定离开",
+      "source": "reader_prompts.py:94–101",
+      "enforcement": "现有写作提示词；由作者判断一句话是否增加了事实或推理"
+    },
+    {
+      "rule_id": "evidence-for-causes",
+      "requirement": "实际条件、推导结果与人物动机分别处理；没有证据时不为了补全因果链而自行编造。",
+      "bad": "主角没有开门，是因为他早已知道整场阴谋，故意观察谁会背叛自己",
+      "good": "主角听见门外有人敲门，却没有回应；随后门外的人离开，故事在这一段没有交代他保持沉默的原因",
+      "source": "reader_prompts.py:94–100、137–142",
+      "enforcement": "现有写作提示词和冻结规范；确定性检查可核对来源或摘句，因果是否成立仍需对照原件"
+    }
+  ],
+  "format_rules": [
+    {
+      "rule_id": "chinese-punctuation",
+      "requirement": "新写中文正文遵循句号、分号和段末标点规范；代码、公式和原文引文不参与替换。",
+      "bad": "先计算二阶偏导数。然后求 Hessian 的特征值。最后判断凸性。",
+      "good": "先计算二阶偏导数；然后求 Hessian 的特征值；最后根据特征值判断凸性",
+      "source": "reader_prompts.py:130、reader_quality.py:40–47、132–151；reader_connected.py:46–47",
+      "enforcement": "提示词规定新写中文不写句号、行尾不留分号；当前正文保存不逐句强制删除，旧路径可转换"
+    },
+    {
+      "rule_id": "chinese-colon",
+      "requirement": "冒号只用于定义或引出并列内容，不作为普通语句之间的装饰性连接符。",
+      "bad": "我们接下来：先看变量，再看结果",
+      "good": "需要核对两个对象：\n\n- 变量\n- 结果",
+      "source": "reader_prompts.py:131、reader_quality.py:31–38",
+      "enforcement": "现有写作提示词；没有程序逐句判断冒号是否用于定义或列举"
+    },
+    {
+      "rule_id": "parallel-item-indentation",
+      "requirement": "同一层级至少两个事项才使用列表；每项只有一条补充说明时直接写在该项后面；只有某项内部至少两个独立子项时才使用嵌套列表。",
+      "bad": "```markdown\n需要检查两个部分：\n\n- 目标函数\n  - 核对二次项和一次项\n- 约束条件\n  - 核对变量上限\n```",
+      "good": "```markdown\n需要检查两个部分：\n\n- 目标函数：核对二次项和一次项\n- 约束条件：核对变量上限\n```",
+      "source": "reader_prompts.py:132、static/reader-markdown.js:6；本轮冻结规范补充同层数量",
+      "enforcement": "Markdown 渲染层依列表与缩进呈现；并列项数量和嵌套层级由写作者核对"
+    },
+    {
+      "rule_id": "no-single-item-list",
+      "requirement": "只有一个事项时使用正常句子或段落，不创建单元素列表。",
+      "bad": "```markdown\n需要检查：\n\n- 矩阵的维度\n```",
+      "good": "需要检查矩阵的维度",
+      "source": "本轮冻结规范；沿用 reader_prompts.py:132 的并列要求",
+      "enforcement": "单元素列表规则由写作者核对，当前保存不据此拒绝"
+    },
+    {
+      "rule_id": "cjk-latin-spacing",
+      "requirement": "普通中文与英文、数字之间保留合理间距；代码、URL、数学表达和标准标识符不做机械替换。",
+      "bad": "Hessian矩阵包含2阶偏导数，可用于判断函数是否Convex",
+      "good": "Hessian 矩阵包含二阶偏导数，可用于判断函数是否具有凸性",
+      "source": "本轮冻结规范；术语英文命名另见 reader_prompts.py:325、reader_term_names.py:22",
+      "enforcement": "普通正文按冻结规则检查间距，不机械替换；现有术语检查只管登记名称和大小写"
+    },
+    {
+      "rule_id": "markdown-headings",
+      "requirement": "使用统一层级，不重复显示 Reader 目录标题，不额外引入装饰性序号。",
+      "bad": "```markdown\n# 第 2.3 节 怎样用Hessian和特征值判断凸性\n\n# 第一部分\n\n## 1.1 特征值\n```",
+      "good": "```markdown\n## Hessian 怎样描述曲率\n\n## 特征值与凸性判断\n```",
+      "source": "reader_prompts.py:61–63、195–196、259；本轮冻结规范",
+      "enforcement": "当前讲解校验会检查独立标题字段，页面按 Markdown 层级渲染；自由写作规则不要求旧版微观结构"
+    },
+    {
+      "rule_id": "latex",
+      "requirement": "使用合法的 LaTeX 定界符，保持变量、上下标与数学含义。",
+      "bad": "`H = d2f/dx12 d2f/dx1dx2 d2f/dx2dx1 d2f/dx22`",
+      "good": "```latex\n\\[\nH_f(x)=\n\\begin{pmatrix}\n\\frac{\\partial^2 f}{\\partial x_1^2} &\n\\frac{\\partial^2 f}{\\partial x_1\\partial x_2}\\\\\n\\frac{\\partial^2 f}{\\partial x_2\\partial x_1} &\n\\frac{\\partial^2 f}{\\partial x_2^2}\n\\end{pmatrix}\n\\]\n```",
+      "source": "reader_prompts.py:172–175、static/reader-markdown.js:19–31",
+      "enforcement": "页面识别并渲染 LaTeX；变量与数学含义由作者对照材料检查"
+    },
+    {
+      "rule_id": "code-and-logs",
+      "requirement": "代码使用对应语言的 Markdown 围栏，原始日志使用 `console`，不得修改代码内容。",
+      "bad": "`for i in range(3): print(i)` 被当作普通正文排版",
+      "good": "```python\nfor i in range(3):\n    print(i)\n```",
+      "source": "reader_prompts.py:133、416；static/reader-markdown.js:31",
+      "enforcement": "页面渲染代码围栏及高亮；由作者核对与原始代码、日志是否一致"
+    },
+    {
+      "rule_id": "tables",
+      "requirement": "多行同类数据可以使用 Markdown 表格，必须有表头和分隔行。",
+      "bad": "名称 数值；A 3；B 5",
+      "good": "```markdown\n| 名称 | 数值 |\n|---|---:|\n| A | 3 |\n| B | 5 |\n```",
+      "source": "reader_prompts.py:420、static/reader-markdown.js:31",
+      "enforcement": "Markdown 解析器按表头和分隔行识别表格，渲染后可横向滚动"
+    },
+    {
+      "rule_id": "images-and-media",
+      "requirement": "图片需要明确的引用、说明或图注；必要时保留原图位置，不将缺失图片伪装成已有资源。",
+      "bad": "从下图可以看出三种曲面的区别",
+      "good": "课件第 10 页展示了三种曲面：碗形、槽形和鞍形；图中的弯曲方向分别对应 Hessian 不同的特征值情况",
+      "source": "reader_prompts.py:413–415、423；static/reader-media-pins.js:131",
+      "enforcement": "图片可读性、图注与来源由作者核对；现有页面负责显示和编号"
+    },
+    {
+      "rule_id": "mermaid-direction",
+      "requirement": "流程图使用受支持的 Mermaid 结构；默认 `flowchart TD`；横向布局遵循 Reader 现有的显式标记规则。",
+      "bad": "输入 -> 计算 -> 输出",
+      "good": "```mermaid\nflowchart TD\n    A[输入] --> B[计算]\n    B --> C[输出]\n```",
+      "source": "reader_prompts.py:419、reader_media.py:19–28、40–47",
+      "enforcement": "当前原生写回会把未声明横向的流程图转为 TD；确需横向时，在图内写 `%% reader-layout: horizontal` 并使用 LR"
+    },
+    {
+      "rule_id": "protected-content",
+      "requirement": "格式处理不得修改逐字引文、源代码、公式、URL、真实文件路径和原始数据。",
+      "bad": "为统一正文风格，把原始访谈引用中的句号全部替换为分号",
+      "good": "正文标点遵守 Reader 规范；原始访谈引用保持来源中的文字和标点",
+      "source": "reader_prompts.py:133、137–142；reader_quality.py:15–29",
+      "enforcement": "正文整理时会保护代码、公式、网址和部分引用形式；作者按原件核对逐字内容"
+    }
+  ]
+}

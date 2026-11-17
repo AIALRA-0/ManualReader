@@ -116,7 +116,7 @@ def lesson_task(material,stored,state,node_id=None):
         task['recent_reader_questions']=[]
     return task
 
-def append_assets(state,data,node_id,explanation_id,passage_ids,stamp):
+def append_assets(state,data,node_id,explanation_id,passage_ids,stamp,*,exclusive_owner=False):
     issues=[];saved={'terms':[],'quizzes':[]};known_q={q['id'] for r in state['rounds'] for q in r['questions']}
     from reader_contract import current_quizzes,same_exercise
     from reader_generation import exclusive_practice
@@ -160,7 +160,7 @@ def append_assets(state,data,node_id,explanation_id,passage_ids,stamp):
                     if not isinstance(options,list) or not 2<=len(options)<=6 or any(not isinstance(o,str) or not o.strip() for o in options) or isinstance(correct,bool) or not isinstance(correct,int) or not 0<=correct<len(options):raise ValueError('练习选项或正确答案格式不正确')
                     collection=next((q for q in current_quizzes(state['quizzes']) if same_exercise(q,row)
                                      and (explanation_id in q.get('explanation_ids',[]) or
-                                          not strict and node_id in q.get('learning_node_ids',[]))
+                                          not (strict or exclusive_owner) and node_id in q.get('learning_node_ids',[]))
                                      and (not row.get('placement') or (q.get('placement') or {}).get('after_part_id')==row['placement'].get('after_part_id'))),None)
                     if collection is None:
                         collection={'id':'z-'+uuid.uuid4().hex[:16],'round_id':None,'prompt':prompt.strip(),'options':options,'correct_index':correct,'explanation':explanation.strip(),'option_explanations':__import__('reader_contract').option_explanations(row),'question_ids':qids,'selected':None,'created_at':stamp(),**__import__('reader_contract').quiz_fields(row)};state['quizzes'].append(collection)

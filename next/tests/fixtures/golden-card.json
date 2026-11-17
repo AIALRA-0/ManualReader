@@ -1,0 +1,228 @@
+{
+  "project": {
+    "id": "sample-optimization",
+    "name": "合成算例",
+    "root_path": "/example/reader/sample-optimization"
+  },
+  "chapter": {
+    "node_id": "sample-convexity",
+    "parent_node_id": "sample-math",
+    "number": "2.3",
+    "title": "怎样用Hessian和特征值判断凸性"
+  },
+  "versions": {
+    "material_schema": 2,
+    "workspace_revision": 8,
+    "records_revision": 4,
+    "selection_revision": 2,
+    "file_manifest_revision": 1
+  },
+  "progress": {
+    "files": {
+      "coverage_pct": 0,
+      "status": "initialized"
+    },
+    "lessons": {
+      "completed": 9,
+      "total": 35,
+      "completion_pct": 25.71
+    },
+    "overall": {
+      "coverage_pct": 12.86,
+      "status": "ready",
+      "calculation": "(files.coverage_pct + lessons.completion_pct) / 2"
+    }
+  },
+  "previous": {
+    "title": "怎样认识一个合成二次函数",
+    "bridges": [
+      "上一节从一个可计算的合成函数入手",
+      "这一节把两个方向的变化集中起来看"
+    ],
+    "recaps": [
+      {
+        "part_title": "变量",
+        "context": "例题定义两个试验数量",
+        "problem": "试验数量可以取哪些值",
+        "claim": "两个数量都取非负实数",
+        "reason": "例题在连续范围内观察函数",
+        "evidence": "x=1 与 y=2 都在范围内",
+        "implication": "先确认变量的范围"
+      },
+      {
+        "part_title": "目标函数",
+        "context": "例题比较两项试验的代价",
+        "problem": "哪组数量代价最低",
+        "claim": "代价等于两个数量的平方和",
+        "reason": "两个贡献可以分别计算后相加",
+        "evidence": "x=1 与 y=2 时，代价为 5",
+        "implication": "比较前先分别代入"
+      },
+      {
+        "part_title": "一阶导数",
+        "context": "试验数量可以小幅变化",
+        "problem": "代价变化得多快",
+        "claim": "每个方向有一个变化率",
+        "reason": "观察一个方向时固定另一个变量",
+        "evidence": "x 方向的变化率是 2x",
+        "implication": "在不同位置计算变化率"
+      },
+      {
+        "part_title": "二阶导数",
+        "context": "变化率本身也会变化",
+        "problem": "曲率由什么量表示",
+        "claim": "对变化率再求一次导数",
+        "reason": "平方项求导两次会留下常数",
+        "evidence": "x 方向得到 2",
+        "implication": "用二阶信息解释曲率"
+      },
+      {
+        "part_title": "约束",
+        "context": "例题限定数量总和",
+        "problem": "哪些组合可以参与比较",
+        "claim": "只比较满足上限的组合",
+        "reason": "超过上限的组合超出了定义域",
+        "evidence": "上限为 2 时，x=3 不可行",
+        "implication": "把可行性与代价值分开核对"
+      },
+      {
+        "part_title": "候选点",
+        "context": "例题给出两个可行点",
+        "problem": "哪一点的代价更低",
+        "claim": "将每组数分别代入目标函数",
+        "reason": "两组都按同一尺度计算",
+        "evidence": "零点的代价为 0，而 (1,0) 的代价为 1",
+        "implication": "只比较两个点还不足以证明全局最优"
+      }
+    ],
+    "forecast": "接下来把二阶信息写成矩阵，用它判断函数的形状"
+  },
+  "question_styles": [
+    {
+      "pattern": "这个式子有哪些组成项？",
+      "explanation_need": "指出各项在当前问题中的作用",
+      "evidence_question_ids": [
+        "sample-question-1"
+      ]
+    },
+    {
+      "pattern": "两个量为什么可以比较？",
+      "explanation_need": "说明比较的单位和条件",
+      "evidence_question_ids": [
+        "sample-question-2"
+      ]
+    },
+    {
+      "pattern": "能举一个小例子吗？",
+      "explanation_need": "给出能手算的简单例子",
+      "evidence_question_ids": [
+        "sample-question-3"
+      ]
+    },
+    {
+      "pattern": "这个结果在哪些条件下成立？",
+      "explanation_need": "交代推导采用的条件",
+      "evidence_question_ids": [
+        "sample-question-4"
+      ]
+    }
+  ],
+  "goals": {
+    "reader": [
+      "Hessian 是什么",
+      "二阶偏导在矩阵中表示什么",
+      "特征值的正、负、零",
+      "碗形、槽形和鞍形",
+      "凸性与最小值",
+      "二次规划中的变量、目标函数和约束"
+    ],
+    "teacher": [
+      "Hessian",
+      "偏导矩阵",
+      "纯二阶偏导",
+      "混合偏导",
+      "\\(f(x)=\\frac12x^\\mathsf{T}Qx+c^\\mathsf{T}x+d\\)",
+      "二次型与对称矩阵",
+      "特征值与特征向量",
+      "正定、半正定与不定",
+      "凸性判据",
+      "零曲率方向",
+      "线性约束与可行域",
+      "二次规划",
+      "quadprog 与 eig"
+    ]
+  },
+  "material_plan": [
+    {
+      "file_id": "sample-optimization-file",
+      "relative_path": "sources/synthetic-optimization.pdf",
+      "status": "active",
+      "added_round": 1,
+      "progress_before_pct": 0,
+      "description": "用于比较导数、曲率与约束的合成讲义",
+      "source_ranges": [
+        {
+          "type": "pdf_page",
+          "start": 9,
+          "end": 9
+        },
+        {
+          "type": "pdf_page",
+          "start": 10,
+          "end": 10
+        },
+        {
+          "type": "pdf_page",
+          "start": 11,
+          "end": 14
+        }
+      ],
+      "source_ids": [
+        "sample-opt-source-001",
+        "sample-opt-source-002",
+        "sample-opt-source-003",
+        "sample-opt-source-004",
+        "sample-opt-source-005",
+        "sample-opt-source-006",
+        "sample-opt-source-007",
+        "sample-opt-source-008",
+        "sample-opt-source-009",
+        "sample-opt-source-010",
+        "sample-opt-source-011",
+        "sample-opt-source-012",
+        "sample-opt-source-013",
+        "sample-opt-source-014",
+        "sample-opt-source-015",
+        "sample-opt-source-016",
+        "sample-opt-source-017",
+        "sample-opt-source-018",
+        "sample-opt-source-019",
+        "sample-opt-source-020",
+        "sample-opt-source-021",
+        "sample-opt-source-022",
+        "sample-opt-source-023",
+        "sample-opt-source-024",
+        "sample-opt-source-025",
+        "sample-opt-source-026",
+        "sample-opt-source-027",
+        "sample-opt-source-028",
+        "sample-opt-source-029",
+        "sample-opt-source-030",
+        "sample-opt-source-031",
+        "sample-opt-source-032",
+        "sample-opt-source-033",
+        "sample-opt-source-034",
+        "sample-opt-source-035",
+        "sample-opt-source-036",
+        "sample-opt-source-037",
+        "sample-opt-source-038"
+      ]
+    }
+  ],
+  "policy_refs": {
+    "writing_preferences": "writing-policies.json",
+    "format_rules": "writing-policies.json",
+    "policy_version": "v2-frozen-1"
+  },
+  "custom_instruction": null
+}

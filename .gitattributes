@@ -15,3 +15,8 @@
 
 # 上游语法的跨行字符串含有空白，保留自动构建结果
 vendor/code-highlight/highlight.min.js -whitespace
+
+# Keep upstream assets and Markdown hard breaks exactly as supplied.
+next/src/manualreader/stages/step04/markdown-vendor* -whitespace
+next/src/manualreader/stages/step07/vendor/** -whitespace
+next/tests/fixtures/golden-card.md whitespace=-blank-at-eol

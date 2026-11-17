@@ -178,7 +178,7 @@ def normalize_terms(value,payload):
             changes.append({'term_id':old['id'],'name':old['name']})
     return changes
 
-def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True,research=True):
+def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True,research=True,request_limit=None,original_tool=None):
     """记录真实输入、模型输出、检索和用量；不读取维护聊天或连接凭证。"""
     from reader_worker import runtime_usage,external_tool_usage
     folder=Path(folder);folder.mkdir(exist_ok=True,parents=True);target=folder/'final.txt';events=folder/'events.jsonl'
@@ -190,7 +190,8 @@ def invoke_writer(folder,prompt,images,executable,system_override=None,allow_ima
     if(folder/'output-schema.json').exists():args[-1:-1]=['--output-schema',str(folder/'output-schema.json')]
     from reader_writer_transport import Gate
     gate=Gate(writer_profile(WRITER_ROLE.get()),prompt,system,folder,research=research,
-              allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair').start()
+              allow_image_generation=allow_image_generation and WRITER_ROLE.get()!='term_repair',
+              request_limit=request_limit,original_tool=original_tool).start()
     args[-1:-1]=['-c','openai_base_url='+json.dumps('http://127.0.0.1:'+str(gate.port))]
     save(folder/'invocation.json',{'arguments':args,**writer_profile(WRITER_ROLE.get()),'images':[str(p)for p in images],'prompt_characters':len(prompt),'framework_version':FRAMEWORK_VERSION})
     environment=dict(os.environ)
@@ -488,7 +489,7 @@ def resume_writeback(bridge,out):
     return {'run':run,'receipts':receipts,'missing_question_ids':missing,'model_calls':0}
 
 
-def run_group(bridge,out,group,payload,reference,executable):
+def run_group(bridge,out,group,payload,reference,executable,material_round=None):
     identity=group['id'];folder=out/('writer-'+identity);folder.mkdir(exist_ok=True)
     cache=__import__('reader_source_cache').for_bridge(bridge)
     packed,aliases=__import__('reader_writer_input').compact_packet(payload);save(folder/'source-aliases.json',aliases)
@@ -519,6 +520,7 @@ def run_group(bridge,out,group,payload,reference,executable):
         save(folder/'draft.json',draft)
         valid,issues=validate_answer_draft(draft,packed,payload,reference,aliases,group['question_ids'])
         bridge.request('/api/runs/'+bridge.run_id+'/events',{'group_id':identity,'type':'output_ready'})
+        if material_round:material_round.reconcile()
         receipt,write_issues=submit_answers(bridge,folder,bridge.run_id,identity,valid,usage,session_id,1)
         issues.update(write_issues)
         saved.extend((receipt or {}).get('saved',[]))
@@ -538,6 +540,7 @@ def run_group(bridge,out,group,payload,reference,executable):
             usage=combine_supplement(usage,extra,supplement_session)
             stems={practice_prompt_key(quiz):quiz for qid in saved for quiz in valid[qid]['quizzes']}
             repaired,issues=validate_answer_draft(fragment,task,payload,reference,aliases,remaining,stems)
+            if material_round:material_round.reconcile()
             receipt,write_issues=submit_answers(bridge,folder,bridge.run_id,identity,repaired,usage,session_id,2)
             issues.update(write_issues)
             saved.extend((receipt or {}).get('saved',[]))
@@ -584,7 +587,7 @@ def repair_term_names(bridge,out,question_ids,executable):
     finally:WRITER_ROLE.reset(role_token)
     save(folder/'script-processing.json',report);return report
 
-def _execute(bridge,out,include_answered=False,reader_context=None,*,observe_caller=True):
+def _execute(bridge,out,include_answered=False,reader_context=None,*,observe_caller=True,material_round=None):
     began=stamp();clock=time.perf_counter();cpu=time.process_time();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
     if (out/'run.json').exists():raise ValueError('这个目录已经有任务记录，请为新一轮选择空目录，避免覆盖原始输出')
     executable=codex_executable()
@@ -593,14 +596,20 @@ def _execute(bridge,out,include_answered=False,reader_context=None,*,observe_cal
     if not manifest.get('questions'):
         report={'run':bridge.request('/api/runs/'+bridge.run_id),'coordinator':{'kind':'local_script','total_seconds':round(time.perf_counter()-clock,3)},'groups':[],'term_names':{'state':'not_needed'},'issues':[],'question_pool':manifest.get('question_pool',{}),'message':manifest.get('message')}
         save(out/'measured-run.json',report)
+        if material_round:
+            material_round.select([])
+            material_round.reconcile()
         return report
     if observe_caller:
         bridge.start_caller_observer(out)
     run=json.loads((out/'run.json').read_text('utf8'));reference=json.loads((out/'reference.json').read_text('utf8'))
     payloads={g['id']:json.loads((out/('prompt-'+g['id']+'.txt')).read_text('utf8').split('\n',1)[1]) for g in run['groups']}
+    if material_round:
+        from reader_step01_client import answer_file_ids
+        material_round.select(answer_file_ids(payloads.values(),material_round.start['manifest']))
     prepare_seconds=time.perf_counter()-clock;results=[];errors=[]
     with ThreadPoolExecutor(max_workers=max(1,min(2,len(run['groups'])))) as pool:
-        futures={pool.submit(run_group,bridge,out,g,payloads[g['id']],reference,executable):g['id'] for g in run['groups']}
+        futures={pool.submit(run_group,bridge,out,g,payloads[g['id']],reference,executable,material_round):g['id'] for g in run['groups']}
         for future in as_completed(futures):
             try:results.append(future.result())
             except Exception as error:errors.append({'group_id':futures[future],'message':str(error)})
@@ -618,7 +627,11 @@ def execute(bridge,out,include_answered=False,reader_context=None,*,observe_call
     state={'pid':os.getpid(),'state':'running','started_at':stamp()}
     save(out/'execution-state.json',state)
     try:
-        result=_execute(bridge,out,include_answered,reader_context,observe_caller=observe_caller)
+        from reader_step01_client import MaterialRound
+        with MaterialRound(bridge,out,'ANSWER') as material_round:
+            result=_execute(bridge,out,include_answered,reader_context,observe_caller=observe_caller,material_round=material_round)
+        result['material_progress']=material_round.start['manifest']['progress']['trigger']
+        save(out/'measured-run.json',result)
         save(out/'execution-state.json',{**state,'state':'complete','completed_at':stamp()})
         return result
     except Exception as error:
@@ -636,7 +649,13 @@ def build_lesson_prompt(payload):
             + json.dumps(task, ensure_ascii=False, separators=(',', ':')))
 
 
-def teach(bridge,out,reader_context=None,research_file=None):
+def teach(bridge, out, reader_context=None, *, plan_only=False):
+    from reader_v21 import run
+
+    return run(bridge, out, reader_context, plan_only=plan_only)
+
+
+def _teach_legacy(bridge,out,reader_context=None,research_file=None):
     """用户手动触发当前章；复用问答的模型调用和校验，不自动翻到下一章。"""
     began=stamp();clock=time.perf_counter();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
     if(out/'lesson-report.json').exists()or(out/'writer/events.jsonl').exists():raise ValueError('本轮目录已有任务，请读取原稿和保存记录，不重复生成')
@@ -730,7 +749,7 @@ def wait_for_report(out,alive=process_running,pause=time.sleep):
 def compact_result(report):
     """只向主调度返回运行摘要，完整输入、输出和日志继续保存在本轮目录。"""
     run=report['run']
-    return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json',**{k:report[k] for k in ('question_pool','message') if k in report}}
+    return {'run_id':run['id'],'question_count':len(run['question_ids']),'state':run['state'],'writer_seconds':report['coordinator']['total_seconds'],'usage':run['usage'],'estimated_token_cost_usd':run.get('estimated_token_cost_usd'),'web_search_calls':run.get('web_search_calls'),'estimated_total_cost_usd':run.get('estimated_total_cost_usd'),'issues':report['issues'],'output':'measured-run.json',**{k:report[k] for k in ('question_pool','message','material_progress') if k in report}}
 
 def summarize_daily(folder, summary, executable):
     """让干净的汇报会话只读统计结果，实际用量单独登记。"""
@@ -774,4 +793,5 @@ def daily(bridge,out,include_answered=False,reader_context=None):
     save(out/'daily-complete.json',result)
     return {'run_id':bridge.run_id,'question_count':len(run['question_ids']),'seconds':elapsed,'usage':result['complete_usage'],
             'estimated_token_cost_usd':result['complete_token_cost_usd'],'estimated_total_cost_usd':result['complete_cost_with_recorded_search_usd'],
-            'detail_file':str(out/'daily-complete.json')}
+            'detail_file':str(out/'daily-complete.json'),
+            **{k:report[k] for k in ('material_progress',) if k in report}}

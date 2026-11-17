@@ -66,6 +66,21 @@ def raw_material(identity=None):
         return CACHE[identity][1]
 def project_files(identity=None):
     identity=identity or mid();return ProjectFiles(identity,mpath(identity).parent,SETTINGS,raw_material(identity))
+def step01_request(data):
+    from reader_step01 import SQLiteLedger, Step01, manual_counts
+    def counts(state):
+        return manual_counts(material(), workspace().read(), state)
+    step = Step01(mid(), project_files().ensure, SQLiteLedger(core.db, core.initial), counts)
+    action = data.get('action')
+    if action == 'prepare':
+        return step.prepare(data.get('mode'), data.get('round_id'))
+    if action == 'select':
+        return step.select(data.get('round_id'), data.get('file_ids'))
+    if action == 'observe':
+        return step.observe(data.get('round_id'))
+    if action == 'reconcile':
+        return step.reconcile(data.get('round_id'))
+    raise ValueError('文件清单只接受开始、选用文件、查看变化和提交前核对')
 def workspace(identity=None):return Workspace(mpath(identity).parent)
 def material_revision(identity=None):
     paths=[mpath(identity).parent/name for name in ('reading-layout-overrides.json','translation-groups.json','reading-visual-language.json','reading-headings.json')]
@@ -320,7 +335,7 @@ def _progress_payload(raw):
     m=material();stored=getattr(m,'reading_metadata',None)
     if stored is None:stored=workspace().read_snapshot()
     # 正常阅读只传当前内容；完整历史继续保存在数据库，按需单独读取。
-    progress={**{k:v for k,v in raw.items()if k not in ('lesson_tasks','learning_selection_events','answer_run_receipts')},'rounds':[{**r,'questions':[{**{k:v for k,v in q.items()if k not in ('answer_history','answer_parts_history')},'answer_revision':answer_revision(q)}for q in r['questions']]}for r in raw['rounds']],
+    progress={**{k:v for k,v in raw.items()if k not in ('lesson_tasks','learning_selection_events','answer_run_receipts','handoff_receipts')},'rounds':[{**r,'questions':[{**{k:v for k,v in q.items()if k not in ('answer_history','answer_parts_history')},'answer_revision':answer_revision(q)}for q in r['questions']]}for r in raw['rounds']],
               'terms':[{k:v for k,v in t.items()if k not in ('definition_history','name_history')}for t in raw.get('terms',[])]}
     progress,_=display_state(progress,copy_all=False)
     from reader_contract import current_quizzes,quiz_display_orders,quiz_quality_flags
@@ -432,12 +447,20 @@ def agent_guide():
     guide['endpoints']['teaching_result']='POST /api/teaching/result'
     guide['endpoints']['format_explanation']='POST /api/content/explanations/format'
     guide['explanation_headings']={'write':'新讲解每个话题只使用 reading_heading 或独立 Markdown 标题中的一种；已有独立标题时，下一正文不再显示额外标题','clear':'reading_heading 传空字符串或 null 后持续保持清除；旧排版文件不能覆盖','format':'仅修改已有标题时使用 /api/content/explanations/format，提交 explanation_id、expected_version、headings:[{block_id,reading_heading}]；不要求生成新术语或练习，不改变正文和用户记录'}
-    guide['endpoints']['lesson_task']='GET /api/work?mode=lesson'
+    guide['endpoints']['lesson_task']='GET /api/work?mode=lesson-v21'
+    guide['endpoints']['material_round']='POST /api/step01'
+    guide['endpoints']['planning']='POST /api/step02'
     guide['endpoints']['learning_exclusions']='GET /api/learning/exclusions；POST /api/learning/exclusions'
     guide['outline_edit']={'endpoint':'POST /api/learning/outline/edit','read':'GET /api/learning','expected_revision':'必填，使用读取目录时返回的 revision','actions':[{'action':'add','node':{'id':'chapter-topic','parent_id':None,'title':'一个独立主题章'}},{'action':'update','id':'existing-node','changes':{'title':'调整后的标题'}},{'action':'move','id':'planned-node','parent_id':'chapter-topic','after_id':'another-child'},{'action':'delete','id':'unused-planned-node'}],'rules':OUTLINE_RULES,'atomic':'同一次修改全部验证后保存；有冲突时不保存任何一项；保留 id 与已有内容，不修改当前学习位置或用户记录'}
     guide['learning_scope']={'exclude':{'passage_ids':['原始单元编号'],'reason':'为何不是本次学习内容','action':'exclude 或 restore','expected_revision':'可选，来自 GET 返回的 revision'},'rule':'排除只影响学习目录与学习覆盖率；原网页、原编号、翻译、问答、笔记和已读记录都保留。原内容改变时原排除不再自动生效，需重新核对','planning':CHAPTER_PLANNING+'\n首次提交使用 planning_mode=chapterwise。未规划的原文仍可在原文目录和 deferred 清单查看；学习目录的修改使用 outline_edit。','next_chapter':'用户手动勾选当前章节完成后，再确定并登记下一章。'}
     guide['answer_revisions']={'prepare':'需要重答已答问题时，用 POST /runs 提交 question_ids 和 include_answered=true；沿用原问题，不改问题文字或版本来绕过保护','write':'任务绑定读取时的问题版本和 expected_answer_revision；新稿写回时两项都须匹配；已经更新的回答不被旧任务覆盖','history':'旧正文、片段与写入来源保留；修订会改变回答修订号，重新标为未展开；术语与排版更新不重写答案正文'}
-    guide['lesson_writeback']={'prepare':'先读取 /api/work?mode=lesson，保存返回的 lesson_task_id；它把本次稿件绑定到已开始的章节，不绑定网页此刻显示的位置','submit':'POST /api/teaching/result 同时传 lesson_task_id 和 learning_node_id；写作期间用户切换页面也可保存原任务，不改变用户当前章节','recover':'409 lesson_selection_changed 表示章节状态变化，不是授权失效；保留已有稿件，不重新生成、不要求重新配对。已准备任务可直接重交；旧稿没有任务编号时先回到目标章取得任务后提交原稿','navigation':'/api/learning/select 可传 expected_selection_revision，旧页面不能覆盖已经发生的新切章；章节切换仍须遵守用户手动完成规则'}
+    guide['lesson_writeback']={
+        'command':'reader_bridge.py --base <网站> --material <项目> teach --out <本轮空目录>',
+        'prepare':'在 Reader 中选择当前章节。客户端根据已登记的原文、前文和真实问法生成任务卡',
+        'preview':'草稿存放在项目文件的「讲解草稿」文件夹中。本轮首稿、任务卡和用量保存在指定输出目录',
+        'formal_saved':False,
+        'navigation':'用户仍在阅读页手动勾选完成，然后才能继续到下一节',
+    }
     guide['learning_contract']['select_request']={'node_id':'下一章节编号'}
     guide['learning_contract']['advance_rule']='只有 progress.completion.can_advance 为 true 时 Agent 才能换章；这个值只由用户手动完成按钮产生，聊天指令和 Agent 提交不能代替'
     guide['endpoints'].update(coverage='GET /api/coverage',import_source='POST /api/content/import',question_sync='POST /api/questions/sync')
@@ -479,11 +502,10 @@ def agent_guide():
     guide['import_contract']={'submit':'将文件、网址或仓库提交到 /api/import-jobs，接口返回202与任务编号；解析在后台完成，可继续处理当前内容','outline_mode':'auto 默认识别目录；agent 只显示文件根节点，保留原片段、坐标和建议目录，随后由 Agent 规划学习目录','poll':'按任务编号查询，ready 后使用 file.id；error 时可显式重试，不重新生成已有讲解','translation':'导入只解析，不调用模型翻译；Agent 按本章原编号翻译所有非中文自然语言，再写回成品译文'}
     guide['client_dependencies']={'packages':list(__import__('reader_agent_contract').CLIENT_DEPENDENCIES),'install':'python -m pip install '+ ' '.join(__import__('reader_agent_contract').CLIENT_DEPENDENCIES),'rule':'先检查当前Python能否导入这些依赖；缺失时在当前项目的独立虚拟环境安装，复用已存在的环境，不改系统Python'}
     guide['client_files']={'rule': '建立连接或开始新一轮回答时，从当前项目接口下载 client_files 列出的全部当前客户端和规则模块放到同一目录；已有旧脚本也要替换，只更新程序文件，不覆盖任务输入、结果和记录；脚本下载不需要模型阅读其正文。使用已登录的本地Codex，访问令牌不写入任务文件；用户选择记住连接后，通过 --remember 保存到系统凭据库，新进程按网站和项目恢复；未选择则只留内存或环境变量'}
-    guide['reader_feedback_contract']={'writing_version':writing_guide()['version'],'input_fields':['reader_feedback_latest','confirmed_passage','confirmed_understanding'],'start_run':'POST /api/runs 可附上述字段，随任务进入各组写作输入，不改正文、笔记或已读状态','client_command':'reader_bridge.py daily --out <本轮空目录> --reader-feedback-file <本轮用户原话.txt>','lesson_command':'reader_bridge.py teach --out <本轮空目录> --reader-feedback-file <本轮用户原话.txt>','rule':'开始讲解或问答前，把用户本轮明确说过的学习目标、背景和疑问原样传入 reader_feedback_latest。客户端只读取和本轮任务有关的原话；只有用户明确确认的部分进入confirmed_passage和confirmed_understanding。没有反馈就省略，不把父回答当作已掌握知识，不重新携带全部聊天历史；针对特定问题的反馈用question_ids限定本次任务','lesson':'首次讲解也采用writing.instructions；reading_context.previous带上一节实际末段，recent_reader_questions带上一节最近四条真实疑问，包含待答（最多2400字）。自行判断提问倾向，本节首次遇到同类内容就讲得更详细，保留原本需要讲的全部内容；evidence.transitions登记每个相邻part实际承接的前段原句，当前客户端同次校验，不另起改写；prepare --lesson 支持同一反馈文件。先通读本节，再以连续正文带读者理解。讲解 parts 登记 source_id、source_span 和 markdown，原句仅用于三栏定位，不重复放进讲解；问答 parts 登记 question_span 与 markdown，先回答该子问，再把原因与步骤接着讲清。普通段落用相互承接的句子，数学计算和代码仍可逐步展开。正文、术语和练习仍同次输出，不增加审稿或模型修复阶段'}
+    guide['reader_feedback_contract']={'writing_version':writing_guide()['version'],'input_fields':['reader_feedback_latest','confirmed_passage','confirmed_understanding'],'start_run':'POST /api/runs 可附上述字段，随任务进入各组写作输入，不改正文、笔记或已读状态','client_command':'reader_bridge.py daily --out <本轮空目录> --reader-feedback-file <本轮用户原话.txt>','lesson_command':'reader_bridge.py teach --out <本轮空目录> --reader-feedback-file <本轮用户原话.txt>','rule':'开始讲解或问答前，把用户本轮明确说过的学习目标、背景和疑问原样传入 reader_feedback_latest。客户端只读取和本轮任务有关的原话；只有用户明确确认的部分进入confirmed_passage和confirmed_understanding。没有反馈就省略，不把父回答当作已掌握知识，不重新携带全部聊天历史；针对特定问题的反馈用question_ids限定本次任务','lesson':'teach 使用 V2.1 任务卡及统一写作规范。先读取当前章的原文和上一章的真实问法，再生成 Markdown 草稿。'}
     guide['reading_contract']={'read':'GET /api/reading/layout','write':'POST /api/reading/layout','automatic':'导入及读取时，脚本按原编号和坐标生成展示组，不改原文、译文、问答、笔记或已读记录；多页范围由 source_range 给出','group_request':{'expected_revision':'读取时返回的 override_revision','groups':[{'kind':'paragraph / list / figure / table / heading / code / markdown / equation','passage_ids':['同一原文文件内需要合并展示的原编号']} ]},'agent_rule':'只有脚本不能判断排版时才提交分组；只决定原编号怎样成组，不重新抄写或翻译内容。未提交的编号由脚本补回，重复文字不能据此删除','explanation_rule':'一次写作直接返回 blocks，每块包含稳定 id、markdown 和 source_ranges；source_ranges 使用当前项目的 file_id、passage_id，可选 sentence_id、start、end。每块只关联实际解释的原文；整章 source_links 表示引用范围，不能当成每块都已讲解。纯独立讲解不编出处；旧稿保留原编号，能确定的页码与原句由脚本恢复定位，不能确定时保留整章范围'}
     guide['endpoints'].update(reading_layout='GET /api/reading/layout',save_reading_layout='POST /api/reading/layout')
-    guide['framework']={'version':__import__('reader_generation').VERSION,'plan':__import__('reader_generation').PLAN_CONTRACT,'practice_placement':__import__('reader_generation').PLACEMENT_CONTRACT,'generation':'同次写作返回 plan、正文、术语和练习；讲解每个 parts 有稳定 id、heading 与 unit_ids，问答保留 question_span 和原编号','validation':'脚本核对正文非空、标题、原句、编号、前置依赖、全部问题和练习位置；缺项保留原始输出并准确返回，不把部分任务记为完成','legacy':'旧记录读取时统一适配；正文、编号、笔记、作答、answer_views 与手动已读记录不改，不因展示升级将已读回答变回未读','lesson_command':'reader_bridge.py --base <网站> --material <项目> teach --out <本轮空目录>；按 translation_queue 补齐译文，使用 --reader-feedback-file 把本轮用户明确说过的背景和目标交给分析器，再运行写作；正文、术语、练习同次写回，只处理当前章'}
-    guide['reader_feedback_contract']['lesson']+='；同次返回轻量 plan 和每部分 heading，练习用 placement 插到对应 part 后，不预生成用户问题'
+    guide['framework']={'version':__import__('reader_generation').VERSION,'plan':__import__('reader_generation').PLAN_CONTRACT,'practice_placement':__import__('reader_generation').PLACEMENT_CONTRACT,'generation':'同次写作返回 plan、正文、术语和练习；讲解每个 parts 有稳定 id、heading 与 unit_ids，问答保留 question_span 和原编号','validation':'脚本核对正文非空、标题、原句、编号、前置依赖、全部问题和练习位置；缺项保留原始输出并准确返回，不把部分任务记为完成','legacy':'旧记录读取时统一适配；正文、编号、笔记、作答、answer_views 与手动已读记录不改，不因展示升级将已读回答变回未读','lesson_command':guide['lesson_writeback']['command']}
     from reader_sequence import FRAMING_CONTRACT
     guide['teaching_result_contract']['explanation']['framing']=FRAMING_CONTRACT
     guide['framework']['framing']=FRAMING_CONTRACT
@@ -601,9 +623,19 @@ class Handler(core.Handler):
             if path=='/reader-project-files.js':return self.file(STATIC/'reader-project-files.js')
             if path=='/reader-project-files.css':return self.file(STATIC/'reader-project-files.css')
             if path=='/reader-inline-practice.js':return self.file(STATIC/'reader-inline-practice.js')
+            if path in ('/reader-postprocess-preview.js','/reader-postprocess-preview.css'):return self.file(STATIC/path[1:])
             if path=='/quality-review.js':return self.file(STATIC/'quality-review.js')
             if path=='/vendor/math-text.js':return self.file(STATIC/'math-text.js','text/javascript; charset=utf-8')
             if path in ('/reader-code-editor.js','/reader-source-flow.js','/reader-source-flow.css','/workspace-ui.js','/reader-terms.js','/reader-speech.js','/reader-practice.js','/reader-imports.js','/reader-media-view.js','/reader-media-pins.js','/app.js','/reader-loading.js','/reader-ui.js','/reader-markdown.js','/library-ui.js','/remote-ui.js','/markdown-vendor.js','/markdown-vendor.LICENSE.txt','/app.css','/settings.js','/statistics.js'):return self.file(STATIC/path[1:])
+            if path.startswith('/postprocess-preview-asset/'):
+                if (os.environ.get('MANUAL_READER_POSTPROCESS_PREVIEW')!='1' or os.environ.get('MANUAL_READER_PUBLIC_ORIGIN')
+                    or not __import__('ipaddress').ip_address(self.client_address[0]).is_loopback):
+                    return self.send_error(404)
+                folder=mpath().parent/'postprocess-preview'/'assets'
+                name=path.removeprefix('/postprocess-preview-asset/')
+                if not re.fullmatch(r'[a-f0-9]{64}\.(png|jpe?g|webp|gif|svg)',name):return self.send_error(404)
+                target=folder/name
+                return self.project_file_response(target) if target.is_file() and target.resolve().is_relative_to(folder.resolve()) else self.send_error(404)
             if path.startswith('/evidence/'):
                 if os.environ.get('MANUAL_READER_PUBLIC_ORIGIN'):return self.send_error(404)
                 folder=(ROOT/'evidence').resolve();target=(ROOT/path[1:]).resolve()
@@ -630,9 +662,47 @@ class Handler(core.Handler):
                 filename=material().get('original_file','')
                 if not filename:return self.json({'error':'这份材料没有独立原件下载'},404)
                 return self.file(LIBRARY/mid()/filename,'application/pdf' if filename.endswith('.pdf') else 'application/octet-stream')
+            if path.startswith('/writing-assets/'):
+                name=path.removeprefix('/writing-assets/')
+                if not re.fullmatch(r'handoff-[a-f0-9]{32}\.(?:png|jpe?g|webp|gif|svg)',name):
+                    return self.send_error(404)
+                folder=(mpath().parent/'writing-handoff'/'assets').resolve()
+                target=(folder/name).resolve()
+                if not self.project_available(mid()) or not target.is_relative_to(folder) or not target.is_file():
+                    return self.send_error(404)
+                return self.project_file_response(target)
             if path.startswith('/api/') and path!='/api/session':
                 if not self.authenticated():return self.json({'error':'连接码不正确'},403)
                 # 设置和材料树不依赖当前文章的正文，先处理，避免首次打开时等待正文投影。
+                asset_match=re.fullmatch(r'/api/source-quality/([a-f0-9]{24})/([a-f0-9]{64}\.png)',path)
+                if asset_match:
+                    from reader_source_quality import file_hash
+                    ticket,filename=asset_match.groups()
+                    root=mpath().parent/'source-quality'
+                    target=(root/ticket/'assets'/filename).resolve()
+                    if target.is_relative_to(root.resolve()) and target.is_file() and file_hash(target)==target.stem:
+                        return self.file(target,'image/png')
+                    return self.send_error(404)
+                if path.startswith('/api/postprocess-preview'):
+                    if os.environ.get('MANUAL_READER_POSTPROCESS_PREVIEW')!='1' or os.environ.get('MANUAL_READER_PUBLIC_ORIGIN'):
+                        return self.send_error(404)
+                    preview=mpath().parent/'postprocess-preview'
+                    name=path.removeprefix('/api/postprocess-preview/')
+                    if path=='/api/postprocess-preview':
+                        target=preview/'manifest.json'
+                        return self.file(target,'application/json; charset=utf-8') if target.is_file() else self.send_error(404)
+                    preview_image=re.fullmatch(r'source-image/([a-f0-9]{64}\.png)',name)
+                    if preview_image:
+                        from reader_source_quality import file_hash
+                        import base64
+                        target=(preview/'assets'/preview_image[1]).resolve()
+                        if target.is_relative_to(preview.resolve()) and target.is_file() and file_hash(target)==target.stem:
+                            return self.json({'sha256':target.stem,'content_base64':base64.b64encode(target.read_bytes()).decode('ascii')})
+                        return self.send_error(404)
+                    if re.fullmatch(r'[a-f0-9]{64}\.(png|jpe?g|webp|gif|svg)',name):
+                        target=preview/'assets'/name
+                        if target.is_file() and target.resolve().is_relative_to(preview.resolve()):return self.project_file_response(target)
+                    return self.send_error(404)
                 if path.startswith('/api/project-files/'):
                     store=project_files();query=parse_qs(urlsplit(self.path).query);name=query.get('path',[''])[0]
                     if path=='/api/project-files/events':
@@ -684,7 +754,9 @@ class Handler(core.Handler):
                         return {**plan,'completion':completion_payload(document,stored,records,plan=plan)}
                     return self.json(project_learning,cache_tag=tag)
                 m=material()
-                if path in CLIENT_PATHS:return self.file(ROOT/path.split('/')[-1],'text/x-python; charset=utf-8')
+                if path in CLIENT_PATHS:
+                    content_type='application/json; charset=utf-8' if path.endswith('.json') else 'text/x-python; charset=utf-8'
+                    return self.file(ROOT/path.split('/')[-1],content_type)
                 if path=='/api/writing/rules':return self.json(public_rules())
                 if path=='/api/format/audit':return self.json(project_audit(m,core.read_state()))
                 if path=='/api/quality-review':
@@ -726,6 +798,17 @@ class Handler(core.Handler):
                     return self.json({'question_id':q['id'],'answer_history':q.get('answer_history',[]),'question_history':q.get('question_history',[])})
                 if path=='/api/work':
                     query=parse_qs(urlsplit(self.path).query)
+                    if query.get('mode')==['lesson-v21']:
+                        from asyncio import run
+                        from reader_source_quality import writer_packet
+                        from reader_v21 import snapshot
+                        with core.LOCK, workspace().lock:
+                            version=material_revision()
+                            document=material()
+                            folder=mpath().parent
+                            packet=snapshot(document,workspace().read_snapshot(),core.read_state(),
+                                            project_files(),folder,version,query.get('node_id',[None])[0])
+                        return self.json(run(writer_packet(packet,folder)))
                     records=core.read_state();stored=workspace().read()
                     if query.get('mode')==['lesson']:
                         with core.LOCK:
@@ -777,6 +860,8 @@ class Handler(core.Handler):
         custom=path in('/api/project-files/file','/api/project-files/action') or bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',path)) or path=='/api/answers/seen' or path in ('/api/translations/visuals','/api/translations/groups','/api/reading/layout','/api/practice-book','/api/import-jobs') or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',path)) or bool(re.fullmatch(r'/api/quizzes/[^/]+/(?:answer|draft)',path)) or path in ('/api/speech/transcribe','/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/outline/edit','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/projects','/api/content/files','/api/content/explanations','/api/content/presentation','/api/terms','/api/terms/normalize','/api/folders','/api/library/clear-trash','/api/read','/api/settings','/api/library/import','/api/lectures','/api/translations','/api/focus','/api/history/back','/api/history/forward') or re.fullmatch(r'/api/rounds/[^/]+/(status|metrics)',path) or re.fullmatch(r'/api/questions/[^/]+/answer',path) or re.fullmatch(r'/api/library/(folder|material)/[A-Za-z0-9_-]+/(rename|move|trash|restore)',path)
         if re.fullmatch(r'/api/quizzes/[^/]+/options',path) or re.fullmatch(r'/api/questions/[^/]+',path) or path=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',path):custom=True
         if path=='/api/learning/exclusions':custom=True
+        if path=='/api/step01':custom=True
+        if path=='/api/step02':custom=True
         if re.fullmatch(r'/api/rounds/[^/]+/result',path):custom=True
         if not custom and path!='/api/rounds':return super().do_POST()
         if not self.safe_origin() or not self.authenticated():return self.json({'error':'连接码或提交来源不正确'},403)
@@ -786,6 +871,14 @@ class Handler(core.Handler):
             data=json.loads(self.rfile.read(length) or b'{}')
             if not isinstance(data,dict):raise ValueError('提交内容必须是对象')
             if getattr(self,'_remote_machine',False) and any(k in data and data[k] is not None and data[k]!=mid() for k in ('material','material_id','project_id')):return self.json({'error':'提交内容超出当前项目授权'},403)
+            if path=='/api/step01':
+                from reader_step01 import Conflict
+                try:return self.json(step01_request(data))
+                except Conflict as error:return self.json({'code':error.code,'affected_file_ids':error.affected},409)
+            if path=='/api/step02':
+                from reader_step02_server import route
+                return self.json(route(data,project_files(),
+                    lambda:(material(),workspace().read_snapshot(),core.read_state()),core.db,core.initial))
             if path=='/api/import-jobs':return self.json(ImportJobs(mpath().parent,mid()).submit(data),202)
             retry_job=re.fullmatch(r'/api/import-jobs/(import-[a-f0-9]{20})/retry',path)
             if retry_job:return self.json(ImportJobs(mpath().parent,mid()).retry(retry_job[1]),202)

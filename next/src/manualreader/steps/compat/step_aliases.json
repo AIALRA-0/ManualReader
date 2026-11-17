@@ -1,0 +1,81 @@
+{
+  "D1": {
+    "step": "step_08_structure",
+    "variant": "structure",
+    "prompt": "prompts/step_08_structure_optional.md",
+    "sha256": "e928384748571d3c17c9505cf0c16a1e2990c31fbe32b779aed9eb2285dcb144"
+  },
+  "B1": {
+    "step": "step_10_source_translation",
+    "variant": "source_translation",
+    "prompt": "prompts/step_10_source_translation.md",
+    "sha256": "18edba5b636cd521debe0f012de38f9187706fdabfa9518f438cf17d507a6368"
+  },
+  "B2": {
+    "step": "step_11_visual_label_translation",
+    "variant": "visual_label_translation",
+    "prompt": "prompts/step_11_visual_label_translation.md",
+    "sha256": "ca6d63bf9662ff5783fccbb2127e6fce707da6999b49bc2972632fc144a3a09f"
+  },
+  "A1": {
+    "step": "step_12_resource_explanation",
+    "variant": "resource_explanation_math",
+    "prompt": "prompts/step_12_resource_explanation_math.md",
+    "sha256": "4c1438033d516782077b8cee56d46bde08de851b64f0ba2b58bdb2e969725353"
+  },
+  "A2": {
+    "step": "step_12_resource_explanation",
+    "variant": "resource_explanation_visual",
+    "prompt": "prompts/step_12_resource_explanation_visual.md",
+    "sha256": "9263367e704aa35c4d292a3f7bad4ad3dda04f3bb689ff7ec17fed5a6e08745b"
+  },
+  "F2": {
+    "step": "step_13_terminology",
+    "variant": "terminology",
+    "prompt": "prompts/step_13_terminology.md",
+    "sha256": "091a815f7f355198ace0e2909b5b7c216dd98badf0e4949c155e3e28b0b476c5"
+  },
+  "F3": {
+    "step": "step_14_practice",
+    "variant": "practice",
+    "prompt": "prompts/step_14_practice.md",
+    "sha256": "f31b0d75e9ad580604f24872ec8d923b15ae79f0cab806dd45a9729fb63e93f3"
+  },
+  "F1": {
+    "step": "step_15_chapter_guidance",
+    "variant": "chapter_guidance",
+    "prompt": "prompts/step_15_chapter_guidance.md",
+    "sha256": "e67419d7a83556e9e1b1ca77765c4d2eceaf153369bfaf8f2eee9141d9fbda0c"
+  },
+  "C1": {
+    "step": "step_16_final_formatting",
+    "variant": "final_formatting",
+    "prompt": "prompts/step_16_final_formatting_optional.md",
+    "sha256": "634d56ba67d1f1a98e57bf585ffb49ef3cff8d70d4292cdd7fb4bb6e251a0890"
+  },
+  "E1": {
+    "step": "step_18_alignment_coverage",
+    "variant": "alignment",
+    "prompt": "prompts/step_18_alignment_optional.md",
+    "sha256": "4bd73139af9a9b1a59e7c0d67942754b002a1cda020aabd05f5502b46e6e4d6a"
+  },
+  "F12": {
+    "legacy_only": true,
+    "steps": [
+      "step_13_terminology",
+      "step_15_chapter_guidance"
+    ]
+  },
+  "SOURCE_GAP": {
+    "step": "step_18_alignment_coverage",
+    "variant": "source_gap_recovery",
+    "prompt": "prompts/step_18_source_gap_recovery.md",
+    "sha256": "ec274a85f99fcb95db1f36eb4bd07a6e4dd572a1d71591ea67d9907365d9d357"
+  },
+  "TERM_NAME": {
+    "step": "step_13_terminology",
+    "variant": "terminology_name",
+    "prompt": "prompts/step_13_terminology_name.md",
+    "sha256": "aa5a1e002580a58ece48af42e17768f9e601a669f43eb86860c8c4b3756bdb1f"
+  }
+}

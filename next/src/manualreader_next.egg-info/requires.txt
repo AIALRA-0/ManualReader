@@ -1,0 +1,5 @@
+requests==2.32.3
+zstandard==0.25.0
+PyMuPDF==1.27.2
+beautifulsoup4==4.13.3
+Pillow==12.2.0

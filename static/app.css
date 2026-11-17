@@ -378,6 +378,7 @@ article:hover>.inline-question>summary,.inline-question[open]>summary,.inline-qu
 .reader-question-line{display:block}.reader-question-line>.inline-question,.reading-segment>.inline-question{display:block;margin:2px 0 6px}.chinese .reader-translation-pending{color:var(--muted);font-size:12px}.inline-question summary{font-weight:400!important}.inline-question textarea{text-indent:0}.reading-segment{min-width:0}
 
 .explanation-source-footer{display:flex;justify-content:flex-end;margin:8px 0}.explanation-source-footer .icon-btn{margin:0}.source-link-row{display:flex;align-items:flex-start;gap:8px;width:100%;padding:10px 0;text-align:left;background:transparent;border:0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}.source-link-row svg{width:16px;height:16px;flex:none;margin-top:4px}.source-link-row:last-child{border-bottom:0}
+.reader-source-excerpt{white-space:pre-wrap;margin:0 0 10px;padding:8px 12px;border-inline-start:2px solid var(--muted);background:var(--focus);overflow-wrap:anywhere}
 
 /* 展开时让标题留在鼠标下方，正文向下增加高度。 */
 #interaction,#study{overflow-anchor:none}.question-card,.term-card{overflow-anchor:none}.reader-collapse-now::details-content{transition:none!important}.answer-label{font-weight:600;color:var(--text);margin:14px 0 8px}.reader-translation-pending{display:none!important}

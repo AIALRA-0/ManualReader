@@ -260,9 +260,12 @@ class Workspace:
         row['document']=apply_translations(copy.deepcopy(row['document']),data.get('translations'),data.get('complete',False))
         self.write(value,data.get('expected_revision'));return row['document']['coverage']
 
-    def explain(self,data,material,used_passages=None,finalize_chapter_title=False):
+    def explain(self,data,material,used_passages=None,finalize_chapter_title=False,*,stage=None,outline=None):
         from reader_quality import lesson_parts,clean_markdown
         value=self.read();identity=check_id(data.get('id') or 'explain-'+uuid.uuid4().hex[:12],'讲解编号')
+        if outline is not None:
+            if stage is None:raise ValueError('请先核对新目录和讲解，再一同保存')
+            value.update(learning_outline=outline,planning_mode='chapterwise')
         old=next((r for r in value['explanations'] if r['id']==identity),None)
         if old and data.get('expected_version')!=old['version']:raise ValueError('修改讲解时请提供最新的 expected_version')
         data=lesson_parts(data,material,(old or {}).get('blocks',[]))
@@ -341,7 +344,8 @@ class Workspace:
         new={'id':identity,'title':title.strip(),'section_id':section,'source_links':clean_links,
              'blocks':clean,'passages':doc.data['passages'],'passage_ids':[p['id'] for p in doc.data['passages']], 'version':(old or {}).get('version',0)+1}
         new.update(validate_source_mapping(material,data))
-        for key in ('plan','writing_version','framework_version','narrative','objectives','framing','evidence'):
+        for key in ('plan','writing_version','framework_version','narrative','objectives','framing','evidence',
+                    'handoff_digest','handoff_layout','handoff_has_previous'):
             if key in data:new[key]=copy.deepcopy(data[key])
         if old and (set(used_passages or []) & set(old['passage_ids']))-set(new['passage_ids']):
             raise ValueError('已提问或已读的片段需要保留，请沿用该 blocks 编号修改')
@@ -350,7 +354,11 @@ class Workspace:
         if first_explanation:
             value['presentation']={**value.get('presentation',{}),'layout':'lesson'if value['files']else'single','columns':[['original','translation'],['explanation']]if value['files']else[['explanation']],'explanation_id':identity}
         if node is not None:node['explanation_ids']=list(dict.fromkeys(node.get('explanation_ids',[])+[identity]))
-        self.write(value,data.get('expected_revision'));return {**{k:v for k,v in new.items() if k!='passages'},'learning_node_ids':[n['id'] for n in value.get('learning_outline',[]) if identity in n.get('explanation_ids',[])]}
+        if stage is not None:
+            stage(value,new)
+        else:
+            self.write(value,data.get('expected_revision'))
+        return {**{k:v for k,v in new.items() if k!='passages'},'learning_node_ids':[n['id'] for n in value.get('learning_outline',[]) if identity in n.get('explanation_ids',[])]}
 
     def format_explanation(self,data):
         """只修改已有标题字段；正文、片段编号和用户记录不参与这次写入。"""

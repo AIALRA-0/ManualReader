@@ -1,0 +1,13 @@
+[console_scripts]
+manualreader-finish = manualreader.stages.finish.runner:main
+manualreader-finish-reader = manualreader.stepfinal_server:main
+manualreader-next = manualreader.client:main
+manualreader-next-server = manualreader.server:main
+manualreader-step03 = manualreader.step03_client:main
+manualreader-step03-server = manualreader.step03_server:main
+manualreader-step04 = manualreader.step04_client:main
+manualreader-step04-server = manualreader.step04_server:main
+manualreader-step07 = manualreader.step07_client:main
+manualreader-step07-server = manualreader.step07_server:main
+manualreader-step56 = manualreader.step56_client:main
+manualreader-step56-server = manualreader.step56_server:main

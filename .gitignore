@@ -34,3 +34,9 @@ transport.json
 sent-*.json
 partial-output-*.txt
 source-cache/
+
+# The generated deployment and private run directories live outside the source tree.
+.venv/
+.pytest_cache/
+.ruff_cache/
+next/instance/

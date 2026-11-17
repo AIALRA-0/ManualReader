@@ -118,6 +118,12 @@ def project_endings(material):
         if not rows:continue
         following=nodes[index+1] if index+1<len(nodes) else None
         ending=ending_context(material,node,following,rows)
+        if ending['mode']=='complete' and any(
+            e.get('writing_version')=='external-author-v1'
+            and any(passages.get(pid,{}).get('chapter_ending_role')=='next' for pid in e['passage_ids'])
+            for e in rows
+        ):
+            ending={'mode':'open'}
         if following:ending['next_title']=following['title']
         material['chapter_endings'][node['id']]=ending
 

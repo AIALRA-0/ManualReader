@@ -1,0 +1,10 @@
+Metadata-Version: 2.4
+Name: manualreader-next
+Version: 0.8.0
+Summary: Standalone ManualReader service and clients through STEP-12 isolation
+Requires-Python: <3.13,>=3.12
+Requires-Dist: requests==2.32.3
+Requires-Dist: zstandard==0.25.0
+Requires-Dist: PyMuPDF==1.27.2
+Requires-Dist: beautifulsoup4==4.13.3
+Requires-Dist: Pillow==12.2.0

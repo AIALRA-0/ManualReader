@@ -1,0 +1,198 @@
+{
+  "baseline": "Next-0.7.1 + user supplied source review ZIP",
+  "input_zip_sha256": "1c520c3cc5110a0e3e11ec930d52fbd7ef803864cb5ac7aa6f2a15c1621c300f",
+  "original_prompts": [
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step02/reader_step02_answer.txt",
+      "sha256": "1330da7c6606d724167204b4f5913d5f592a935bfe597e358eb79c5c487d7817",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step02/reader_step02_finale.txt",
+      "sha256": "eadc6a0791ce1c430d6c27120df80df5fc884fb07cc27468d9e841edc11cdd50",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step02/reader_step02_intro.txt",
+      "sha256": "46fa97bd1cda80fee9f7d95d624d886ed92d71e921fa268e6b34655e6beb73d2",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step02/reader_step02_normal.txt",
+      "sha256": "fbbbc5495d981a65487372716facbfe1ca02ea470bd8ab08aa7473be44e2ad40",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step04/ANSWER.txt",
+      "sha256": "c3093b4d776c4b3bae693225ecfce9c7fe3dd24ad8ff60f26fcc93c0d3085fca",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step04/FINALE.txt",
+      "sha256": "5e3a072c3ff6e5c7b20a6a52ebaa37f18bf2c8e5ded3011e0ff0cf19eb8b2a63",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step04/INTRO.txt",
+      "sha256": "c66e26bd9627ce90bb5dbba9aee186f015aba847f1ab1bdbf0be9e043366e47f",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step04/NORMAL.txt",
+      "sha256": "3f9ae5292bd68d8e7f7d39dadd01c63ce3b3c902a9a65fee78a8d42bbe37a8db",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step05/STEP05-map.txt",
+      "sha256": "132ba79f9e00e243a3fb7f59176cbf4deea5f762b74959cc3b758c274cc584de",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step06/STEP06A-gap.txt",
+      "sha256": "fe1a7e1cd75fd989052611169191df81a749ca64cd35e076c3c8f28c6a45719d",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step06/STEP06B-depth.txt",
+      "sha256": "cf8848d70a7c16ae8295351caf2b0ff287c0184cde5a9b97f252df0959b54932",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/Next-0.7.1/step07/STEP07_V2_EDITOR.md",
+      "sha256": "2a8bcf289eaca494faee4fa06157b098c569e6601dde96a254972c1f31f43a76",
+      "handling": "frozen_read_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/A1-公式与推导详解.md",
+      "sha256": "46412f1663eb96a4790855f14cbcb932da16b8e0e66971db357b965210d915d4",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/A2-图片图表Mermaid表格详解.md",
+      "sha256": "57329159daea25b7d009107aeb7a8b325ad89800edd2ab4e1c81ed5f1abdc39b",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/B1-原文句组翻译.md",
+      "sha256": "09b6da83b2afc59dc7444f2bcf728cf2076f7b4124c92bc67ba56736e4e17196",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/B2-原图标签翻译.md",
+      "sha256": "93ce4c0e9b9183a5f94cfc4d7c96e6ea7ca55ba0c4a9f27b3b448dd12554ba24",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/D-仅在必要时语义切分.md",
+      "sha256": "de818b750c79d79ec91a9fdf43a5ec6ce9615e74ccadac3dfc3711747acaf4af",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/E-Block来源映射.md",
+      "sha256": "f4299ccaf7592c18b0b80f06817c1a753ce5b8e8d10fe2c99293ca85b193f7a6",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/F1-章首阅读路线六项回顾与章末.md",
+      "sha256": "5345a503af5c46d40acdd8c192a0c36797d7d710d5257fbe71fb4465d491a18f",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/F2-术语解释与复用.md",
+      "sha256": "2f05a0bdcaf50c859148e09f0b02052c831444596a4e3810ce362946a2b70e63",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R1-确认版/F3-逐Part练习.md",
+      "sha256": "2399de03018bce80e84fecf1e351cf273bb2b84210f99ae232ed0380a86f1b7e",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/A1-P2公式元素详解.md",
+      "sha256": "28792b834d6b0f8eb32b7bdc60e82793ae4e63399bea8c98d5d27462a1a75411",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/A2-P2图表流程代码详解.md",
+      "sha256": "dffe09d273f75ef79446e36982163486abd5e436c4151431544a6a14b1f997af",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/B1-DS夸父社批量原文翻译.md",
+      "sha256": "0528aa324b22735a6bb85d4527873286ecb5bf1618a3d761d9e98a051a6b8a44",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/B2-DS图片文字批量翻译.md",
+      "sha256": "b370f21bb0969833b538b79f89890b47758490b1da3d9287a09e1e2deb4d7a37",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/E1-原文讲解批量ID分配.md",
+      "sha256": "3f02a0a3b0d5cca490961ea6a0f258dc82bb82d0324fec8574e77b5b0bbe9577",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/F1-章首阅读流程六项回顾章末.md",
+      "sha256": "8d541563ccadbd70303df82e10557b2eae99923683aab464639e20d71ce4816e",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/F2-术语候选与解释.md",
+      "sha256": "59125a18573b2a1f13fd0dcf94bce43d62a37093ba58d35270187c6a0d9cc97c",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/F3-按Part练习与答案.md",
+      "sha256": "8cb7834b0cd4e0345c6e8874675616031c81b188fd49cb90d45ddebcee36a54a",
+      "handling": "legacy_reference_only"
+    },
+    {
+      "path_in_evidence_zip": "提示词/历史-R2-优化版/Q1-映射准确度抽样分析.md",
+      "sha256": "ac8082cec53a6a5a7fe051b408a999d7e25a10d13fad6a87b8f943806449159f",
+      "handling": "legacy_reference_only"
+    }
+  ],
+  "new_prompts": [
+    {
+      "path": "prompts/A1-P2-数学资源.md",
+      "sha256": "75177e65256033432a479c0d89cc1b2b70eaf27545808b89c8d11a6a30b7bfde"
+    },
+    {
+      "path": "prompts/A2-P2-视觉表格流程代码.md",
+      "sha256": "2bbb6e3e4f56cf3aad4f226e83c5e4f17476b2dec23a4fa0be52b73a92d8f391"
+    },
+    {
+      "path": "prompts/B1-源文批量翻译-DS.md",
+      "sha256": "604dc093ff7c97398b0694a38529d8320331e79bbbb5bc55a0f5ef7898ca8d41"
+    },
+    {
+      "path": "prompts/B2-图中文字批量翻译-DS.md",
+      "sha256": "0d25d3fbea68de7d24effabfdd5e5ba39f32cc5e3da540681f8c4c63e1362657"
+    },
+    {
+      "path": "prompts/C1-并列结构判定.md",
+      "sha256": "b8e848821187235ad58ca71db61811f7eb635c6acbc9b4176f28e2134dfcf923"
+    },
+    {
+      "path": "prompts/D1-可选章节边界判定.md",
+      "sha256": "c71f60f65cd07fb3c18d1e72bee74c27382ba57125b3585b71307c923c28bab1"
+    },
+    {
+      "path": "prompts/E1-可选锚点映射.md",
+      "sha256": "d0ba60c4f954fa20eec1716315dbb3f382fc0b2a171f990932edd7830fcf633a"
+    },
+    {
+      "path": "prompts/F12-教学附件和术语.md",
+      "sha256": "e9a6b927157efc4f1bdea7b41ea2a50d86744341c8c9ccab8ba45cf03cd83f70"
+    },
+    {
+      "path": "prompts/F3-按Part练习.md",
+      "sha256": "f77b3de394800fbffae3f7f38e5746dc6690039e9da8d1843c758122f8e08251"
+    }
+  ],
+  "original_count": 30,
+  "new_count": 9,
+  "no_model_calls_performed": true,
+  "not_deployed": true
+}

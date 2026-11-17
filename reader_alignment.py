@@ -26,7 +26,8 @@ def build_alignment(material):
             sid=row.get('sentence_id')
             if sid and not any(s['id']==sid for s in source.get('sentences',[])):
                 invalid.append({'explanation_id':pid,'sentence_id':sid});continue
-            links.append({'passage_id':source['id'],'sentence_id':sid})
+            links.append({'passage_id':source['id'],'sentence_id':sid,
+                          **{key:row[key] for key in ('start','end') if key in row}})
         quote=re.sub(r'\s+','',p.get('source_quote') or '')
         if len(quote)>=8:
             narrowed=[]

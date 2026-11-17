@@ -11,9 +11,44 @@ window.ReaderSourceFlow={create(ctx){
   const links=target.links?.length?target.links:target.source_ids?.length?target.source_ids.map(id=>({passage_id:id,sentence_id:target.sentence_ids?.length===1?target.sentence_ids[0]:null})):entry?.links?.length?entry.links:p?.content_kind==='explanation'?p.source_links||[]:p?[{passage_id:p.id,sentence_id:target.sentence_id||null}]:[];
   const ids=[...new Set(links.map(l=>l.passage_id).filter(id=>source(id)?.content_kind!=='explanation'&&source(id)))],sentences=[...new Set(links.map(l=>l.sentence_id).filter(Boolean))];
   const explanations=target.explanation_ids?.length?target.explanation_ids:p?.content_kind==='explanation'?[p.id]:[...new Set(ids.flatMap(id=>model()?.alignment?.sources?.[id]?.explanation_ids||model()?.passages.filter(p=>p.content_kind==='explanation'&&p.source_links?.some(l=>l.passage_id===id)).map(p=>p.id)||[]))].filter(id=>{const rows=model()?.alignment?.explanations?.[id]?.links||[];return !sentences.length||!rows.length||rows.some(l=>!l.sentence_id||sentences.includes(l.sentence_id))});
-  const visible=new Set(ui()?.explanation()?.passage_ids||[]),current=ui()?.activeNode()?explanations.filter(id=>visible.has(id)):explanations,precise=current.filter(id=>['block','quote'].includes(model()?.alignment?.explanations?.[id]?.precision));const chosen=!(target.explanation_ids?.length)&&p?.content_kind!=='explanation'&&precise.length?precise:current;return {ids,sentences,explanations:chosen,refs:sourceRefs(ids,sentences),key:JSON.stringify([ids,sentences,chosen])};
+  const visible=new Set(ui()?.explanation()?.passage_ids||[]),current=ui()?.activeNode()?explanations.filter(id=>visible.has(id)):explanations,precise=current.filter(id=>['block','quote'].includes(model()?.alignment?.explanations?.[id]?.precision));const chosen=!(target.explanation_ids?.length)&&p?.content_kind!=='explanation'&&precise.length?precise:current;
+  const ranges=links.filter(l=>!l.sentence_id&&Number.isInteger(l.start)&&Number.isInteger(l.end));
+  return {ids,sentences,explanations:chosen,ranges,refs:sourceRefs(ids,sentences),key:JSON.stringify([ids,sentences,chosen,ranges])};
  }
- function clearLinked(){for(const n of painted)n.classList.remove('reader-linked','reader-linked-preview');painted.clear()}
+ const excerpts=new Map();
+ function clearExcerpts(keep=new Set()){for(const [node,view] of excerpts)if(!keep.has(node)||!node.isConnected){view.remove();excerpts.delete(node)}}
+ function clearLinked(){for(const n of painted)n.classList.remove('reader-linked','reader-linked-preview');painted.clear();clearExcerpts()}
+ function showExcerpts(root,data){
+  const keep=new Set(),targets=[];
+  if(data.ranges.length&&root)for(const article of matching(root,{...data,sentences:[]},'original')){
+   if(!article.matches('article[data-passage-id]'))continue;
+   const p=source(article.dataset.passageId),ranges=data.ranges.filter(row=>row.passage_id===p?.id);
+   if(!ranges.length||!p)continue;
+   keep.add(article);
+   let view=excerpts.get(article);
+   if(view?.dataset.rangeKey!==JSON.stringify(ranges)){
+    view?.remove();
+    view=el('div','reader-source-excerpts');view.dataset.rangeKey=JSON.stringify(ranges);
+    const chars=Array.from(p.en||p.raw_text||p.zh||'');
+    for(const {start,end} of ranges){
+     let text=chars.slice(start,end).join('');
+     // 字幕原件仍可查看；定位到字幕时，只把时间和说的话展示在摘录里。
+     if(text.startsWith('{'))try{
+      const cues=JSON.parse('['+text+']');
+      if(cues.length&&cues.every(c=>Number.isFinite(c.from)&&typeof c.content==='string')){
+       const clock=t=>[Math.floor(t/60),Math.floor(t%60)].map(x=>String(x).padStart(2,'0')).join(':');
+       text=cues.map(c=>clock(c.from)+'  '+c.content).join('\n');
+      }
+     }catch{}
+     const quote=el('blockquote','reader-source-excerpt',text);
+     view.append(quote);targets.push(quote);
+    }
+    article.prepend(view);excerpts.set(article,view);
+   }else targets.push(...view.children);
+  }
+  clearExcerpts(keep);
+  return targets;
+ }
  function matching(root,data,kind){
   if(!root)return [];
   const ids=new Set(kind==='explanation'?data.explanations:data.ids),out=[];let index=domIndexes.get(root);if(!index){index={dirty:true,map:new Map()};index.observer=new MutationObserver(()=>index.dirty=true);index.observer.observe(root,{childList:true,subtree:true});domIndexes.set(root,index)}if(index.observer.takeRecords().length)index.dirty=true;if(index.dirty){index.map.clear();for(const n of root.querySelectorAll('article[data-passage-id]'))for(const id of [n.dataset.passageId,...parseIds(n.dataset.passageIds)]){if(!index.map.has(id))index.map.set(id,[]);index.map.get(id).push(n)}index.dirty=false}const all=[...new Set([...ids].flatMap(id=>index.map.get(id)||[]))];
@@ -27,8 +62,8 @@ window.ReaderSourceFlow={create(ctx){
   return out;
  }
  function paintLinked(data){
-  const cls='reader-linked',targets={},next=new Set();
-  for(const kind of ['original','translation','explanation']){targets[kind]=matching(kind==='original'?$('original-reading'):$(kind),data,kind);for(const n of targets[kind])next.add(n)}
+  const cls='reader-linked',targets={},next=new Set(),exact=showExcerpts($('original-reading'),data);
+  for(const kind of ['original','translation','explanation']){targets[kind]=kind==='original'&&exact.length?exact:matching(kind==='original'?$('original-reading'):$(kind),data,kind);for(const n of targets[kind])next.add(n)}
   const questions=new Map((ctx.questions?.()||[]).map(q=>[q.id,q]));for(const card of $('interaction').querySelectorAll('.question-card')){const q=questions.get(card.id);if(!q)continue;let qdata=questionCache.get(q);if(!qdata){qdata=linkData({...q.alignment,passage_id:q.passage_id,sentence_id:q.sentence_id});questionCache.set(q,qdata)}if(qdata.ids.some(id=>data.ids.includes(id))&&(!data.sentences.length||!qdata.sentences.length||qdata.sentences.some(id=>data.sentences.includes(id))))next.add(card)}
   for(const n of painted)if(!next.has(n))n.classList.remove(cls);for(const n of next)if(!painted.has(n))n.classList.add(cls);painted.clear();for(const n of next)painted.add(n);return targets;
  }
@@ -36,13 +71,15 @@ window.ReaderSourceFlow={create(ctx){
  async function linkSelection(target,origin='translation',{toggle=true}={}){
   if(ui()?.isSelecting?.())return false;ctx.main?.();sync();const data=linkData(target);if(!data.ids.length&&!data.explanations.length)return false;
   const request=++linkRequest;let serial=++linkSerial;if(toggle&&linked?.key===data.key){linked=null;localRefs=null;clearLinked();if(active)ctx.paintRefs?.([]);return true}
-  await ui()?.revealLinked?.(data.ids,data.explanations);if(request!==linkRequest)return true;sync();serial=++linkSerial;linked=data;localRefs=data.refs;
+  const exact=origin!=='original'&&data.ranges.length>0;
+  if(exact)ctx.showOriginal?.();
+  await ui()?.revealLinked?.(data.ids,data.explanations,exact);if(request!==linkRequest)return true;sync();serial=++linkSerial;linked=data;localRefs=data.refs;
   let targets=paintLinked(data);const page=data.refs.find(r=>pages.includes(r.page_id))?.page_id||data.refs[0]?.page_id;
   if(page){if(page===active&&ctx.paintRefs)ctx.paintRefs(data.refs);else await ctx.draw(page,data.refs,{passive:true});if(serial!==linkSerial)return true;
    if(origin!=='original'){const box=data.refs.find(r=>r.page_id===page)?.bbox;if(box){const top=offset()+box[1]*scale,bottom=offset()+box[3]*scale;if(top<viewport.scrollTop+12||bottom>viewport.scrollTop+viewport.clientHeight-12)viewport.scrollTo({top:Math.max(0,top-24),behavior:matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'})}}
   }
   if(serial!==linkSerial)return true;targets=paintLinked(data);
-  for(const kind of ['original','translation','explanation'])if(kind!==origin)reveal(kind==='original'?viewport:$(kind),targets[kind]?.[0]);
+  for(const kind of ['original','translation','explanation'])if(kind!==origin)reveal(kind==='original'?($('original-reading')||viewport):$(kind),targets[kind]?.[0]);
   document.dispatchEvent(new CustomEvent('reader-source-linked',{detail:{source_ids:data.ids,explanation_ids:data.explanations,origin}}));return true;
  }
  let originOperation=0;
@@ -140,6 +177,5 @@ window.ReaderSourceFlow={create(ctx){
   for(const group of ordered){const boxes=[...group.querySelectorAll('.inline-question')].filter(box=>!box.closest('.reader-coherent-segment'));if(!boxes.length)continue;const bundled=group.matches('.reader-group-figure,.reader-group-table,.reader-continuation,.reader-coherent-group');if(!bundled)continue;const footer=el('div','reader-group-questions'),saved=[];let empty=null;for(const box of boxes){const input=box.querySelector('textarea');if(input?.value.trim())saved.push(box);else if(!empty)empty=box;else box.remove()}if(group.classList.contains('reader-coherent-group')&&empty){empty.remove();empty=null}const ids=JSON.parse(group.dataset.passageIds),text=ids.map(id=>source(id)?.zh||source(id)?.en||'').filter(Boolean).join('\n');if(empty)ctx.groupInput?.(empty.querySelector('textarea'),ids,text);if(saved.length){footer.append(composer([...saved,...(empty?[empty]:[])],group.dataset.groupId))}else if(empty)footer.append(empty);if(footer.childElementCount)group.append(footer)}
   let previous=null;for(const group of ordered){const pid=JSON.parse(group.dataset.pageIds||'[]')[0];if(pid&&pid!==previous){const label=el('div','reader-translation-page',pageLabel(pid));group.before(label);previous=pid}}}
  function annotate(root){sync();requestAnimationFrame(restoreLinked)}
-
  return {link,restoreLinked,selection:()=>linked,userMoving:()=>false,sync,prepare,activate,rescale,offset,reflow,annotate,range,refs:()=>localRefs,pageStep:delta=>{const id=pages[pages.indexOf(active)+delta];if(id){ctx.draw(id,ctx.refs()).then(()=>scrollTo(viewport,[...stack.children].find(n=>n.dataset.pageId===id)));}},page:()=>active};
 }};

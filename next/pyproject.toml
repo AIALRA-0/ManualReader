@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "manualreader-next"
+version = "0.8.1"
+description = "ManualReader Next service and isolated delivery through STEP-20"
+requires-python = ">=3.12,<3.13"
+dependencies = ["requests==2.32.3", "zstandard==0.25.0", "PyMuPDF==1.27.2", "beautifulsoup4==4.13.3", "Pillow==12.2.0"]
+
+[project.scripts]
+manualreader-next = "manualreader.client:main"
+manualreader-next-server = "manualreader.server:main"
+manualreader-step03 = "manualreader.step03_client:main"
+manualreader-step03-server = "manualreader.step03_server:main"
+manualreader-step04 = "manualreader.step04_client:main"
+manualreader-step04-server = "manualreader.step04_server:main"
+manualreader-step56 = "manualreader.step56_client:main"
+manualreader-step56-server = "manualreader.step56_server:main"
+
+manualreader-step07 = "manualreader.step07_client:main"
+manualreader-step07-server = "manualreader.step07_server:main"
+
+manualreader-finish = "manualreader.stages.finish.runner:main"
+manualreader-finish-reader = "manualreader.stepfinal_server:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"manualreader.stages.step02" = ["*.txt", "*.json"]
+"manualreader.stages.step04" = ["*.txt", "*.js"]
+"manualreader.stages.step05" = ["*.txt"]
+"manualreader.stages.step06" = ["*.txt"]
+
+
+"manualreader.stages.step07" = ["*.md", "*.cjs", "*.js", "vendor/*.*", "vendor/katex/*.*", "vendor/katex/fonts/*.*"]
+
+"manualreader.stages.finish" = ["prompt-manifest.json", "prompts/*.md", "static/*.css", "static/*.js"]
+"manualreader.steps" = ["*.json", "compat/*.json", "prompts/*.md"]

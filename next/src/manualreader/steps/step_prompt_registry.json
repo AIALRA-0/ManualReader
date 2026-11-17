@@ -1,0 +1,103 @@
+{
+  "frozen": {
+    "02": {
+      "src/manualreader/stages/step02/reader_step02_answer.txt": "1330da7c6606d724167204b4f5913d5f592a935bfe597e358eb79c5c487d7817",
+      "src/manualreader/stages/step02/reader_step02_finale.txt": "eadc6a0791ce1c430d6c27120df80df5fc884fb07cc27468d9e841edc11cdd50",
+      "src/manualreader/stages/step02/reader_step02_intro.txt": "46fa97bd1cda80fee9f7d95d624d886ed92d71e921fa268e6b34655e6beb73d2",
+      "src/manualreader/stages/step02/reader_step02_normal.txt": "fbbbc5495d981a65487372716facbfe1ca02ea470bd8ab08aa7473be44e2ad40"
+    },
+    "03": {},
+    "04": {
+      "src/manualreader/stages/step04/ANSWER.txt": "c3093b4d776c4b3bae693225ecfce9c7fe3dd24ad8ff60f26fcc93c0d3085fca",
+      "src/manualreader/stages/step04/FINALE.txt": "5e3a072c3ff6e5c7b20a6a52ebaa37f18bf2c8e5ded3011e0ff0cf19eb8b2a63",
+      "src/manualreader/stages/step04/INTRO.txt": "c66e26bd9627ce90bb5dbba9aee186f015aba847f1ab1bdbf0be9e043366e47f",
+      "src/manualreader/stages/step04/markdown-vendor.LICENSE.txt": "38e0d9f098e05e7151abcd165fc6dc03cdebfa41e44f42fe892ead615f98d78f",
+      "src/manualreader/stages/step04/NORMAL.txt": "3f9ae5292bd68d8e7f7d39dadd01c63ce3b3c902a9a65fee78a8d42bbe37a8db"
+    },
+    "05": {
+      "src/manualreader/stages/step05/STEP05-map.txt": "132ba79f9e00e243a3fb7f59176cbf4deea5f762b74959cc3b758c274cc584de"
+    },
+    "06": {
+      "src/manualreader/stages/step06/STEP06A-gap.txt": "fe1a7e1cd75fd989052611169191df81a749ca64cd35e076c3c8f28c6a45719d",
+      "src/manualreader/stages/step06/STEP06B-depth.txt": "cf8848d70a7c16ae8295351caf2b0ff287c0184cde5a9b97f252df0959b54932"
+    },
+    "07": {
+      "src/manualreader/stages/step07/STEP07_FUSION.md": "f31fe1c6b9f3bcfff19bcb085e52d8f3b7731b997a2c4d9a5aab5c7bbc7aaded",
+      "src/manualreader/stages/step07/STEP07_V2_EDITOR.md": "2a8bcf289eaca494faee4fa06157b098c569e6601dde96a254972c1f31f43a76"
+    }
+  },
+  "adapted": {
+    "D1": {
+      "step": "step_08_structure",
+      "variant": "structure",
+      "prompt": "prompts/step_08_structure_optional.md",
+      "sha256": "e928384748571d3c17c9505cf0c16a1e2990c31fbe32b779aed9eb2285dcb144"
+    },
+    "B1": {
+      "step": "step_10_source_translation",
+      "variant": "source_translation",
+      "prompt": "prompts/step_10_source_translation.md",
+      "sha256": "18edba5b636cd521debe0f012de38f9187706fdabfa9518f438cf17d507a6368"
+    },
+    "B2": {
+      "step": "step_11_visual_label_translation",
+      "variant": "visual_label_translation",
+      "prompt": "prompts/step_11_visual_label_translation.md",
+      "sha256": "ca6d63bf9662ff5783fccbb2127e6fce707da6999b49bc2972632fc144a3a09f"
+    },
+    "A1": {
+      "step": "step_12_resource_explanation",
+      "variant": "resource_explanation_math",
+      "prompt": "prompts/step_12_resource_explanation_math.md",
+      "sha256": "4c1438033d516782077b8cee56d46bde08de851b64f0ba2b58bdb2e969725353"
+    },
+    "A2": {
+      "step": "step_12_resource_explanation",
+      "variant": "resource_explanation_visual",
+      "prompt": "prompts/step_12_resource_explanation_visual.md",
+      "sha256": "9263367e704aa35c4d292a3f7bad4ad3dda04f3bb689ff7ec17fed5a6e08745b"
+    },
+    "F2": {
+      "step": "step_13_terminology",
+      "variant": "terminology",
+      "prompt": "prompts/step_13_terminology.md",
+      "sha256": "091a815f7f355198ace0e2909b5b7c216dd98badf0e4949c155e3e28b0b476c5"
+    },
+    "F3": {
+      "step": "step_14_practice",
+      "variant": "practice",
+      "prompt": "prompts/step_14_practice.md",
+      "sha256": "f31b0d75e9ad580604f24872ec8d923b15ae79f0cab806dd45a9729fb63e93f3"
+    },
+    "F1": {
+      "step": "step_15_chapter_guidance",
+      "variant": "chapter_guidance",
+      "prompt": "prompts/step_15_chapter_guidance.md",
+      "sha256": "e67419d7a83556e9e1b1ca77765c4d2eceaf153369bfaf8f2eee9141d9fbda0c"
+    },
+    "C1": {
+      "step": "step_16_final_formatting",
+      "variant": "final_formatting",
+      "prompt": "prompts/step_16_final_formatting_optional.md",
+      "sha256": "634d56ba67d1f1a98e57bf585ffb49ef3cff8d70d4292cdd7fb4bb6e251a0890"
+    },
+    "E1": {
+      "step": "step_18_alignment_coverage",
+      "variant": "alignment",
+      "prompt": "prompts/step_18_alignment_optional.md",
+      "sha256": "4bd73139af9a9b1a59e7c0d67942754b002a1cda020aabd05f5502b46e6e4d6a"
+    },
+    "SOURCE_GAP": {
+      "step": "step_18_alignment_coverage",
+      "variant": "source_gap_recovery",
+      "prompt": "prompts/step_18_source_gap_recovery.md",
+      "sha256": "ec274a85f99fcb95db1f36eb4bd07a6e4dd572a1d71591ea67d9907365d9d357"
+    },
+    "TERM_NAME": {
+      "step": "step_13_terminology",
+      "variant": "terminology_name",
+      "prompt": "prompts/step_13_terminology_name.md",
+      "sha256": "aa5a1e002580a58ece48af42e17768f9e601a669f43eb86860c8c4b3756bdb1f"
+    }
+  }
+}

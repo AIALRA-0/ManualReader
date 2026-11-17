@@ -2,7 +2,7 @@
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from pathlib import Path
 import json,re,threading,time,requests,zstandard
-from reader_research_transport import compact_history
+from reader_research_transport import WEB_CALL, compact_history
 
 MAX_TRAILING_WHITESPACE = 4096
 UPSTREAM_STREAM_IDLE_SECONDS = 180
@@ -26,16 +26,56 @@ def measured_usage(receipts,profile,session_id):
 
 WEB_DESCRIPTION = 'You use tools.web__run to fill a concrete gap in the current question or chapter. Start from the supplied original, images, and previously opened excerpts. Use them directly when they already support the point. Batch independent searches and start with response_length:"short". Use open:[{ref_id:"...",lineno:120}] or find:[{ref_id:"...",pattern:"..."}] to read the source. Open a new source or broaden an excerpt when you can name what new evidence it may provide. If you already searched for the same fact, follow a promising lead or write from the evidence you have. Cite actual opened sources and reuse their lines across subquestions.\nFor text, call text(await tools.web__run(args)) once. The result may be a string, so check its type before iterating. For images, use const r=await tools.web__run(args); if(typeof r==="string")text(r); else for(const b of (Array.isArray(r)?r:r.content??[])){if(b.type==="image")image(b);else if(b.type==="text")text(b.text);}\nFor a PDF figure, use screenshot:[{ref_id:"...",pageno:0}]. You already have the tool names.'
 
-IMAGE_DESCRIPTION = '\nAdd visuals anywhere they make the material quicker to understand, easier to compare, or easier to remember. When in doubt, add a simple visual. Put each one next to the text it explains and add more when they help with different ideas. Reuse relevant originals or use coordinate_figures or Mermaid when they convey the idea clearly. Call image generation when a new illustration or concrete visual example will help the reader.\nTo generate or edit an image, call tools.image_gen__imagegen({prompt:"...",transparent_background:false,referenced_image_paths:["actual local source path"]}). For a new image, omit referenced_image_paths and num_last_images_to_include. For an edit, provide one of them. For a long image call, start with this exact first line followed by a newline:\n// @exec: {"yield_time_ms":120000,"max_output_tokens":1000}\nUse JSON arguments. Await the result and show it with generatedImage(result). If exec returns a running cell id, resume it with functions.wait. Keep the real asset path if the tool returns one and add generated_assets only for an image that was actually generated. Leave base64 in the tool result. Avoid text(result), JSON.stringify(result), Object.entries(result), and printing image_url.'
+IMAGE_TOOL_DESCRIPTION = 'To generate or edit an image, call tools.image_gen__imagegen({prompt:"...",transparent_background:false,referenced_image_paths:["actual local source path"]}). For a new image, omit referenced_image_paths and num_last_images_to_include. For an edit, provide one of them. For a long image call, start with this exact first line followed by a newline:\n// @exec: {"yield_time_ms":120000,"max_output_tokens":1000}\nUse JSON arguments. Await the result and show it with generatedImage(result). If exec returns a running cell id, resume it with functions.wait. Leave base64 in the tool result. Avoid text(result), JSON.stringify(result), Object.entries(result), and printing image_url.'
+IMAGE_DESCRIPTION = '\nAdd visuals anywhere they make the material quicker to understand, easier to compare, or easier to remember. When in doubt, add a simple visual. Put each one next to the text it explains and add more when they help with different ideas. Reuse relevant originals or use coordinate_figures or Mermaid when they convey the idea clearly. Call image generation when a new illustration or concrete visual example will help the reader.' + '\n' + IMAGE_TOOL_DESCRIPTION + ' Keep the real asset path for generated_assets.'
+IMAGE_MARKDOWN_DESCRIPTION = IMAGE_TOOL_DESCRIPTION + ' When the image can explain the relationship accurately, use the real local asset path returned by the tool in the chapter Markdown. Continue with the complete Markdown if the tool returns no file.'
 
 COORDINATOR_TOOLS = 'You run the one authorized local command with functions.exec_command. When it returns session_id, wait for the same process with functions.write_stdin until you see exit_code. Prefer the native tools. With a functions.exec wrapper, use text(await tools.exec_command(args)) or text(await tools.write_stdin(args)). Read the compact completion record and report what finished. Leave search, tool discovery, source reading, and writing to the local program.'
 
 class Gate:
-    def __init__(self,spec,prompt,system,folder,research=True,allow_image_generation=True):
+    def __init__(self,spec,prompt,system,folder,research=True,allow_image_generation=True,request_limit=None,original_tool=False):
+        self.request_limit=request_limit
         self.spec,self.prompt,self.system,self.folder,self.research=spec,prompt,system,Path(folder),research
         self.receipts=[];self.tools=None;self.lock=threading.RLock();self.allow_image_generation=allow_image_generation
         self.output_stalled = False
         self.search_requests=[]
+        self.original_tool=original_tool
+        self.original_results={}
+        self.original_store=None
+
+    def original_history(self,history):
+        """Resolve the one local read tool at the gate when the desktop CLI has no native dispatch."""
+        from reader_step02_mcp import read
+        name='mcp__reader_original__read'
+        calls={item.get('call_id'):item for item in history
+               if item.get('type')=='function_call' and item.get('name')==name and item.get('call_id')}
+        out=[]
+        for item in history:
+            key=item.get('call_id')
+            if item.get('type')!='function_call_output' or key not in calls:
+                out.append(item)
+                continue
+            with self.lock:
+                if key not in self.original_results:
+                    try:
+                        if len(self.original_results)>=6:
+                            raise ValueError('已达到本轮按需读取次数；已提供的原件仍可使用')
+                        if self.original_store is None:
+                            self.original_store=json.loads(Path(self.original_tool[-2]).read_bytes())
+                            for stored in self.original_store.values():
+                                stored['rows']={row['n']:row for row in stored['rows']}
+                        args=json.loads(calls[key].get('arguments') or '{}')
+                        content=read(self.original_store,args,Path(self.original_tool[-1]))['content']
+                        if any(x['type']=='image' for x in content):
+                            result=[{'type':'input_image','image_url':'data:image/png;base64,'+x['data']} if x['type']=='image'
+                                    else {'type':'input_text','text':x['text']} for x in content]
+                        else:
+                            result='\n'.join(x['text'] for x in content)
+                    except (ValueError,TypeError,KeyError,AttributeError,OSError) as error:
+                        result='access_blocked: '+str(error)
+                    self.original_results[key]=result
+                out.append({**item,'output':self.original_results[key]})
+        return out
     def persist(self):
         """只记录传输阶段、字节数和时间，让长请求也能被观察；不保存流中的思考内容。"""
         with self.lock:
@@ -67,15 +107,55 @@ class Gate:
                     if tool:
                         names=('wait','exec_command','write_stdin')if self.spec.get('role')=='coordinator'else('wait',)
                         waits=[t for t in functions.get('tools',[])if t.get('name')in names]
-                        description=COORDINATOR_TOOLS if self.spec.get('role')=='coordinator'else WEB_DESCRIPTION+(IMAGE_DESCRIPTION if self.allow_image_generation else '')
+                        if self.spec.get('role')=='coordinator':
+                            description=COORDINATOR_TOOLS
+                        elif self.research:
+                            description=WEB_DESCRIPTION+(IMAGE_DESCRIPTION if self.allow_image_generation else '')
+                        else:
+                            description=IMAGE_MARKDOWN_DESCRIPTION
                         self.tools={**m,'tools':[{**functions,'tools':[{**tool,'description':description},*waits]}]}
         if target is None:raise ValueError('本次请求没有当前任务原文，停止转发以避免串任务')
         first={'role':'user','content':[{'type':'input_text','text':self.prompt}]}
-        unique={json.dumps(x,sort_keys=True):x for x in images};first['content'].extend(unique.values())
+        unique={json.dumps(x,sort_keys=True):x for x in images}
+        if '"source_evidence"' in self.prompt:
+            from base64 import b64decode
+            from reader_source_wire import digest,visual_expectations
+            try:
+                payload=json.loads(self.prompt)
+            except json.JSONDecodeError:
+                payload={}
+            expected=visual_expectations(payload)
+            wire=[]
+            for image in unique.values():
+                url=image.get('image_url','')
+                wire.append(digest(b64decode(url.partition(',')[2],validate=True))
+                            if url.startswith('data:image/') else None)
+            if any(i>len(wire) or wire[i-1]!=sha for i,sha in expected.items()):
+                raise ValueError('实际发送的图片消息缺少已核验的原始像素')
+        first['content'].extend(unique.values())
         # 保留本任务真实工具往返；不携带维护对话、全局技能目录和无关工具说明。
         history=compact_history(messages[target+1:]) if self.research and self.spec.get('role')!='coordinator' else messages[target+1:]
-        value={**value,'instructions':self.system,'input':([self.tools]if self.research and self.tools else[])+[first]+history,
-               'tools':[t for t in value.get('tools',[])if self.spec.get('role')=='coordinator'and t.get('name')in('exec_command','write_stdin')],'tool_choice':'auto'if self.research else'none','parallel_tool_calls':False,'service_tier':'default'}
+        if isinstance(self.original_tool,(list,tuple)):
+            history=self.original_history(history)
+        tools_enabled=bool(self.tools and (self.research or self.allow_image_generation))
+        additions=[self.tools] if tools_enabled else []
+        native=[t for t in value.get('tools',[])if self.spec.get('role')=='coordinator'and t.get('name')in('exec_command','write_stdin')]
+        if self.original_tool:
+            def allowed(tool):
+                name=tool.get('name','')
+                return name=='mcp__reader_original' or name.startswith('mcp__reader_original__')
+            native.extend(t for t in value.get('tools',[]) if allowed(t))
+            additions.extend({**m,'tools':[t for t in m['tools'] if allowed(t)]}
+                             for m in messages[:target] if m.get('type')=='additional_tools'
+                             and any(allowed(t) for t in m.get('tools',[])))
+            if not additions and not any(allowed(t) for t in native):
+                # This Codex runtime registers local MCP tools but does not list them on every wire request.
+                from reader_step02_mcp import TOOL
+                native.append({'type':'function','name':'mcp__reader_original__read','description':TOOL['description'],
+                               'parameters':TOOL['inputSchema'],'strict':False})
+        exhausted=bool(self.original_tool and len(self.original_results)>=6)
+        value={**value,'instructions':self.system,'input':additions+[first]+history,
+               'tools':native,'tool_choice':'auto'if not exhausted and (tools_enabled or self.original_tool and (native or additions)) else'none','parallel_tool_calls':False,'service_tier':'default'}
         value.pop('previous_response_id',None)
         if self.research and not self.tools:raise ValueError('没有取得可用的检索工具声明')
         return value
@@ -92,7 +172,10 @@ class Gate:
                 self.send_response(r.status_code);self.send_header('Content-Length',str(len(r.content)));self.end_headers();self.wfile.write(r.content)
             def do_POST(self):
                 if self.path!='/responses':
-                    # Codex 的检索执行也走同一服务地址；不截断这条真实工具通道。
+                    if not outer.research and self.path.split('?',1)[0]=='/alpha/search':
+                        self.send_error(403,'Web research is disabled for this Reader task')
+                        return
+                    # Codex 的工具也走同一服务地址。
                     raw=self.rfile.read(int(self.headers.get('Content-Length',0)))
                     raw,policy=__import__('reader_research_transport').prepare(self.path,raw,outer.spec.get('compact_search_discovery',True))
                     started=time.perf_counter()
@@ -119,16 +202,25 @@ class Gate:
                     raw=self.rfile.read(int(self.headers.get('Content-Length',0)))
                     if self.headers.get('Content-Encoding')=='zstd':raw=zstandard.ZstdDecompressor().decompress(raw,max_output_size=32*1024*1024)
                     original=json.loads(raw);receipt['client_tools']=[{'type':t.get('type'),'name':t.get('name'),'nested':[x.get('name')for x in t.get('tools',[])]}for t in original.get('tools',[])];value=outer.prepare(original)
-                    with outer.lock:number=len(outer.receipts)+1;outer.receipts.append(receipt)
+                    with outer.lock:
+                        if outer.request_limit is not None and len(outer.receipts)>=outer.request_limit:
+                            self.send_error(409,'Reader model request limit reached')
+                            self.close_connection=True
+                            return
+                        number=len(outer.receipts)+1
+                        outer.receipts.append(receipt)
                     public={k:v for k,v in value.items()if k not in('client_metadata','access_programs')}
                     public['input']=[m if m.get('type')!='reasoning'else{'type':'reasoning','content_omitted':True}for m in value['input']]
                     (outer.folder/('sent-'+str(number)+'.json')).write_text(json.dumps(public,ensure_ascii=False,indent=2),'utf8')
-                    receipt.update(phase='awaiting_headers',original_messages=len(original.get('input',[])),sent_messages=len(value['input']),request_bytes=len(json.dumps(value).encode()),tool_declarations=1 if outer.research else 0)
-                    receipt['research_roundtrip']=any(row.get('type')=='custom_tool_call_output' for row in value['input'])
+                    receipt.update(phase='awaiting_headers',original_messages=len(original.get('input',[])),sent_messages=len(value['input']),request_bytes=len(json.dumps(value).encode()),tool_declarations=int(value['tool_choice']=='auto'))
+                    search_ids={row.get('call_id') for row in value['input']
+                                if row.get('type')=='custom_tool_call' and WEB_CALL.search(str(row.get('input','')))}
+                    receipt['research_roundtrip']=outer.research and any(
+                        row.get('type')=='custom_tool_call_output' and row.get('call_id') in search_ids for row in value['input'])
                     headers={k:v for k,v in self.headers.items()if k.lower()not in('host','content-length','content-encoding','connection','upgrade','accept-encoding')};headers.update({'Content-Type':'application/json','Accept-Encoding':'identity'})
                     outer.persist()
                     r=requests.post('https://chatgpt.com/backend-api/codex/responses',json=value,headers=headers,stream=True,timeout=(30,UPSTREAM_STREAM_IDLE_SECONDS),allow_redirects=False)
-                    receipt.update(phase='streaming',status=r.status_code,headers_seconds=round(time.perf_counter()-began,3));self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Connection','close');self.end_headers();last_saved=0;public_items=set()
+                    receipt.update(phase='streaming',status=r.status_code,retry_after=r.headers.get('Retry-After'),headers_seconds=round(time.perf_counter()-began,3));self.send_response(r.status_code);self.send_header('Content-Type',r.headers.get('Content-Type','application/json'));self.send_header('Connection','close');self.end_headers();last_saved=0;public_items=set()
                     outer.persist()
                     def forwarded_chunks():
                         nonlocal last_saved

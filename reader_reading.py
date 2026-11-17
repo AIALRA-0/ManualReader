@@ -51,17 +51,23 @@ def link_index(material):
     atoms={a:x['id'] for x in sources.values() for a in x.get('source_ids',[])}
     return sources,sentences,atoms
 
-def mapped_links(p,material,fallback=(),index=None):
+def mapped_links(p,material,fallback=(),index=None,explicit_only=False):
     sources,sentences,atoms=index if index is not None else link_index(material)
     rows=list(p.get('source_ranges',[]))
-    rows.extend({'passage_id':identity if identity in sources else sentences.get(identity) or atoms.get(identity),'sentence_id':identity if identity in sentences else None} for identity in p.get('explained_source_ids',[]))
+    ranged={row.get('passage_id') for row in rows if explicit_only and row.get('start') is not None}
+    rows.extend({'passage_id':identity if identity in sources else sentences.get(identity) or atoms.get(identity),'sentence_id':identity if identity in sentences else None} for identity in p.get('explained_source_ids',[]) if identity not in ranged)
     result=[];seen=set()
     for row in rows:
         pid=row.get('passage_id');sid=row.get('sentence_id')
         if pid not in sources or sid and sentences.get(sid)!=pid:continue
-        key=(pid,sid)
-        if key not in seen:result.append({'file_id':sources[pid].get('file_id','primary'),'passage_id':pid,'sentence_id':sid});seen.add(key)
+        start,end=(row.get('start'),row.get('end')) if explicit_only else (None,None)
+        key=(pid,sid,start,end)
+        if key not in seen:
+            result.append({'file_id':sources[pid].get('file_id','primary'),'passage_id':pid,'sentence_id':sid,
+                           **({'start':start,'end':end} if start is not None else {})})
+            seen.add(key)
     if result:return result,'block'
+    if explicit_only:return [],'none'
     # 旧讲解明确写出页码或引用了原页图片时，只恢复到该页，不冒充句级出处。
     fids={l.get('file_id','primary') for l in fallback};mentioned=set(int(n) for n in re.findall(r'第\s*(\d+)\s*页',_text(p)))
     image_numbers=set(int(n) for n in re.findall(r'!\[[^\]]*\]\([^\n)]*page[-_](\d+)\.(?:png|jpe?g)',_text(p),re.I))
@@ -83,7 +89,9 @@ def annotate_explanations(material):
     for p in material['passages']:
         if p.get('content_kind')=='explanation':
             if index is None:index=link_index(material)
-            owner=owners.get(p.get('explanation_id'),{});links,precision=mapped_links(p,material,owner.get('source_links',p.get('source_links',[])),index)
+            owner=owners.get(p.get('explanation_id'),{});links,precision=mapped_links(
+                p,material,owner.get('source_links',p.get('source_links',[])),index,
+                explicit_only='source_matching' in owner)
             p.update(source_links=links,source_link_precision=precision)
 
 def _sources(folder,original,files):
