@@ -1,0 +1,568 @@
+next/src/manualreader/stages/step03/documents.py
+  s_1c46d58ed67333::t_3412292048af13 1-334
+next/src/manualreader/stages/step02/card.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-269
+next/tests/test_stepfinal.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-59
+next/src/manualreader/stages/step07/vendor/katex/katex.min.js
+  s_1c46d58ed67333::t_42ce3c47d52e7b 1
+reader_source_quality_pdf.py
+  s_1c46d58ed67333::t_3412292048af13 1-262
+next/src/manualreader/stages/step04/markdown-vendor.LICENSE.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-702
+reader_step02_card.py
+  s_1c46d58ed67333::t_3412292048af13 1-248
+next/src/manualreader/steps/prompts/step_14_practice.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-15
+next/src/manualreader/stages/finish/prompts/A2-P2-视觉表格流程代码.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+reader_postprocess_core.py
+  s_1c46d58ed67333::t_3a1e9f471076f5 1-294
+reader_workspace.py
+  s_1c46d58ed67333::t_d9266e90fee927 263,266-268,347-348,357-361
+next/src/manualreader/steps/prompts/step_12_resource_explanation_math.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+next/tools/package_step07.py
+  s_1c46d58ed67333::t_3412292048af13 1-378
+next/tools/package_whiteboard.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-365
+reader_p15_revision.py
+  s_1c46d58ed67333::t_643c65ba5412b7 1-165
+next/src/manualreader/steps/events.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-103
+next/tests/fixtures/golden-card.md
+  s_1c46d58ed67333::t_82b8a71f77fc18 1-421
+Demo/legacy-docs/next/step07.md
+  s_1c46d58ed67333::t_3412292048af13 1-53
+next/src/manualreader/answer_repair.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-143
+reader_postprocess_qa.py
+  s_1c46d58ed67333::t_533649e0d4b9f8 1-67
+next/src/manualreader/stages/step04/jobs.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-185
+next/src/manualreader/stages/step05/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+reader_v21_policies.json
+  s_1c46d58ed67333::t_92140e22d364b6 1-151
+next/tools/load_20step.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-65
+next/tests/test_20step.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-176
+next/src/manualreader/stages/finish/formatting.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-335
+next/tools/import_acceptance.py
+  s_1c46d58ed67333::t_3412292048af13 1-249
+next/tools/check_whiteboard_renderer.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-72
+reader_media.py
+  s_1c46d58ed67333::t_e625c7cc425cb8 394,396,398-399,402-404,417
+next/tools/recover_whiteboard_f3.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-109
+next/src/manualreader/stages/step03/ocr.py
+  s_1c46d58ed67333::t_3412292048af13 1-45
+reader_postprocess_transport.py
+  s_1c46d58ed67333::t_7e1851cd0382dd 1-220
+next/tools/report_20step.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-296
+Demo/legacy-docs/next/migrated.json
+  s_1c46d58ed67333::t_ace6739b4c29f0 1-78
+next/src/manualreader/stages/finish/commit.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-209
+next/tools/replay_20step.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-83
+next/src/manualreader/stages/step07/fusion.py
+  s_1c46d58ed67333::t_3412292048af13 1-506
+next/src/manualreader/stages/finish/prompts/E1-可选锚点映射.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+next/tools/check_whiteboard_browser.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-198
+next/src/manualreader/steps/step_13_terminology.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-135
+next/src/manualreader/stages/step07/vendor/katex/katex.min.css
+  s_1c46d58ed67333::t_b30c07de938ca3 1
+next/src/manualreader/stages/step04/NORMAL.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-51
+next/tools/verify_step56_browser.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-140
+next/src/manualreader_next.egg-info/dependency_links.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+.gitattributes
+  s_1c46d58ed67333::t_01d72131a5aea5 18-22
+next/src/manualreader/stages/finish/static/reader-finish.js
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-343
+next/src/manualreader/steps/prompts/step_11_visual_label_translation.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+reader_step02_policies.json
+  s_1c46d58ed67333::t_3f63ff318fd388 1-143
+reader_task_prompts.py
+  s_1c46d58ed67333::t_0ed260ea91030b 353,355-358,362,365-366,373-374,377,389-390
+next/tools/stress_resource_explanations.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-73
+next/tools/complete_next_term_names.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-115
+next/src/manualreader/stages/step02/repair.py
+  s_1c46d58ed67333::t_3412292048af13 1-122
+next/src/manualreader/stages/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+reader_generation.py
+  s_1c46d58ed67333::t_b44fde5c3a5ed9 183-188
+CHANGELOG.md
+  s_1c46d58ed67333::t_191eb08fc1000a 1,3,5,7-8
+next/src/manualreader/client.py
+  s_1c46d58ed67333::t_3412292048af13 1-64
+next/src/manualreader/stages/step02/reader_step02_normal.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-131
+reader_reading.py
+  s_1c46d58ed67333::t_d028be47b8ff63 54,57-58,63-68,70,92-94
+next/tools/run_isolated_material.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-119,122-130,144-149
+  s_1c46d58ed67333::t_95b16a35eb9ec8 120-121,131-143
+reader_execute.py
+  s_1c46d58ed67333::t_6a90a84ef59cff 181,193-194,492,523,543,590,599-601,607-609,612,630-634,652-658,752,796-797
+next/src/manualreader/store.py
+  s_1c46d58ed67333::t_3412292048af13 1-269
+next/tools/reproject_finish_translation.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-149
+reader_source_quality.py
+  s_1c46d58ed67333::t_3412292048af13 1-582
+reader_project_files.py
+  s_1c46d58ed67333::t_cac896a093a30b 40,51-52,54-60,68,71
+next/src/manualreader/stages/step04/ANSWER.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-51
+next/src/manualreader/stages/finish/coverage.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-154
+next/tools/replay_step02.py
+  s_1c46d58ed67333::t_3412292048af13 1-108
+next/src/manualreader/steps/step_14_practice.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-120
+next/src/manualreader/stages/step06/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+next/src/manualreader/stages/finish/prompts/B1-源文批量翻译-DS.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-11
+next/src/manualreader/steps/prompts/step_13_terminology_name.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-5
+next/tests/test_step02_repair.py
+  s_1c46d58ed67333::t_3412292048af13 1-77
+next/src/manualreader/stages/step03/media.py
+  s_1c46d58ed67333::t_3412292048af13 1-71
+next/src/manualreader/steps/step_12_resource_recovery.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-189
+reader_step01_client.py
+  s_1c46d58ed67333::t_3412292048af13 1-86
+next/src/manualreader/stages/step01/paths.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+next/tools/fill_missing_resource_notes.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-95
+next/tests/test_step03_matrix.py
+  s_1c46d58ed67333::t_3412292048af13 1-505
+next/src/manualreader/stages/step07/vendor/LICENSE-mermaid.txt
+  s_1c46d58ed67333::t_f12f91d8a81370 1-21
+next/src/manualreader/step03_server.py
+  s_1c46d58ed67333::t_3412292048af13 1-166
+next/src/manualreader/stages/step06/pipeline.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-343
+reader_step01.py
+  s_1c46d58ed67333::t_3412292048af13 1-476
+next/tools/answer_whiteboard_resource.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-56
+next/src/manualreader/stages/step05/inference.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-130
+next/tests/test_finish_structure.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 4
+  s_1c46d58ed67333::t_3412292048af13 1-3,5-111
+next/tools/recover_20step_terminal.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-82
+next/src/manualreader/stages/step03/__init__.py
+  s_1c46d58ed67333::t_3412292048af13 1
+next/src/manualreader/steps/prompts/step_18_source_gap_recovery.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-10
+next/src/manualreader/stages/step04/sources.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-165
+next/tests/test_step56.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-204
+next/src/manualreader/stages/finish/contracts.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-67
+next/src/manualreader/stages/step03/engine.py
+  s_1c46d58ed67333::t_3412292048af13 1-364
+next/src/manualreader/stages/step04/draft_assets.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-55
+docs/next-deployment.md
+  s_1c46d58ed67333::t_f2f6f89c54aa9a 20
+  s_1c46d58ed67333::t_cefcdacf98991f 1-19,22-40
+  s_1c46d58ed67333::t_33d08719f96f7b 21
+next/src/manualreader/stages/finish/content.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-1486
+next/src/manualreader/stages/step05/contracts.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-199
+next/src/manualreader/stages/step04/FINALE.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-51
+next/src/manualreader/stages/step04/writer_transport.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-132
+static/reader-source-flow.js
+  s_1c46d58ed67333::t_d5ae4a7b92213d 14-50,65-66,74-76,82
+reader_step02_answer.txt
+  s_1c46d58ed67333::t_7ac84734c67a06 1-94
+next/src/manualreader/stages/finish/provider.py
+  s_1c46d58ed67333::t_f2f6f89c54aa9a 1-415
+reader_server.py
+  s_1c46d58ed67333::t_3e0440a29cd041 69-83,338,450-452,457-463,505,508,626,630-638,665-673,677-705,757-759,801-811,863-864,874-881
+reader_writer_transport.py
+  s_1c46d58ed67333::t_aa90cc2d9ce649 5,29-31,36-37,42-78,110-115,119-135,138-158,175-178,205-211,215-219,223
+next/tools/retry_finish_ds.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-56
+next/src/manualreader/stages/step01/lifecycle.py
+  s_1c46d58ed67333::t_3412292048af13 1-310
+next/tools/check_stepfinal_save.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-88
+next/src/manualreader/stages/step02/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+next/tests/test_step56_nav100.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-132
+next/tools/install.ps1
+  s_1c46d58ed67333::t_3412292048af13 1-20
+next/src/manualreader/step03_client.py
+  s_1c46d58ed67333::t_3412292048af13 1-93
+reader_remote.py
+  s_1c46d58ed67333::t_3e0440a29cd041 122,129,140,143
+next/src/manualreader/steps/prompts/step_16_final_formatting_optional.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-11
+next/src/manualreader/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+next/src/manualreader/server.py
+  s_1c46d58ed67333::t_3412292048af13 1-124
+next/src/manualreader/stages/finish/prompt-manifest.json
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-198
+next/src/manualreader/step56_server.py
+  s_1c46d58ed67333::t_3412292048af13 1-278
+next/src/manualreader/planning.py
+  s_1c46d58ed67333::t_3412292048af13 1-290
+reader_step02_original.py
+  s_1c46d58ed67333::t_3412292048af13 1-203
+next/src/manualreader/step04_client.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-64
+next/tests/test_finish_content.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-363
+next/src/manualreader/steps/prompts/step_12_resource_explanation_visual.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+next/src/manualreader/steps/step_18_source_gap_recovery.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-86
+next/tools/check_step03_visual.py
+  s_1c46d58ed67333::t_3412292048af13 1-69
+next/src/manualreader/stages/finish/preview.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-466,468-477,479-777
+  s_1c46d58ed67333::t_3e393b85a17d1f 467,478
+reader_v21.py
+  s_1c46d58ed67333::t_72bb1d24775b5b 1-708
+next/tests/test_step56_final_patch.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-113
+next/src/manualreader/stages/finish/prompts/A1-P2-数学资源.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+reader_alignment.py
+  s_1c46d58ed67333::t_cc6b71cfb19e39 29-30
+next/src/manualreader/stages/finish/static/reader-finish-math.js
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-19
+next/src/manualreader/stages/step07/transitions.py
+  s_1c46d58ed67333::t_3412292048af13 1-145
+next/src/manualreader/stages/finish/review.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-82,87-91,93-114,120-150
+  s_1c46d58ed67333::t_2054b5c6c885a5 83-86,92,115-119
+next/src/manualreader/stages/step02/reader_step02_policies.json
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-143
+next/tools/check_stepfinal_browser.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-304
+Demo/legacy-docs/README.en.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-207
+reader_source_wire.py
+  s_1c46d58ed67333::t_8fc4b6be9d51a9 1-63
+next/tools/verify_reader_load.py
+  s_1c46d58ed67333::t_3412292048af13 1,3-72
+  s_1c46d58ed67333::t_44ca83bdf40b60 2
+next/src/manualreader/stages/step03/pdf.py
+  s_1c46d58ed67333::t_3412292048af13 1-240
+reader_framework_legacy.py
+  s_1c46d58ed67333::t_4e46c4a38b1fe6 18-21
+next/src/manualreader/step56_client.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-57
+next/requirements.lock
+  s_1c46d58ed67333::t_125ecb36005f21 1-13
+next/tools/check_stepfinal_downloads.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-63
+next/src/manualreader/stepfinal_server.py
+  s_1c46d58ed67333::t_a9459a7b748cc5 12,20,25-41,66-67,70-71,74-75,83-100,102-103,106,113-116,118-119,123,138,146-147,155-156,160-165
+  s_1c46d58ed67333::t_cefcdacf98991f 44-46
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-11,13-19,21-24,42-43,47-65,68-69,72-73,76-82,101,104-105,107-112,117,120-122,124-137,139-145,148-154,157-159,166-285
+next/src/manualreader/steps/prompts/step_18_alignment_optional.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+next/tools/check_stepfinal_followup.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-75
+next/src/manualreader/stages/step06/STEP06A-gap.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-20
+next/src/manualreader/steps/compat/step_aliases.json
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-81
+reader_step02_client.py
+  s_1c46d58ed67333::t_3412292048af13 1-290
+next/src/manualreader_next.egg-info/top_level.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+next/tools/complete_next_source_coverage.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-26
+next/src/manualreader/stages/step04/markdown-vendor.js
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-38
+next/tools/test_20step_ds_faults.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-64
+next/tests/fixtures/golden-card.json
+  s_1c46d58ed67333::t_82b8a71f77fc18 1-228
+next/tests/test_next_service.py
+  s_1c46d58ed67333::t_3412292048af13 1-216
+next/README.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-82
+next/src/manualreader_next.egg-info/SOURCES.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-135
+next/src/manualreader/stages/step07/vendor/katex/LICENSE
+  s_1c46d58ed67333::t_22341275c1ad08 1-21
+next/src/manualreader/stages/step07/resources.py
+  s_1c46d58ed67333::t_3412292048af13 1,3-63
+  s_1c46d58ed67333::t_44ca83bdf40b60 2
+next/src/manualreader/stages/step04/preview.js
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-48
+next/tools/verify_commit20.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-92
+next/src/manualreader/steps/prompts/step_10_source_translation.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-9
+next/tools/package_step56_navigation.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-275
+next/src/manualreader/stages/step04/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-20
+next/src/manualreader_next.egg-info/PKG-INFO
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-10
+next/tools/write_20step_answers.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-91
+reader_agent_contract.py
+  s_1c46d58ed67333::t_5c16618b394746 3-5
+next/src/manualreader/stages/step06/coverage.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-121
+next/src/manualreader/stages/step06/navigation.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-128
+static/reader-postprocess-preview.css
+  s_1c46d58ed67333::t_97c7339eeb820e 1-6
+next/src/manualreader/stages/finish/prompts/B2-图中文字批量翻译-DS.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+next/tools/complete_next_practice.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-51
+next/src/manualreader/stages/step03/cache.py
+  s_1c46d58ed67333::t_3412292048af13 1-94
+next/src/manualreader_next.egg-info/entry_points.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+next/src/manualreader/stages/step07/STEP07_FUSION.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-137
+next/src/manualreader/stages/step02/html_view.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-76
+next/tools/replay_translation_dispositions.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-154
+next/src/manualreader/steps/prompts/step_15_chapter_guidance.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-15
+next/src/manualreader/steps/prompts/step_08_structure_optional.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+reader_sequence.py
+  s_1c46d58ed67333::t_a293d5885718a8 121-126
+next/tools/package_step56.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-263
+next/tools/fill_review_attachments.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-106
+next/src/manualreader/steps/step_15_chapter_guidance.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-51
+reader_postprocess_wire.py
+  s_1c46d58ed67333::t_b51a3b0aee806c 1-77
+Demo/legacy-docs/README.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-207
+reader_step02_normal.txt
+  s_1c46d58ed67333::t_075dd80bf82c98 1-131
+next/tools/prepare_step56.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-163
+next/src/manualreader/stages/step02/original.py
+  s_1c46d58ed67333::t_3412292048af13 1-203
+next/src/manualreader/artifacts.py
+  s_1c46d58ed67333::t_3412292048af13 1,3-14
+  s_1c46d58ed67333::t_44ca83bdf40b60 2
+next/tools/package_step56_final.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-266
+next/tools/verify_finish_qa.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 2
+  s_1c46d58ed67333::t_3412292048af13 1,3-69
+reader_step02_mcp.py
+  s_1c46d58ed67333::t_3412292048af13 1-101
+next/src/manualreader/stages/finish/runner.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-126
+next/src/manualreader/stages/step07/preview.js
+  s_1c46d58ed67333::t_44ca83bdf40b60 77
+  s_1c46d58ed67333::t_33008aa3b49ff6 1-76,78-165
+next/tools/recover_20step_terms.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-66
+next/src/manualreader/stages/step07/inference.py
+  s_1c46d58ed67333::t_3412292048af13 1-243
+Demo/legacy-docs/CHANGELOG.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-180
+next/tools/stage_step07_inputs.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-48
+next/src/manualreader/stages/step07/resource-scanner.cjs
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-232
+next/tools/final_delivery.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-375
+reader_translation.py
+  s_1c46d58ed67333::t_263feab902f4f5 154,205,207-209
+static/app.css
+  s_1c46d58ed67333::t_172052c7c3f38d 381,683-770
+next/src/manualreader/stages/step02/reader_step02_finale.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-115
+reader_teaching.py
+  s_1c46d58ed67333::t_3e67abcc7f2187 119,163
+README.en.md
+  s_1c46d58ed67333::t_191eb08fc1000a 1,3,5-8
+next/tools/verify_delivery.py
+  s_1c46d58ed67333::t_3412292048af13 1,3-110
+  s_1c46d58ed67333::t_44ca83bdf40b60 2
+reader_step02_finale.txt
+  s_1c46d58ed67333::t_fc49f1360627d0 1-115
+reader_v21_prompts.py
+  s_1c46d58ed67333::t_3412292048af13 1-185
+next/src/manualreader/stages/finish/prompts/D1-可选章节边界判定.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+reader_step01_scan.py
+  s_1c46d58ed67333::t_3412292048af13 1-219
+next/src/manualreader/steps/step_registry.json
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-248
+next/src/manualreader/stages/step07/vendor/mermaid.min.js
+  s_1c46d58ed67333::t_a1702ca9854458 1-2029
+next/src/manualreader/step04_server.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-219
+reader_step02_intro.txt
+  s_1c46d58ed67333::t_3c2988f9101391 1-106
+next/src/manualreader/stages/finish/prompts/C1-并列结构判定.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-9
+reader_bridge.py
+  s_1c46d58ed67333::t_3e0440a29cd041 295-303,316-340,343-346
+next/src/manualreader/stages/step07/STEP07_V2_EDITOR.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-176
+next/tools/verify_full_finish.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-333
+next/tools/recover_20step_guidance.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-93
+static/app.js
+  s_1c46d58ed67333::t_d1ebad88c481fc 16-30,188,203,208,245-246,296-300,473
+next/src/manualreader/stages/step05/anchors.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-36
+next/tools/demo_reader_answers.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-88
+next/tools/record_20step_acceptance.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-100
+reader_step02_server.py
+  s_1c46d58ed67333::t_3412292048af13 1-313
+next/tools/run_whiteboard.py
+  s_1c46d58ed67333::t_95b16a35eb9ec8 24,507,541,645-656,678
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-23,25-506,508-540,542-638,642-644,657,660-677,679-714
+  s_1c46d58ed67333::t_33d08719f96f7b 639-641,658-659
+README.md
+  s_1c46d58ed67333::t_191eb08fc1000a 1,3,5-9
+next/src/manualreader/stages/finish/pipeline.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-119,121-138,140-286,294-378
+  s_1c46d58ed67333::t_33d08719f96f7b 120,139,287-293
+static/workspace-ui.js
+  s_1c46d58ed67333::t_1a7b65e08d1f3e 80,109,122,130-131,134
+next/tools/resume_20step.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-63
+next/src/manualreader_next.egg-info/requires.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-5
+next/src/manualreader/stages/step01/__init__.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1
+next/src/manualreader/transport.py
+  s_1c46d58ed67333::t_3412292048af13 1-293
+next/src/manualreader/stages/step01/scan.py
+  s_1c46d58ed67333::t_3412292048af13 1-219
+next/src/manualreader/stages/finish/prompts/F12-教学附件和术语.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-17
+next/tools/complete_next_resources.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-49
+next/src/manualreader/stages/step05/STEP05-map.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-19
+Demo/legacy-docs/next/step08-12.md
+  s_1c46d58ed67333::t_151fa672fa039f 1-20
+static/reader-media-pins.js
+  s_1c46d58ed67333::t_a634024eb73af0 309
+next/tools/recover_whiteboard_ds.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-74
+next/tests/test_card_regression.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-178
+next/src/manualreader/step07_client.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 2
+  s_1c46d58ed67333::t_3412292048af13 1,3-51
+next/tools/complete_next_teaching.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-213
+next/src/manualreader/production.py
+  s_1c46d58ed67333::t_3e393b85a17d1f 1-74
+next/src/manualreader/stages/step06/STEP06B-depth.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-25
+next/src/manualreader/stages/step02/renderer.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-86
+next/src/manualreader/stages/step04/INTRO.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-51
+next/src/manualreader/step07_server.py
+  s_1c46d58ed67333::t_3412292048af13 1-275
+next/tests/test_step04.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-208
+next/tools/complete_next_terms.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-106
+next/src/manualreader/stages/step02/reader_step02_intro.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-106
+next/src/manualreader/steps/step_prompt_registry.json
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-103
+reader_p0_resources.py
+  s_1c46d58ed67333::t_dd005281e9e81b 1-290
+next/pyproject.toml
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-41
+next/src/manualreader/stages/step02/read_tool.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-57
+.gitignore
+  s_1c46d58ed67333::t_191eb08fc1000a 37
+  s_1c46d58ed67333::t_82b8a71f77fc18 38-42
+next/src/manualreader/stages/finish/prompts/F3-按Part练习.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-7
+next/src/manualreader/stages/finish/native_ui.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-452
+next/src/manualreader/stages/finish/structure.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-258
+next/tools/check_20step_native.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-48
+static/index.html
+  s_1c46d58ed67333::t_6027b043f33138 31,41
+next/tools/accept_20step.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-169
+next/tests.lock
+  s_1c46d58ed67333::t_e61137b6620b23 1-8
+next/tools/live_acceptance.py
+  s_1c46d58ed67333::t_3412292048af13 1-155
+next/src/manualreader/stages/step02/reader_step02_answer.txt
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-94
+next/src/manualreader/steps/prompts/step_13_terminology.md
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-13
+next/tests/test_step07.py
+  s_1c46d58ed67333::t_44ca83bdf40b60 1-259
+next/tools/import_step03_attachments.py
+  s_1c46d58ed67333::t_3412292048af13 1-83
+next/tools/verify_step07_browser.py
+  s_1c46d58ed67333::t_3412292048af13 1-151
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "3958d4c05dc0df2f13a1abb380e443b0f39c688d",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
