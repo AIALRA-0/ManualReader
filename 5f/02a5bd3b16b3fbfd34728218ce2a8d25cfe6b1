@@ -1,0 +1,57 @@
+next/tests/test_20step.py
+  s_1c46d58ed67333::t_52a2ba209c6808 5-6,49-78
+static/app.js
+  s_1c46d58ed67333::t_9fbc4ccdb3b844 408
+next/src/manualreader/steps/prompts/step_13_terminology.md
+  s_1c46d58ed67333::t_b6abfecd534fb2 7
+  s_1c46d58ed67333::t_0a9c6f606a0123 13-14
+next/src/manualreader/stages/finish/preview.py
+  s_1c46d58ed67333::t_4457b89ad17859 641,655-658
+next/src/manualreader/steps/step_13_terminology.py
+  s_1c46d58ed67333::t_0a9c6f606a0123 21-22
+  s_1c46d58ed67333::t_8a8e787574f2b4 9-20,23-42,54,76,89-90
+next/src/manualreader/steps/compat/step_aliases.json
+  s_1c46d58ed67333::t_b6abfecd534fb2 36,48
+next/src/manualreader/production.py
+  s_1c46d58ed67333::t_702a78ebc680f8 40,42-46
+next/tools/verify_delivery.py
+  s_1c46d58ed67333::t_52a2ba209c6808 71
+  s_1c46d58ed67333::t_543620e48f0f62 104,106-112
+docs/next-deployment.md
+  s_1c46d58ed67333::t_543620e48f0f62 18
+next/src/manualreader/steps/prompts/step_15_chapter_guidance.md
+  s_1c46d58ed67333::t_0a9c6f606a0123 5,11
+next/src/manualreader/steps/step_15_chapter_guidance.py
+  s_1c46d58ed67333::t_0a9c6f606a0123 10-25,47,51
+next/tools/run_isolated_material.py
+  s_1c46d58ed67333::t_702a78ebc680f8 103
+next/src/manualreader/stages/finish/pipeline.py
+  s_1c46d58ed67333::t_ac8b7a98f90d44 231-237,240
+  s_1c46d58ed67333::t_0a9c6f606a0123 238-239
+next/src/manualreader/stages/finish/native_ui.py
+  s_1c46d58ed67333::t_731ae663d45eef 40,102-103,115
+reader_library.py
+  s_1c46d58ed67333::t_702a78ebc680f8 30-62,77
+next/src/manualreader/stages/finish/static/reader-finish.js
+  s_1c46d58ed67333::t_cc48ae4a097084 43-52,211,213,223,227,230,286,305,314-317,319-333,336,341-345
+  s_1c46d58ed67333::t_4457b89ad17859 259-263
+  s_1c46d58ed67333::t_817c99f4e2633f 307-313
+next/src/manualreader/stepfinal_server.py
+  s_1c46d58ed67333::t_4457b89ad17859 91-103
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "5f02a5bd3b16b3fbfd34728218ce2a8d25cfe6b1",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
