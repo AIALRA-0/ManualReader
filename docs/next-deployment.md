@@ -6,6 +6,8 @@
 
 已配对的 Reader Agent 仍通过 `/machine/v1` 访问获授权的项目。配对在网页内创建，持有者只能操作该项目的授权接口。可以在网页撤销连接。Agent 配对不授予用户手动阅读完成权限。
 
+Agent 可用 `POST /machine/v1/content/import` 把项目里已有的文件登记为原件。请求传入项目相对路径 `project_path`，如有需要可用文件树返回的 `expected_modified` 核对版本。如果原件还在 Agent 的本机，可先用 `POST /machine/v1/project-files/file` 上传到当前项目。服务端检查项目编号和实际目录边界。
+
 ## 怎样生成一个新的项目
 
 需要 Python 3.12 和已登录的 Codex CLI。安装根目录的 `requirements.txt`，再把 `next/src` 加到 Python 模块查找路径。翻译使用部署配置中的 DS 服务，语音使用已有语音服务。

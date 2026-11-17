@@ -145,18 +145,35 @@ window.ReaderSourceFlow={create(ctx){
   for(const box of boxes){disclosure.append(box);box.open=true}
   return disclosure
  }
+ function translatedEquation(text,value,sourceIds){
+  ctx.rich(text,ReaderMarkdown.equationSource(value));
+ }
  function coherent(root,group,members,wrapper){
   const segments=group.translation_segments;if(root.dataset.language==='en'||!Array.isArray(segments)||!segments.length)return;
   const ids=new Set(members.map(n=>n.dataset.passageId)),covered=segments.flatMap(s=>s.source_ids||[]);if(new Set(covered).size!==ids.size||covered.some(id=>!ids.has(id))||new Set(segments.map(s=>s.id)).size!==segments.length||segments.some(s=>!s.text?.trim()||!s.source_ids?.length))return;
   wrapper.classList.add('reader-coherent-group');wrapper.classList.remove('reader-continuation');const fragments=el('div','reader-coherent-fragments');
   for(const member of members)fragments.append(member);for(const child of [...wrapper.children])if(!child.classList.contains('reader-source-crop'))child.remove();wrapper.append(fragments);
   // 句子锚点仍各自保留，但连续句子组成一个阅读段落和一个提问入口。
-  const blocks=[];for(const segment of segments){const original=source(segment.source_ids[0]),role=segment.role||(group.kind==='list'?'list_item':group.kind==='markdown'?(original?.heading?'heading':original?.bullet?'list_item':'paragraph'):group.kind),blockId=segment.block_id||(group.kind==='paragraph'?'':segment.source_ids.join('|')),previous=blocks.at(-1),sameParagraph=role==='paragraph'&&previous?.role==='paragraph'&&blockId===previous.block_id;if(sameParagraph)previous.parts.push(segment);else blocks.push({role,block_id:blockId,parts:[segment]})}
+  const blocks=[];
+  for(const segment of segments){
+   const original=source(segment.source_ids[0]);
+   const role=segment.role||(group.kind==='list'?'list_item':group.kind==='markdown'?
+    (original?.heading?'heading':original?.bullet?'list_item':'paragraph'):group.kind);
+   const blockId=segment.block_id||(['paragraph','table'].includes(group.kind)?group.id:segment.source_ids.join('|'));
+   const previous=blocks.at(-1);
+   if(['paragraph','equation','table'].includes(role)&&previous?.role===role&&blockId===previous.block_id){
+    previous.parts.push(segment);
+   }else blocks.push({role,block_id:blockId,parts:[segment]});
+  }
   const newParts=el('div');newParts.id=root.id;
 
-  for(const block of blocks){const segment=block.parts[0],sourceIds=[...new Set(block.parts.flatMap(s=>s.source_ids))],article=el('article','passage reader-coherent-segment'),chinese=el('div','chinese'),text=el('div','reading-segment');article.dataset.passageId=sourceIds[0];article.dataset.passageIds=JSON.stringify(sourceIds);text.dataset.segmentId='translation-'+group.id+'-'+segment.id;text.dataset.sourceExcerpt=block.parts.map(s=>s.text).join(' ');text.dataset.sourceIds=JSON.stringify(sourceIds);text.dataset.sentenceIds=JSON.stringify(block.parts.flatMap(s=>s.sentence_ids||[]));
-   const inline=block.parts.length>1&&block.role==='paragraph'&&block.parts.every(s=>!/[\r\n]{2}|^\s*(?:#{1,6}\s|[-*+]\s|\d+[.)]\s)/.test(s.text));
-   if(inline){const paragraph=el('p');for(const part of block.parts){const span=el('span','reader-coherent-sentence');span.dataset.sourceIds=JSON.stringify(part.source_ids);span.dataset.translationSegment=part.id;span.dataset.sentenceIds=JSON.stringify(part.sentence_ids||[]);ctx.rich(span,ReaderUI.prose(part.text));paragraph.append(span,document.createTextNode(' '))}text.append(paragraph)}else{let displayText=text.dataset.sourceExcerpt;if(block.role==='heading'&&!/^\s*#{1,6}\s/.test(displayText))displayText='#'.repeat(Math.max(1,Math.min(6,Number(segment.level)||2)))+' '+displayText;if(block.role==='list_item'&&!/^\s*(?:[-*+] |\d+[.)] )/.test(displayText))displayText=(segment.list_order?segment.list_order+'. ':'- ')+displayText;ctx.rich(text,ReaderUI.prose(displayText))}
+  for(const block of blocks){const segment=block.parts[0],sourceIds=[...new Set(block.parts.flatMap(s=>s.source_ids))],article=el('article','passage reader-coherent-segment'),chinese=el('div','chinese'),text=el('div','reading-segment');article.dataset.passageId=sourceIds[0];article.dataset.passageIds=JSON.stringify(sourceIds);text.dataset.segmentId='translation-'+group.id+'-'+segment.id;text.dataset.sourceExcerpt=block.parts.map(s=>s.text).join(['table','equation'].includes(block.role)?'\n':' ');text.dataset.sourceIds=JSON.stringify(sourceIds);text.dataset.sentenceIds=JSON.stringify(block.parts.flatMap(s=>s.sentence_ids||[]));
+   const inline=block.parts.length>1&&block.role==='paragraph'&&block.parts.every(s=>!/[\r\n]|^\s*(?:#{1,6}\s|[-*+>]\s|\d+[.)]\s|`{3}|~{3}|-{3}|\*{3})/.test(s.text));
+   if(inline){const paragraph=el('p');for(const part of block.parts){const span=el('span','reader-coherent-sentence');span.dataset.sourceIds=JSON.stringify(part.source_ids);span.dataset.translationSegment=part.id;span.dataset.sentenceIds=JSON.stringify(part.sentence_ids||[]);ctx.rich(span,ReaderUI.prose(part.text));paragraph.append(span,document.createTextNode(' '))}text.append(paragraph)}else{let displayText=text.dataset.sourceExcerpt;if(block.role==='heading'&&!/^\s*#{1,6}\s/.test(displayText))displayText='#'.repeat(Math.max(1,Math.min(6,Number(segment.level)||2)))+' '+displayText;if(block.role==='list_item'&&!/^\s*(?:[-*+] |\d+[.)] )/.test(displayText))displayText=(segment.list_order?segment.list_order+'. ':'- ')+displayText;if(block.role==='table'&&ctx.table)text.append(ctx.table(source(sourceIds[0])||{},displayText));
+    else if(block.role==='equation')translatedEquation(text,displayText,sourceIds);
+    else if(block.role==='code'&&ctx.code&&!/^\s*(?:`{3}|~{3})/.test(displayText))text.append(ctx.code(source(sourceIds[0])||{},displayText));
+    else ctx.rich(text,ReaderUI.prose(displayText))
+   }
    chinese.append(text);article.append(chinese);newParts.append(article);article.addEventListener('click',event=>{if(getSelection()?.toString().trim()||event.target.closest('a,button,input,textarea,summary,.inline-question'))return;const exact=event.target.closest('.reader-coherent-sentence');locate(article,exact?JSON.parse(exact.dataset.sourceIds):sourceIds,JSON.parse((exact||text).dataset.sentenceIds||'[]'))})
   }
   ctx.attachInputs?.(newParts);

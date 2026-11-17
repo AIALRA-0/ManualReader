@@ -33,6 +33,27 @@ class ProjectFileTests(unittest.TestCase):
   with self.assertRaises(ValueError):store.put({'path':config['sources']['primary'],'expected_modified':store.target(config['sources']['primary']).stat().st_mtime_ns,'content_base64':'bmV4dA=='})
  def test_parser_data_is_not_copied_into_file_root(self):
   (self.project/'state.sqlite3').write_bytes(b'private-notes');self.assertEqual(self.store.listing()['entries'],[])
+ def test_register_project_file_without_copying_it_to_another_path(self):
+  from reader_workspace import Workspace
+  raw='# 访谈\n\n这是已经上传到项目的原件'.encode()
+  upload=self.write('访谈/原件.md',raw)
+  workspace=Workspace(self.project)
+  data={'project_path':upload['path'],'expected_modified':upload['modified']}
+  result=self.store.import_source(workspace,data)
+  self.assertEqual(result['id'],self.store.import_source(workspace,data)['id'])
+  self.assertEqual(self.store.ensure()['sources'],{result['id']:upload['path']})
+  self.assertEqual(self.store.target(upload['path']).read_bytes(),raw)
+  self.assertEqual([r['name'] for r in self.store.listing()['entries']],['访谈'])
+  with self.assertRaises(ValueError):self.store.import_source(workspace,{**data,'expected_modified':'0'})
+ def test_import_rejects_paths_and_alternative_sources_outside_project(self):
+  from reader_workspace import Workspace
+  workspace=Workspace(self.project)
+  self.write('one.md',b'# Source')
+  for data in ({'project_path':'../project-two/private.md'},{'project_path':'C:/other.md'},
+               {'project_path':'one.md','url':'https://example.com/private'},
+               {'project_path':'one.md','source_path':'/tmp/outside.md'}):
+   with self.subTest(data=data),self.assertRaises(ValueError):self.store.import_source(workspace,data)
+  self.assertEqual(workspace.read()['files'],[])
  def test_file_root_cannot_expose_reader_database_folder(self):
   self.settings.write_text(json.dumps({'project_root_base':str(self.project.parent)}),'utf8')
   with self.assertRaises(ValueError):self.store.ensure()

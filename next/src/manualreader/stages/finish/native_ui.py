@@ -184,12 +184,13 @@ button:where(:hover:not(:disabled)),button.secondary:where(:hover:not(:disabled)
   .trial-sort-row{grid-template-columns:minmax(0,1fr) repeat(2,2.75rem)}
   .trial-sort-row button{block-size:2.75rem}
 }
-.reader-recap-list{list-style:none;padding:0}
-.reader-recap-list>li+li{margin-top:1rem}
-.reader-recap-list .reader-recap-part{margin:0 0 .4rem;font-size:1em;font-weight:650}
-.reader-recap-row{display:flex;align-items:baseline;gap:.55rem;margin:.35rem 0}
-.reader-recap-icon{flex:none;color:var(--muted);cursor:help}
-.reader-recap-icon svg{height:15px;width:15px;vertical-align:middle}
+.markdown-body>.reader-recap-list{list-style:none;margin:.7rem 0 0;padding:0}
+.reader-recap-list>li{margin:0}
+.reader-recap-list>li+li{margin-top:1.3rem}
+.reader-recap-list .reader-recap-part{margin:0 0 .35rem;font-size:1em;font-weight:650}
+.reader-recap-row{display:grid;grid-template-columns:1rem minmax(0,1fr);gap:.55rem;margin:.25rem 0;line-height:1.75}
+.reader-recap-icon{display:grid;place-items:center;block-size:1.75em;color:var(--muted);cursor:help}
+.reader-recap-icon svg{width:.85rem;height:.85rem}
 a.reader-term-located{animation:reader-term-location 2.8s ease-out}
 @keyframes reader-term-location{0%,65%{background-color:var(--selected);outline:1px solid var(--muted)}}
 .reading-handle.vertical::after{content:"";position:absolute;inset:calc(50% - 12px) 3px;height:24px;
@@ -301,8 +302,6 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
         "if(root.id==='original-reading'||root.dataset.language==='en'||!Array.isArray(segments)")
     source_flow=substitute(source_flow,r"const bundled=group.matches",
         "const bundled=root.id==='original-reading'||group.matches")
-    source_flow=substitute(source_flow,r"sameParagraph=role==='paragraph'&&previous\?\.role==='paragraph'&&blockId===previous\.block_id",
-        "sameParagraph=['paragraph','equation'].includes(role)&&previous?.role===role&&blockId===previous.block_id")
     source_flow=substitute(source_flow,r'JSON\.stringify\(\[url,box\]\)',
         'JSON.stringify([url,box,group.equation_number||null])')
     source_flow=substitute(source_flow,r"return canvas\.toDataURL\('image/png'\)",
@@ -330,9 +329,10 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
   return canvas;
  }
  function crop(group){""")
-    source_flow=substitute(source_flow,r"ctx\.rich\(text,ReaderUI\.prose\(displayText\)\)\}",
-        """const explicitMath=/^\\s*(?:\\\\\\[|\\$\\$|\\\\begin\\{|\\\\\\()/;
-    const refs=block.role==='equation'?sourceRefs(sourceIds):[];
+    source_flow=substitute(source_flow,r"ctx\.rich\(text,ReaderMarkdown\.equationSource\(value\)\);",
+        """const explicitMath=/^\\s*(?:\\\\\\[|\\$|\\\\begin\\{|\\\\\\()/;
+    const displayText=ReaderMarkdown.normalizeMathSource?.(value)||value;
+    const refs=sourceRefs(sourceIds);
     const isPdfEquation=refs.length&&refs.every(ref=>ref.page_id===refs[0].page_id);
     if(isPdfEquation&&!explicitMath.test(displayText)){
       const boxes=refs.map(ref=>ref.bbox);
@@ -345,8 +345,10 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
         image.alt=displayText.trim();figure.append(image);
         if(number)figure.append(el('figcaption','reader-equation-number','('+number+')'));
         text.append(figure);
-      }else ctx.rich(text,ReaderUI.prose(displayText));
-    }else ctx.rich(text,ReaderUI.prose(displayText))}""")
+        return;
+      }
+    }
+    ctx.rich(text,ReaderMarkdown.equationSource(displayText));""")
     source_flow=substitute(source_flow,r"slot\.append\(pdf\);active=id",
         "slot.insertBefore(pdf,slot.querySelector(':scope > .reader-pdf-questions'));active=id")
     source_flow=substitute(source_flow,r"row\.style\.height=\(info\.height\*value\+24\)\+'px';",

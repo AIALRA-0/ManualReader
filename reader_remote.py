@@ -17,6 +17,11 @@ def public_base():
 
 def digest(value):return hashlib.sha256(value.encode()).hexdigest()
 
+def project_capabilities():
+    return {'read':True,'write':True,'mark_read':False,'write_user_notes':False,
+            'answer_exercises':False,'import':True,'manage':False}
+
+
 class Pairings:
     def __init__(self,folder):
         self.folder=Path(folder);self.folder.mkdir(parents=True,exist_ok=True)
@@ -33,7 +38,9 @@ class Pairings:
     def db(self):return sqlite3.connect(self.path,timeout=15,factory=RequestConnection)
     def token(self,identity):return 'mr_'+base64.urlsafe_b64encode(hmac.new(self.key,identity.encode(),hashlib.sha256).digest()).decode().rstrip('=')
     @staticmethod
-    def public(row):return {**{k:row[k] for k in ['id','material_id','can_import','can_manage','created','expires','code_expires','revoked']},'permanent':row['expires']==0}
+    def public(row):return {**{k:row[k] for k in ['id','material_id','created','expires','code_expires','revoked']},
+                            'can_import':bool(row['material_id'] and not row['revoked']),
+                            'can_manage':False,'permanent':row['expires']==0}
     def list(self,owner):
         with self.db() as conn:
             conn.row_factory=sqlite3.Row
@@ -51,7 +58,7 @@ class Pairings:
         with self.db() as conn:
             conn.row_factory=sqlite3.Row;row=conn.execute('SELECT * FROM pairings WHERE code_hash=?',(digest(code),)).fetchone()
         if not row or not row['material_id'] or row['revoked'] or row['code_expires']<=time.time() or row['expires']!=0 and row['expires']<=time.time():return None
-        return {'access_token':self.token(row['id']),'token_type':'Bearer','expires_at':row['expires'] or None,'api_base':ORIGIN+'/machine/v1','material_id':row['material_id'],'capabilities':{'read':True,'write':True,'mark_read':False,'write_user_notes':False,'answer_exercises':False,'import':bool(row['can_import']),'manage':bool(row['can_manage'])},'endpoints':{'guide':'/guide','progress':'/progress','work':'/work'}}
+        return {'access_token':self.token(row['id']),'token_type':'Bearer','expires_at':row['expires'] or None,'api_base':ORIGIN+'/machine/v1','material_id':row['material_id'],'capabilities':project_capabilities(),'endpoints':{'guide':'/guide','progress':'/progress','work':'/work','import_source':'/content/import'}}
     def authorize(self,token):
         if not token.startswith('mr_') or len(token)>100:return None
         with self.db() as conn:
@@ -94,8 +101,9 @@ class RemoteMixin:
                 # 连接地址可以适配机器接口，正式提示词按原样交给写作者。
                 data['writing']['instructions'] = writing_instructions
             data['headers']={'Authorization':'Bearer <access_token>','X-Reader-Material':getattr(self,'_grant_material',None) or self.headers.get('X-Reader-Material','')}
-            data['api_base']=public_base();data['capabilities']={'read':True,'write':True,'mark_read':False,'write_user_notes':False,'answer_exercises':False,'import':bool(self._grant['can_import']),'manage':bool(self._grant['can_manage'])}
-            data['project_scope']={'material_id':self._grant_material,'upload_project_files':True,'other_projects':False}
+            data['api_base']=public_base();data['capabilities']=project_capabilities()
+            data['project_scope']={'material_id':self._grant_material,'upload_project_files':True,
+                                   'import_project_files':True,'other_projects':False}
             for key in ('library','project','lecture'):data.get('endpoints',{}).pop(key,None)
         return super().json(data,status,cache_tag=cache_tag)
     def begin_remote(self,method):

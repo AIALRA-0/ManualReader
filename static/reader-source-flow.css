@@ -39,6 +39,14 @@
 .reader-coherent-segment{margin:0 0 10px}
 .reader-coherent-segment>p{margin:0 0 8px}
 .reader-coherent-group .reader-continuation{display:block}
+.reader-source-group .source-table-wrap{max-width:100%;margin:.35em 0 .65em;overscroll-behavior-x:contain}
+.reader-source-group .source-table{inline-size:max-content;min-inline-size:100%;font-size:inherit;line-height:1.55}
+.reader-source-group .source-table :is(th,td){padding:.45em .65em;overflow-wrap:normal;max-inline-size:28ch}
+.reader-source-group .source-table thead th{font-weight:600;background:var(--bg)}
+.reader-source-group .source-table th:not([align]){text-align:start}
+.reader-source-group .source-table :is(th,td:has(.reader-math)){white-space:nowrap}
+.reader-source-group .source-table .katex-display{margin:0}
+.reader-coherent-segment .reading-segment>.markdown-table-scroll{margin:.35em 0 .65em}
 .reader-translation-page{font-size:12px;color:var(--muted,#777);margin:20px 0 12px;padding:6px 0;border-top:1px solid var(--line,#555)}
 .reader-translation-page:first-child{margin-top:0}
 .reader-reflow-table{border-collapse:collapse;width:100%;table-layout:auto}

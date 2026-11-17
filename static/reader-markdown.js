@@ -44,5 +44,51 @@ window.ReaderMarkdown=(()=>{
   };
   root.addEventListener('pointerdown',event=>{dragging=true;clearTimeout(timer);if(!records.some(item=>item.node.contains(event.target)))restore()},true);document.addEventListener('pointerup',()=>{const wasDragging=dragging;dragging=false;if(wasDragging)timer=setTimeout(update,0)});document.addEventListener('pointercancel',()=>{dragging=false;clearTimeout(timer);timer=setTimeout(update,0)});document.addEventListener('selectionchange',()=>{clearTimeout(timer);if(!changing&&!dragging)timer=setTimeout(update,80)});document.addEventListener('pointerdown',event=>{if(!root.contains(event.target))restore()},true);root.addEventListener('click',preserveSelectionClick,true);root.addEventListener('copy',event=>{const selection=getSelection();if(!selection?.rangeCount||selection.isCollapsed||!markdownRange(selection.getRangeAt(0)))return;const text=selectionSource(root,selection.getRangeAt(0));if(text&&event.clipboardData){event.clipboardData.setData('text/plain',text);event.preventDefault()}});document.addEventListener('keydown',event=>{if(event.key==='Escape'){restore();getSelection()?.removeAllRanges()}})
  }
- return {render,selectionSource,installSelection,hideSelection:()=>hideSelection()};
+ function tableRows(source){
+  const lines=String(source).trim().split(/\r?\n/);
+  if(lines.some(line=>!line.trim())||/^\s*<(?:table|!--)\b/i.test(source))return null;
+  const rows=[];
+  for(const line of lines){
+   const raw=line.trim(),math=window.LessonMath?.scan(raw),protectedSpans=[
+    ...(math?.matches||[]).filter(part=>part.declared),
+    ...(math?.protected||[]).filter(part=>part.code)
+   ];
+   const cells=[];
+   let start=0,leading=false,trailing=false;
+   for(const match of raw.matchAll(/\\[\s\S]|\|/g)){
+    if(match[0]!=='|'||protectedSpans.some(part=>part.start<=match.index&&match.index<part.end))continue;
+    if(match.index===0){leading=true;start=1;continue}
+    cells.push(raw.slice(start,match.index).trim());
+    start=match.index+1;
+    trailing=start===raw.length;
+   }
+   if(!trailing)cells.push(raw.slice(start).trim());
+   if(cells.length<2||(!leading&&!trailing&&start===0))return null;
+   rows.push(cells);
+  }
+  if(!rows.length||rows.some(row=>row.length!==rows[0].length))return null;
+  const divider=rows[1]?.every(cell=>/^:?-{1,}:?$/.test(cell));
+  const columns=divider?rows.splice(1,1)[0].map(cell=>cell[0]===':'?(cell.endsWith(':')?'center':'left'):
+   cell.endsWith(':')?'right':null):[];
+  return {rows,header:!!divider,columns};
+ }
+
+ function equationSource(value){
+  const text=String(value??'').trim();
+  if(!text)return text;
+  const number=text.match(/\r?\n[ \t]*\((\d+(?:\.\d+)*[a-z]?)\)[ \t]*$/i);
+  const raw=number?text.slice(0,number.index).trimEnd():text;
+  const normalized=window.ReaderMarkdown?.normalizeMathSource?.(raw)||raw;
+  const matches=window.LessonMath?.scan(normalized).matches||[];
+  const explicit=matches.find(part=>part.declared&&part.start===0&&part.end===normalized.length);
+  if(explicit?.display&&!number)return normalized;
+  if(!explicit && (matches.some(part=>part.declared)||
+    /[\u3400-\u9fff]|^\s*(?:<|~{3}|#{1,6}\s)|^[\s\S]*\n\s*\n/.test(normalized)||
+    !/[=∑∫√≤≥±^_\\<>+−]|^[a-zA-Z\d]$/.test(normalized)||
+    window.LessonMath?.isCode(normalized)))return text;
+  const tex=explicit?.source||normalized;
+  return '\\[\n'+tex+(number&&!/\\tag\b/.test(tex)?'\\tag{'+number[1]+'}':'')+'\n\\]';
+ }
+
+ return {render,tableRows,equationSource,selectionSource,installSelection,hideSelection:()=>hideSelection()};
 })();

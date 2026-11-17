@@ -464,6 +464,11 @@ def agent_guide():
     guide['learning_contract']['select_request']={'node_id':'下一章节编号'}
     guide['learning_contract']['advance_rule']='只有 progress.completion.can_advance 为 true 时 Agent 才能换章；这个值只由用户手动完成按钮产生，聊天指令和 Agent 提交不能代替'
     guide['endpoints'].update(coverage='GET /api/coverage',import_source='POST /api/content/import',question_sync='POST /api/questions/sync')
+    guide['project_source_import']={'endpoint':'POST /api/content/import',
+        'upload_endpoint':'POST /api/project-files/file',
+        'existing_file':{'project_path':'sources/访谈.md','expected_modified':'可选，取自项目文件树'},
+        'upload':'把本地文件的 path 和 content_base64 发到上传接口，再以 project_path 登记为当前项目原件。也可以直接向导入接口提交 filename 和 content_base64',
+        'scope':'配对连接可以在已授权项目中登记原件。服务器核对文件所在的项目目录'}
     guide['answer_followups']={'save':'POST /api/questions/sync，沿用parent_question_id、client_id与递增version；source_excerpt保存所问回答片段的原话，source_segment_id以answer:开头定位父回答片段','display':'输入框放在回答各段下；父回答展开时，追问显示在对应片段下，父回答收起时汇总在父问题末尾；同一追问只显示一次，父子编号不变','read_state':'每条问题独立计算颜色，不汇总子孙追问状态；黄色表示本条问题当前版本未读或尚无有效回答；青蓝色表示本条回答已读，但直接关联本题的练习尚未作答；绿色表示本条回答已读且直接关联练习已作答。子追问的回答、阅读和练习状态不改变祖先颜色；保留原阅读记录。未答问题展开时登记question_version；有回答时登记answer_revision，新回答只让本题回到未读，不影响章节手动进度'}
     guide['project_files']={'tree':'GET /project-files/tree?path=相对目录','preview':'GET /project-files/preview?path=相对文件路径','read':'GET /project-files/raw?path=相对文件路径','write':'POST /project-files/file，提交 path 与 content_base64；覆盖已有文件需 expected_modified','events':'GET /project-files/events，SSE 推送系统文件事件，不轮询目录；收到 ready 后核对当前已展开目录','actions':'POST /project-files/action；action 使用 mkdir、create、move、copy、trash-preview、trash、restore；移动和复制提交 path、destination、expected_modified；删除必须先读取 trash-preview，再用 review_id 与 confirmed=true 确认；回收站通过 GET /project-files/trash 查询','rule':'只访问当前项目根目录，包括隐藏文件；保存文件不修改学习章节、译文和已读进度；文件树中的临时查看不切换主原文映射'}
     guide['project_files']['writing_links']=__import__('reader_prompts').FILE_LINK_RULE
@@ -529,7 +534,7 @@ def agent_guide():
 def agent_bootstrap():
     """当前对话只读取接手所需的信息；写作者继续由客户端取得完整规则。"""
     guide=agent_guide()
-    result={key:guide[key]for key in ('material_id','project','authorization','preferred_writer','writer_profiles','client_files','client_dependencies','initial_action')if key in guide}
+    result={key:guide[key]for key in ('material_id','project','authorization','preferred_writer','writer_profiles','client_files','client_dependencies','initial_action','project_source_import')if key in guide}
     result['view']='bootstrap'
     result['task_prompt_version']=PROMPT_VERSION
     result['project_files']={'open':guide['project_files']['open']}
@@ -1104,11 +1109,15 @@ class Handler(core.Handler):
                 with core.LOCK:
                     store=workspace()
                     if path.endswith(('/files','/import')):
-                        if data.get('repository_url'):data.update(kind='repository',url=data['repository_url'])
-                        elif data.get('url'):data.setdefault('kind','url')
-                        elif data.get('files'):data.setdefault('kind','directory')
-                        elif str(data.get('filename','')).lower().endswith('.zip'):data.setdefault('kind','zip')
-                        row=store.add_file(data);result={k:v for k,v in row.items() if k!='document'};result['original_url']=(os.environ.get('MANUAL_READER_PUBLIC_ORIGIN') or public_base())+'/content-files/'+row['id']+'/original?material='+mid();result['api_original_url']=public_base()+'/content-files/'+row['id']+'/original?material='+mid()
+                        if path.endswith('/import') and 'project_path' in data:
+                            row=project_files().import_source(store,data)
+                        else:
+                            if data.get('repository_url'):data.update(kind='repository',url=data['repository_url'])
+                            elif data.get('url'):data.setdefault('kind','url')
+                            elif data.get('files'):data.setdefault('kind','directory')
+                            elif str(data.get('filename','')).lower().endswith('.zip'):data.setdefault('kind','zip')
+                            row=store.add_file(data)
+                        result={k:v for k,v in row.items() if k!='document'};result['original_url']=(os.environ.get('MANUAL_READER_PUBLIC_ORIGIN') or public_base())+'/content-files/'+row['id']+'/original?material='+mid();result['api_original_url']=public_base()+'/content-files/'+row['id']+'/original?material='+mid()
                         if path.endswith('/import'):result={'file':result,'files':[result],'status':row.get('import_status','ready'),'pending':row.get('pending',[]),'coverage':row.get('coverage',{}),'model_calls':0}
                     elif path.endswith('/explanations'):
                         if getattr(self,'_remote_machine',False):return self.json({'error':'请用 /teaching/result 同时写回当前章节的讲解、术语和练习，写回后等待用户'},400)

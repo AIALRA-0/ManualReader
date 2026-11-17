@@ -79,6 +79,50 @@ class ProjectFiles(FileActions):
         if exists and not path.exists():raise ValueError('这个文件已移走，请刷新文件目录')
         return path
 
+    def import_source(self, workspace, data):
+        from reader_import import MAX_FILE_BYTES, SourceImporter
+
+        if set(data)-{'project_path','expected_modified','outline_mode','material','material_id','project_id'}:
+            raise ValueError('导入项目内文件时，请只提供相对路径和可选的文件版本或目录模式')
+        name=relative(data.get('project_path'))
+        with _ACTION_LOCK:
+            config=self.ensure()
+            path=self.target(name)
+            if not path.is_file() or path.is_symlink():
+                raise ValueError('请从当前项目目录选择一个普通文件')
+            if data.get('expected_modified') is not None:
+                self._version(path,data['expected_modified'])
+            with path.open('rb') as stream:
+                raw=stream.read(MAX_FILE_BYTES+1)
+            if not raw or len(raw)>MAX_FILE_BYTES:
+                raise ValueError('请选择有内容且不超过 40 MB 的原件')
+            for identity, existing_path in config['sources'].items():
+                if existing_path==name:
+                    existing=next((row for row in workspace.read()['files'] if row['id']==identity),None)
+                    if existing and (workspace.files/identity/existing['stored_name']).read_bytes()==raw:
+                        return existing
+                    raise ValueError('此路径已有登记原件。导入新版时请另存为项目内的新文件')
+        row=SourceImporter(workspace).import_source({
+            'filename':name,'content_base64':base64.b64encode(raw).decode('ascii'),
+            'outline_mode':data.get('outline_mode','auto')})
+        with _ACTION_LOCK, _LOCK:
+            # 绑定读取过的原件版本，避免把解析期间改过的文件当成同一份。
+            config=json.loads(self.config.read_text('utf8'))
+            root=Path(config['root']).resolve()
+            latest=root/name
+            if (latest.resolve().is_relative_to(root) and latest.is_file()
+                    and not latest.is_symlink() and latest.stat().st_size==len(raw)):
+                with latest.open('rb') as stream:
+                    unchanged=stream.read(len(raw)+1)==raw
+                if unchanged:
+                    config['sources'][row['id']]=name
+                    temporary=self.config.with_suffix('.next.json')
+                    temporary.write_text(json.dumps(config,ensure_ascii=False,indent=2),'utf8')
+                    os.replace(temporary,self.config)
+            finalized=self.ensure()
+        EVENTS.publish(Path(finalized['root']),{'type':'modified','paths':[finalized['sources'][row['id']]]})
+        return row
+
     def open_request(self,data):
         if not isinstance(data,dict):raise ValueError('请提供项目相对路径和要查看的位置')
         name=relative(data.get('path'));path=self.target(name)
