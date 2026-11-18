@@ -177,6 +177,27 @@ def test_translation_checkpoint_keeps_unresolved_ids_after_kfs_refuses_access(tm
     assert json.loads(path.read_bytes()) == result
 
 
+def test_final_translation_retry_splits_repeated_transport_failure(tmp_path):
+    from manualreader.stages.finish.provider import ModelFailure
+
+    source = _source(*[_unit(sid, "English text " + sid, number=i)
+                       for i, sid in enumerate("abcd")])
+    sizes = []
+
+    async def ask(stage, payload):
+        units = payload["units"]
+        sizes.append(len(units))
+        if len(units) > 2:
+            raise ModelFailure("HTTP 503", failure_kind="ds_temporary")
+        return {"groups": [{"segments": [{
+            "source_id": unit["source_id"], "text": "译文", "relation": "translated", "status": "complete",
+        } for unit in units]}]}
+
+    result = asyncio.run(content.recover_translation(tmp_path / "translation.json", "example", source, ask, (), {}))
+    assert sizes == [4, 2, 2]
+    assert len(result["links"]) == 4
+
+
 def test_explanation_shares_identical_formula_within_one_context(tmp_path):
     base = {"kind": "formula_display", "raw_content": r"\(x\)", "status": "ok"}
     records = [

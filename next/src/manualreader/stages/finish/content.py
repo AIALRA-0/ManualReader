@@ -294,7 +294,8 @@ def prior_translations(units, existing):
 
 
 async def translate(root: Path, sample: str, source: dict, ask,
-                    catalog: TranslationCatalog | None = None, on_partial=None, *, existing=None) -> dict:
+                    catalog: TranslationCatalog | None = None, on_partial=None, *, existing=None,
+                    split_temporary=False) -> dict:
     units = source_units(source)
     needed = {_key(u) for u in units if u["relation"] == "translated"}
     needed_ids = {key[1] for key in needed}
@@ -349,7 +350,8 @@ async def translate(root: Path, sample: str, source: dict, ask,
             await asyncio.sleep(2)
         remaining = [unit for unit in payload["units"] if unit["source_id"] in missing]
         retry_groups = [remaining]
-        if failure == "ds_truncated" and len(remaining) > 1:
+        split_requested = failure == "ds_truncated" or (split_temporary and failure == "ds_temporary")
+        if split_requested and len(remaining) > 1:
             split = len(remaining)//2
             retry_groups = [remaining[:split], remaining[split:]]
         fixed, unresolved, reasons = {}, [], {}
@@ -394,12 +396,13 @@ async def translate_to_file(path, sample, source, ask, catalog=None, *, glossary
 
 async def recover_translation(path, sample, source, ask, glossary, previous, checkpoint=None):
     catalog = build_translation_catalog([source], prior_translations(source_units(source), previous),
-                                        glossary, batch_limits=(8, 4200))
+                                        glossary, batch_limits=(4, 4200))
 
     async def ask_remaining(stage, payload):
         return await ask(stage, {**payload, "remaining_source_ids": [unit["source_id"] for unit in payload["units"]]})
 
-    return await translate(path.parent, sample, source, ask_remaining, catalog, checkpoint, existing=previous)
+    return await translate(path.parent, sample, source, ask_remaining, catalog, checkpoint,
+                           existing=previous, split_temporary=True)
 
 
 def translation_output(sample,units,needed,catalog,found,issues):
