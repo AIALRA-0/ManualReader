@@ -1,0 +1,28 @@
+reader/static/app.js
+  s_1c46d58ed67333::t_aff7a64a442356 85
+  s_1c46d58ed67333::t_7517275bc0994a 223
+  s_1c46d58ed67333::t_35e7c20222dae1 224-229,233-238
+  s_1c46d58ed67333::t_7fc6b0e66a7a54 222
+  s_1c46d58ed67333::t_0aaea8c1cea9a1 98,156,158
+reader/static/app.css
+  s_1c46d58ed67333::t_32902795b0d918 151-153
+  s_1c46d58ed67333::t_72074b901903d9 154-157
+Demo/test_question_interactions.js
+  s_1c46d58ed67333::t_aaaa1f4a9e211d 24-28
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c42871ab14fd41a6d4147bfbf5c6a806489ba90f",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
