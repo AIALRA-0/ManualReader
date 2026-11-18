@@ -198,3 +198,27 @@ def test_connected_finish_consumes_early_translation_without_second_request(tmp_
             patch('manualreader.stages.finish.review.next_run',return_value={}):
         connected.run(tmp_path,{},card,{'mode':'NORMAL'},early_translation=future)
     translate.assert_not_called()
+
+
+def test_at_least_one_question_allows_multiple_valid_questions_for_one_part():
+    from reader_generation import practice_issues
+    quizzes=[{'prompt':'第一项检验','placement':{'kind':'answer','question_id':'q','after_part_id':'p'},'question_ids':['q']},
+             {'prompt':'第二项检验','placement':{'kind':'answer','question_id':'q','after_part_id':'p'},'question_ids':['q']}]
+    assert practice_issues(quizzes,{('q','p')})==[]
+    assert practice_issues(quizzes,{('q','p'),('q','missing')})==['q/missing 缺少专属练习']
+
+
+def test_multiple_questions_at_one_part_keep_existing_attempts_on_native_save():
+    from reader_teaching import append_assets
+    from reader_prompts import WRITING_VERSION
+    old={'id':'old','prompt':'原来的问题','type':'choice','options':['甲','乙'],'correct_index':0,
+         'explanation':'原来的解析','selected':0,'explanation_ids':['e'],
+         'placement':{'kind':'lesson','explanation_id':'e','after_part_id':'p','after_passage_id':'e--p'}}
+    first={**old,'placement':{'kind':'lesson','after_part_id':'p'}}
+    second={**first,'prompt':'另一项检验','explanation':'另一个角度的解析'}
+    state={'rounds':[],'terms':[],'quizzes':[old]}
+    receipt=append_assets(state,{'writing_version':WRITING_VERSION,'terms':[],'quizzes':[first,second]},
+                          'node','e',['e--p'],lambda:'now')
+    assert receipt['complete'] and len(receipt['saved']['quizzes'])==2
+    assert receipt['saved']['quizzes'][0]=='old'
+    assert old['selected']==0 and not old.get('practice_archived')

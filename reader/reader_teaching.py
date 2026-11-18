@@ -122,14 +122,15 @@ def append_assets(state,data,node_id,explanation_id,passage_ids,stamp,*,exclusiv
     from reader_generation import exclusive_practice
     strict=exclusive_practice(data.get('writing_version'))
     if strict:
-        proposed={row['placement']['after_part_id']:row for row in data['quizzes']
-                  if isinstance(row,dict) and isinstance(row.get('placement'),dict) and row['placement'].get('after_part_id')}
+        proposed={}
+        for row in data['quizzes']:
+            if isinstance(row,dict) and isinstance(row.get('placement'),dict) and row['placement'].get('after_part_id'):
+                proposed.setdefault(row['placement']['after_part_id'],[]).append(row)
         for quiz in current_quizzes(state['quizzes']):
             position=quiz.get('placement') or {}
             if position.get('kind')!='lesson' or position.get('explanation_id')!=explanation_id:
                 continue
-            replacement=proposed.get(position.get('after_part_id'))
-            if replacement is None or not same_exercise(quiz,replacement):
+            if not any(same_exercise(quiz,row) for row in proposed.get(position.get('after_part_id'),[])):
                 quiz['practice_archived']='lesson_replaced'
     for field in ('terms','quizzes'):
         rows=data.get(field)

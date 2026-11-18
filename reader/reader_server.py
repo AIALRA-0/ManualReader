@@ -144,7 +144,10 @@ def save_result(state,rid,data,actor='reader',*,finish=True):
     if prepared.get('writing_version')==WRITING_VERSION:
         from reader_contract import current_quizzes,same_exercise
         from reader_generation import practice_issues,practice_owner
-        proposed={practice_owner(quiz):quiz for quiz in prepared.get('quizzes',[]) if isinstance(quiz.get('placement'),dict)}
+        proposed={}
+        for quiz in prepared.get('quizzes',[]):
+            if isinstance(quiz.get('placement'),dict):
+                proposed.setdefault(practice_owner(quiz),[]).append(quiz)
         owners={(answer['question_id'],part['id']) for answer in prepared['answers'] for part in answer['answer_parts']}
         problems=practice_issues(prepared.get('quizzes'),owners)
         if problems:raise ValueError('\n'.join(problems))
@@ -153,8 +156,7 @@ def save_result(state,rid,data,actor='reader',*,finish=True):
             owner=practice_owner(quiz)
             if owner[0] not in answered and not answered.intersection(quiz.get('question_ids',[])):continue
             if owner[0] and owner[0] not in answered:continue
-            replacement=proposed.get(owner)
-            if replacement is None or not same_exercise(quiz,replacement):
+            if not any(same_exercise(quiz,row) for row in proposed.get(owner,[])):
                 quiz['practice_archived']='answer_replaced'
     result=BASE_SAVE_RESULT(state,rid,prepared)
     for answer in prepared.get('answers',[]):

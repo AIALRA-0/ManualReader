@@ -55,8 +55,6 @@ def practice_issues(quizzes, owners, *, lesson=False):
             issues.append(f'/quizzes/{index}/question_ids 必须和 placement 指向同一个问题 {owner[0]}')
         if position.get('after_unit_id'):
             issues.append(f'/quizzes/{index}/placement 只用 after_part_id 指定练习归属')
-        if owner in seen:
-            issues.append(f'{owner} 有多道题，请保留一道检验本部分内容的练习')
         seen[owner] = index
         stem = practice_prompt_key(quiz)
         if stem and stem in stems:
