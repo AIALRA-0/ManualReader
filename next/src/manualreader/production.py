@@ -14,7 +14,6 @@ from .stepfinal_server import server_handler
 def configure_static(reader, static):
     shutil.copytree(reader/'static', static)
     script=install(static,reader)
-    script=script.replace(b"'X-Reader-Finish':'isolated-test'",b"'X-Reader-Finish':'reader'")
     (static/'reader-postprocess-preview.js').write_bytes(script)
 
 

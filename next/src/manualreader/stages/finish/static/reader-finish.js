@@ -188,49 +188,6 @@
     });
   }
 
-  function showStudy(root, doc, ctx) {
-    if (doc.mode!=='INTRO' || !ctx.openStudy || root.querySelector('.reader-chapter-study')) return;
-    const start=root.querySelector('article[data-passage-id$="--framework-start-1"]');
-    if (!start) return;
-    const links=el('nav','reader-chapter-study');
-    for (const [tab,key,label] of [['terms','terms','术语表'],['practice','exercises','练习']]) {
-      if (!doc.study?.[key]) continue;
-      const button=el('button','small-btn',label+'（'+doc.study[key]+'）');
-      button.type='button';
-      button.onclick=()=>ctx.openStudy(tab);
-      links.append(button);
-    }
-    if (links.children.length) start.append(links);
-  }
-
-  async function showDelivery(root, material, doc, ctx, token) {
-    if (doc.mode==='ANSWER' || !doc.delivery_receipt_sha256) return;
-    const base='/api/next-finish/delivery';
-    const headers={'X-Reader-Material':material,'X-Reader-Finish':'isolated-test'};
-    const state=await ctx.api(base,{headers}).catch(()=>null);
-    if (!state || state.delivery || generations.get(root)!==token) return;
-    const panel=el('div','reader-next-delivery');
-    const button=el('button','small-btn','交稿');
-    button.type='button';
-    button.onclick=async ()=>{
-      if (!window.confirm('保存这一版讲解并提交已讲解范围？')) return;
-      button.disabled=true;
-      const post=(path,value)=>ctx.api(base+path,{method:'POST',headers,body:JSON.stringify(value)});
-      try {
-        const draft=await post('/prepare',{});
-        const published=await post('/commit',{preview_token:draft.preview_token,
-          commit_id:draft.commit_id,confirmed:true});
-        if (published.status==='applied') panel.remove();
-      } catch {
-        // Reader only shows confirmed changes. The service retains its receipt for retry.
-      } finally {
-        button.disabled=false;
-      }
-    };
-    panel.append(button);
-    root.append(panel);
-  }
-
   async function load(material,ctx,id) {
     const key=material+'|'+id;
     if (!manifests.has(key)) {
@@ -256,13 +213,11 @@
     await new Promise(requestAnimationFrame);
     if (!doc || generations.get(root)!==token) return;
     showRecaps(root,doc.chapter_recaps,ctx);
-    showStudy(root,doc,ctx);
     const nextReading=root.querySelector('article[data-passage-id$="--framework-next"] > .chinese');
     if (nextReading && doc.next_reading && nextReading.dataset.markdownSource!==doc.next_reading) {
       nextReading.dataset.markdownSource=doc.next_reading;
       ctx.rich(nextReading,doc.next_reading);
     }
-    void showDelivery(root,material.id,doc,ctx,token);
     const blocks=new Map();
     for (const article of root.querySelectorAll('article[data-passage-id]')) {
       let aliases=[];

@@ -75,13 +75,6 @@ def install(static, legacy):
             '，待核 '+t.uncertain+'，未完成 '+t.failed_source_ids.length+
             '\\n讲解关联 '+e.direct_semantic_count+'/'+e.total+'，只计算实质讲解关联。另有 '+e.navigation_only_count+' 条只用于定位。'
           : '按保存的原文、译文、讲解关联和手动已读记录自动计算';""")
-    app=substitute(app,r'inlineQuestions:attachInlineQuestions,sourceFlow:',
-        """inlineQuestions:attachInlineQuestions,openStudy:tab=>{
-          if(mobile)selectPanel('study');
-          else if(!visible.study){visible.study=true;setLayout()}
-          if(tab==='terms'){restoreTerms();termHoverId=null;termRestore=null;termQuery=''}
-          document.querySelector('[data-study="'+tab+'"]')?.click();
-        },sourceFlow:""")
     app=substitute(app,r'termHoverId=null,termRestore=null,termTimer=null,',
         'termHoverId=null,termRestore=null,termTimer=null,termClickId=null,')
     app=substitute(app,r'function showTerm\(id,force=false\)\{',
@@ -198,8 +191,6 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
 .reading-handle.vertical:is(:hover,:focus-visible)::after{opacity:1}
 .reader-pdf-questions{padding:.45rem .65rem}
 .reader-pdf-questions>.original-block{padding:.25rem 0}
-.reader-chapter-study{display:flex;flex-wrap:wrap;gap:.4rem;margin:.8rem 0}
-.reader-next-delivery{display:flex;align-items:center;gap:.75rem;margin:1rem 0}
 .reader-translation-equation{display:grid;grid-template-columns:1fr auto;align-items:center;gap:.7rem;margin:.7rem 0}
 .reader-translation-equation>.reader-source-crop{max-width:100%;width:auto;height:auto;aspect-ratio:auto!important;justify-self:center}
 .reader-equation-number{color:var(--muted);white-space:nowrap}
