@@ -1,0 +1,32 @@
+reader/static/app.js
+  s_1c46d58ed67333::t_767a48f671da88 78,108-121,261,285,333-335
+next/src/manualreader/stages/finish/static/reader-finish.js
+  s_1c46d58ed67333::t_403895274721f3 109-110,125-135
+next/src/manualreader/stages/finish/native_ui.py
+  s_1c46d58ed67333::t_45482a76e5206e 134
+reader/static/reader-project-files.js
+  s_1c46d58ed67333::t_767a48f671da88 50-54,97
+  s_1c46d58ed67333::t_6a9e9fcc1c1c34 117-137
+reader/static/reader-ui.js
+  s_1c46d58ed67333::t_fc7fc3e26dff36 32,56
+  s_1c46d58ed67333::t_c0f74285282b6d 8,19-31,33-55,57-66,69,74-77,84-92,94-101,237
+  s_1c46d58ed67333::t_b861d9b7cffa84 67-68,70-73,78-83,93
+reader/static/app.css
+  s_1c46d58ed67333::t_840672bdf10a17 683-690
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "ea1b21db5be42a2ccbd1fce601db44091894641d",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
