@@ -102,7 +102,8 @@ def writer_prompt(mode):
     exported = here / ('reader_step04_' + mode.lower() + '.txt')
     path = exported if exported.is_file() else here / 'next/src/manualreader/stages/step04' / (mode + '.txt')
     raw = path.read_bytes()
-    if sha256(raw).hexdigest() != PROMPTS[mode]:
+    # 冻结基线按 LF 计算；发布包或客户端使用 CRLF 时仍核对同一份提示词内容。
+    if sha256(raw.replace(b'\r\n', b'\n')).hexdigest() != PROMPTS[mode]:
         raise ValueError('请从当前 Reader 下载与本轮模式对应的冻结 Writer 提示词')
     return raw.decode('utf8')
 
@@ -228,7 +229,8 @@ def align_guide(guide):
         'first_chapter': '新项目首次生成自动登记「0. 导读」并使用冻结的 INTRO 规划及写作提示词',
         'continuation': '已有讲解时沿用当前章节，用户手动完成后再按原文顺序确定下一章',
         'writer_prompts': {mode: {'file': 'reader_step04_' + mode.lower() + '.txt',
-                                 'sha256': digest} for mode, digest in PROMPTS.items()},
+                                 'content_baseline_sha256': digest,
+                                 'baseline_newlines': 'LF'} for mode, digest in PROMPTS.items()},
         'delivery': '首稿在 Reader 讲解栏显示，项目文件同时保存按章节编号和标题命名的 Markdown 副本',
         'receipt': 'preview_ready 包含 explanation_id；formal_saved=false 表示尚未正式交稿',
         'pipeline': '当前客户端运行 STEP-01～18 的 Next 实现，STEP-19 核对实际装配，STEP-20 按用户确认提交正式版本和进度',

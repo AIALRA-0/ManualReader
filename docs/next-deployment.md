@@ -38,6 +38,8 @@ PYTHONPATH=next/src python -m manualreader.production --reader . project \
 
 项目文件目录中的 `explanations/0. 导读.md` 保存融合稿，`explanations/0. 导读.raw.md` 保存原样首稿。其余章节同样使用实际编号和正式标题，媒体保存在 `explanations/media/`。回执包含 `explanation_id`，并以 `formal_saved=false` 标明阅读预览。旧 V2.1 的文件预览生成入口已移到 Demo 归档，客户端下载清单只包含当前章节客户端及当前模式提示词。
 
+规划与 Writer 的冻结 TXT、JSON 使用 LF 换行。Git 属性固定发布包的换行形式，客户端核对内容基线时也先把 CRLF 还原为 LF。后处理提示词保留各自清单约定的原始字节，不统一改写这些文件。
+
 主原文由 Agent 通过 `POST /api/content/presentation` 的 `file_id` 选择，它展示当前章的核心材料。该操作保留现有布局与讲解。点击讲解中其他文件的真实来源时，对应原件在旁边的文件标签页打开。
 
 讲解关联按材料目录当前有效文件的百分比等权计算，保留两位小数。新项目默认使用 `source/`，已有 `sources/` 继续纳入。新增文件在登记和建立关联之前为零，未重新解析的修改版本也为零。删除文件退出分母，已登记文件通过文件操作移动时保留身份。`explanations/` 不计入材料集合。正式文件覆盖率与用户手动完成率继续分开保存。
