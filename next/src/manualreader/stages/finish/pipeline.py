@@ -216,6 +216,15 @@ async def finish_batch(root,providers,timing,sample_sources=None,*,write_result=
 
         async def attach(node,file,factory):
             outcome=await replayable(timing,name,node,side/file,factory)
+            if node=='F3' and outcome:
+                actual={p['part_id'] for p in content._part_contents(
+                    structure,content._section_state(root,name,structure,card))}
+                present={q.get('part_id') for q in outcome.get('questions',[])}
+                if actual-present:
+                    outcome=await timing.run(name,'step_14_missing_parts',practice.practice(
+                        root,name,structure,card,ask,pinned=outcome.get('questions',[])))
+                    write(side/file,outcome)
+                    (side/'formatted.json').unlink(missing_ok=True)
             if node in ('F1','F3') and outcome:
                 key,out_path,step=('guidance','chapter-guidance.json',15) if node=='F1' else (
                     'questions','quiz-candidates.json',14)

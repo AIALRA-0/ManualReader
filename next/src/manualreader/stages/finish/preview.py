@@ -744,25 +744,22 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
             term_receipt.update(save_preview_terms(state,terms,chapter_id,lesson['passage_ids'],backend.core.stamp,
                                                   explanation_id=explanation_id))
             if adapted:
-                from reader_contract import current_quizzes
-                prior=[row for row in current_quizzes(state['quizzes'])
-                       if (row.get('placement') or {}).get('kind')=='lesson'
-                       and (row.get('placement') or {}).get('explanation_id')==explanation_id]
                 response=append_assets(state,{'terms':[],'quizzes':adapted},
                                        chapter_id,explanation_id,lesson['passage_ids'],backend.core.stamp)
-                saved=set(response['saved']['quizzes'])
-                if len(saved)==len(adapted):
-                    for old in prior:
-                        if old['id'] not in saved and old.get('selected') is None:
-                            old['practice_archived']='lesson_replaced'
                 return response
         backend.core.mutate(install_assets)
     first=next((b['id'] for b in blocks if not b.get('progress_exempt')),blocks[0]['id'])
     coverage=structure.get('coverage',{})
+    from reader_part_practice import coverage as practice_coverage
+    question_coverage=practice_coverage(backend.material(),backend.core.read_state())
+    chapter_practice=next(c for c in question_coverage['chapters'] if c['explanation_id']==explanation_id)
     receipt={'sample_id':sample,'material_id':pid,'explanation_id':explanation_id,
              'learning_node_id':chapter_id,'body_sha256':body_sha,
              'blocks':len(blocks),'source_units':len(source_rows),'translation_groups':translated['saved'],
              'resources':sum(len(items) for items in shown.values()),'quizzes':len(adapted),
+             'practice_coverage':{'total':chapter_practice['total'],'covered':chapter_practice['covered'],
+                 'percentage':f"{chapter_practice['covered']/chapter_practice['total']*100:.2f}" if chapter_practice['total'] else '100.00',
+                 'missing_part_ids':[p['part_id'] for p in chapter_practice['parts'] if not p['quiz_ids']]},
              'terms':len(term_receipt['saved']),'term_receipt':term_receipt,'quiz_issues':quiz_issues,
              'recaps':int(bool(recaps or synthesis)),'recap_parts':len(recaps),
              'pdf_pages':sum(len(r['document']['pages']) for r in file_rows),'visual_translation_groups':visual_receipt['saved'],

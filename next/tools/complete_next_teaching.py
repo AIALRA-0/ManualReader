@@ -109,13 +109,12 @@ async def finish_terms(root,job,structure,card,ask):
 async def finish_practice(root,job,structure,card,ask):
     from reader_practice_policy import validate_practice
     saved=read(job/'quiz-candidates.json')
-    attempted=attempted_prompts(root,job.name)
     state=_section_state(root,job.name,structure,card)
     parts=_part_contents(structure,state)
-    target=len(parts) if structure['mode']=='NORMAL' else min(1,len(parts))
+    target=len(parts)
 
     def check(rows):
-        if len(rows)!=target or not rows:
+        if {r.get('part_id') for r in rows}!={p['part_id'] for p in parts} or not rows:
             return False
         try:
             validate_practice(rows,current_writing=True)
@@ -126,25 +125,13 @@ async def finish_practice(root,job,structure,card,ask):
     prior=Counter(r['type'] for r in saved)
     if check(saved):
         return {'before':dict(prior),'after':dict(prior),'target':target,'meets_online_policy':True,'model_needed':False}
-    preserve=[r for r in saved if key(r['prompt']) in attempted]
-    extra_nonchoice=max(0,target-(target//2+1)) if target>1 else 0
-    for r in saved:
-        if r in preserve or r['type']=='recall':
-            continue
-        if r['type']=='choice' or sum(q['type']!='choice' for q in preserve)<extra_nonchoice:
-            preserve.append(r)
+    preserve=list(saved)
     generated=await quizzes.practice(root,job.name,structure,card,ask,pinned=preserve)
     rows=generated['questions']
     new_parts={r['part_id'] for r in rows}
-    if structure['mode']=='NORMAL' or not rows:
-        for row in saved:
-            if row['part_id'] not in new_parts and (len(rows)<target or key(row['prompt']) in attempted):
-                rows.append(row)
-    safe_by_part={r['part_id']:r for r in rows}
-    for row in preserve:
-        if key(row['prompt']) in attempted:
-            safe_by_part[row['part_id']]=row
-    rows=[safe_by_part[p['part_id']] for p in parts if p['part_id'] in safe_by_part]
+    for row in saved:
+        if row['part_id'] not in new_parts:
+            rows.append(row)
     normalized=[]
     for row in rows:
         if row in saved:

@@ -50,9 +50,10 @@ def main():
         facts['terms']='partial_ready' if terms.get('rejected') or not view.get('terms') and r['issues'].get('F2') else (
             'complete' if view.get('terms') else 'skipped')
         event('STEP-13','native_terms_recorded',terms,facts['terms'],('STEP-08',))
-        expected_practice=r['parts'] if meta['mode']=='NORMAL' else 1
-        facts['practice']='complete' if (view.get('quizzes') or 0)>=expected_practice else 'partial_ready'
-        event('STEP-14','native_practice_recorded',{'parts':r['parts'],'visible':view.get('quizzes')},
+        coverage=view.get('practice_coverage') or {}
+        facts['practice']='complete' if coverage.get('total') and coverage.get('covered')==coverage['total'] else 'partial_ready'
+        event('STEP-14','native_practice_recorded',{'parts':r['parts'],'visible':view.get('quizzes'),
+                                                'part_coverage':coverage},
               facts['practice'],('STEP-08',))
         facts['guidance']='skipped' if meta['mode']=='ANSWER' else (
             'complete' if view.get('recap_parts')==r['parts'] else 'partial_ready')

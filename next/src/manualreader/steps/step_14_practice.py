@@ -44,22 +44,21 @@ def native_question(row):
     return value
 
 
-async def practice(root, sample, structure, card, ask, *, pinned=()):
-    state = _section_state(root, sample, structure, card)
-    parts = _part_contents(structure, state)
+async def complete_parts(parts, ask, *, mode, title, existing=(), known_terms=(), available_code_runners=(), attempts=3):
+    """按真实 Part 补齐末尾阅读题；成功项和旧题保留，回包漏项只补漏项。"""
     if not parts:
-        return {'questions': [], 'issues': []}
-    snapshot = glossary(root, sample)
-    known = snapshot.get('existing_quizzes', [])
-    found = {}
+        return {'questions': [], 'unresolved_part_ids': [], 'issues': [],
+                'coverage': {'total': 0, 'covered': 0, 'percentage': '100.00'}}
+    questions = [dict(row) for row in existing if row.get('part_id') in {p['part_id'] for p in parts}]
+    found = {row['part_id'] for row in questions}
     issues = []
     part_map = {part['part_id']: part for part in parts}
 
-    def accept(row, part, existing=False):
+    def accept(row, part):
         part_id = part['part_id']
         placement = {'kind': 'lesson', 'after_part_id': part_id}
         value = native_question({**row, 'placement':placement})
-        identity = row.get('id') if existing else 'quiz-' + sha256(
+        identity = 'quiz-' + sha256(
             (part_id+'\0'+value['prompt']).encode()).hexdigest()[:22]
         valid_blocks = {b['block_id'] for b in part['blocks']}
         valid_sources = {sid for b in part['blocks'] for sid in b['source_ids']}
@@ -67,49 +66,45 @@ async def practice(root, sample, structure, card, ask, *, pinned=()):
                 'block_ids':[bid for bid in row.get('block_ids', []) if bid in valid_blocks],
                 'source_ids':[sid for sid in row.get('source_ids', []) if sid in valid_sources]}
 
-    for row in [*pinned,*known]:
-        owner = row.get('part_id') or row.get('placement', {}).get('after_part_id')
-        if (owner in part_map and owner not in found and not row.get('deleted_at')
-                and (row in pinned or row.get('body_fused_sha')==state['body_fused_sha'])):
-            try:
-                found[owner] = accept(row, part_map[owner], True)
-                if state['mode'] != 'NORMAL':
-                    break
-            except (ValueError, KeyError, TypeError) as exc:
-                issues.append({'part_id':owner,'reason':str(exc)})
-    missing = [p for p in parts if p['part_id'] not in found]
-    if missing and (state['mode'] == 'NORMAL' or not found):
-        planned_total=len(parts) if state['mode']=='NORMAL' else 1
-        choices=sum(row['type']=='choice' for row in found.values())
-        objective=sum(row['type']!='recall' for row in found.values())
-        payload = {'mode':state['mode'], 'chapter_title':state['title'], 'parts':missing,
-                   'known_terms':snapshot.get('existing_terms', []),
-                   'existing_quiz_ids':[{k:q.get(k) for k in ('id','placement','selected')} for q in known],
+    from reader_practice_policy import practice_policy
+    policy = practice_policy()
+    for attempt in range(attempts):
+        missing = [p for p in parts if p['part_id'] not in found]
+        if not missing:
+            break
+        planned_total = len(questions) + len(missing)
+        choices = sum(row.get('type','choice') == 'choice' for row in questions)
+        objective = sum(row.get('type','choice') in policy['objective_types'] for row in questions)
+        payload = {'mode':mode, 'chapter_title':title, 'parts':missing,
+                   'known_terms':list(known_terms),
+                   'existing_quiz_ids':[{k:q.get(k) for k in ('id','part_id','placement','selected')} for q in questions],
                    'native_question_contract':QUESTION,
-                   'available_code_runners':snapshot.get('available_code_runners', []),
-                   'practice_mix':{'requested_total':planned_total-len(found),
+                   'available_code_runners':list(available_code_runners),
+                   'practice_policy':policy,
+                   'practice_mix':{'requested_total':len(missing),
                        'minimum_choice':max(0,planned_total//2+1-choices) if planned_total>1 else 0,
-                       'minimum_objective':max(0,ceil(planned_total*.75)-objective),
-                       'objective_types':['choice','true_false','numeric','ordering','code']}}
-        if state['mode'] != 'NORMAL':
-            payload['requested_exercise_count'] = 1
+                       'minimum_objective':max(0,ceil(planned_total*policy['minimum_objective_ratio'])-objective),
+                       'objective_types':policy['objective_types']}}
+        if attempt:
+            payload['missing_response_items'] = {'attempt':attempt, 'part_ids':[p['part_id'] for p in missing],
+                                                'technical_errors':issues[-len(missing):]}
         raw, error = await _request(ask, 'F3', payload)
         if error:
             issues.append({'reason':error})
         for row in _objects(raw.get('questions')):
             owner = row.get('placement', {}).get('after_part_id')
-            if owner not in part_map or owner in found:
+            if owner not in {p['part_id'] for p in missing} or owner in found:
                 continue
-            if state['mode'] != 'NORMAL' and found:
-                break
             if row.get('type') == 'code' and row.get('runner_id') not in payload['available_code_runners']:
                 issues.append({'part_id':owner,'reason':'代码运行器未通过本轮环境验证'})
                 continue
             try:
-                found[owner] = accept(row, part_map[owner])
+                questions.append(accept(row, part_map[owner]))
+                found.add(owner)
             except (ValueError, KeyError, TypeError, AttributeError) as exc:
                 issues.append({'part_id':owner,'reason':str(exc)})
-    questions=[found[p['part_id']] for p in parts if p['part_id'] in found]
+    order = {p['part_id']:i for i,p in enumerate(parts)}
+    questions.sort(key=lambda row:order[row['part_id']])
     if questions:
         from reader_practice_policy import validate_practice
         try:
@@ -117,4 +112,23 @@ async def practice(root, sample, structure, card, ask, *, pinned=()):
         except ValueError as exc:
             issues.append({'reason':str(exc)})
     return {'questions':questions,
-            'unresolved_part_ids':[p['part_id'] for p in parts if p['part_id'] not in found], 'issues':issues}
+            'unresolved_part_ids':[p['part_id'] for p in parts if p['part_id'] not in found], 'issues':issues,
+            'coverage':{'total':len(parts),'covered':len(found),
+                        'percentage':f'{len(found)/len(parts)*100:.2f}'}}
+
+
+async def practice(root, sample, structure, card, ask, *, pinned=()):
+    state = _section_state(root, sample, structure, card)
+    snapshot = glossary(root, sample)
+    existing = []
+    identities = set()
+    for row in [*pinned, *snapshot.get('existing_quizzes', [])]:
+        owner = row.get('part_id') or row.get('placement', {}).get('after_part_id')
+        identity = row.get('id')
+        if (identity not in identities and not row.get('deleted_at') and
+                (row in pinned or row.get('body_fused_sha') == state['body_fused_sha'])):
+            existing.append({**row, 'part_id':owner})
+            identities.add(identity)
+    return await complete_parts(_part_contents(structure,state),ask,mode=state['mode'],title=state['title'],
+                                existing=existing,known_terms=snapshot.get('existing_terms',[]),
+                                available_code_runners=snapshot.get('available_code_runners',[]))

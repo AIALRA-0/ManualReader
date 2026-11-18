@@ -67,7 +67,7 @@
       "step": "step_14_practice",
       "variant": "practice",
       "prompt": "prompts/step_14_practice.md",
-      "sha256": "f31b0d75e9ad580604f24872ec8d923b15ae79f0cab806dd45a9729fb63e93f3"
+      "sha256": "5a75cdce18b05d60ccc5633b02999b290257d6b70bf9c763fc6a4d81fc7a35db"
     },
     "F1": {
       "step": "step_15_chapter_guidance",
