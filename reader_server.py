@@ -812,6 +812,9 @@ class Handler(core.Handler):
                     return self.json({'question_id':q['id'],'answer_history':q.get('answer_history',[]),'question_history':q.get('question_history',[])})
                 if path=='/api/work':
                     query=parse_qs(urlsplit(self.path).query)
+                    if query.get('mode')==['lesson-v21']:
+                        return self.json({'code':'client_update_required',
+                                          'error':'请从当前 guide.client_files 更新客户端，再运行 teach；已有首稿继续保留'},410)
                     if query.get('mode')==['lesson-next']:
                         from asyncio import run
                         from reader_source_quality import writer_packet
