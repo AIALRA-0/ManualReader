@@ -106,7 +106,8 @@
     const fold=el('details','followup answer-followup inline-question reader-resource-details');
     fold.dataset.resourceId=item.resource_id;
     fold.dataset.status=item.status;
-    fold.append(ReaderUI.followupSummary('展开或收起资源解读','',null,'book'));
+    const title=ReaderUI.followupSummary('展开或收起资源解读','',null,'book');
+    fold.append(title);
     const inside=el('div','inline-question-body');
     fold.append(inside);
     fold.addEventListener('toggle',()=>{
@@ -121,6 +122,17 @@
       for (const text of item.steps || []) appendProse(text);
       for (const text of item.limits || []) appendProse(text);
       if (item.summary) appendProse(item.summary);
+      const close=el('button','reader-resource-collapse');
+      close.type='button';
+      close.setAttribute('aria-label','收起资源解读');
+      close.append(ReaderUI.icon('chevron'),el('span',null,'收起'),el('span','inline-question-line'));
+      close.onclick=event=>{
+        event.stopPropagation();
+        fold.open=false;
+        title.focus({preventScroll:true});
+        title.scrollIntoView({block:'nearest',inline:'nearest'});
+      };
+      inside.append(close);
     });
     return fold;
   }

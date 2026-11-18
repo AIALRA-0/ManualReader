@@ -680,6 +680,14 @@ pre .hljs{display:block;background:transparent;color:var(--text);font:inherit;wh
 .reader-pinned-image-reset.icon-btn{position:absolute;right:6px;bottom:4px;width:26px;height:26px;min-width:26px;background:var(--surface)}
 .reader-pinned-image-reset.icon-btn:hover{background:var(--selected)}
 .reader-pinned-image-reset[hidden]{display:none}
+.question-card > .bp.inline-question{margin:2px 0 6px!important;padding:0!important}
+.question-card > .bp.inline-question > summary{height:22px;min-height:22px;margin:0;gap:6px;font-size:11px!important;color:var(--muted)}
+.question-card > .bp.inline-question > summary::after{font-size:11px;font-weight:400;white-space:nowrap}
+.reader-resource-details button.reader-resource-collapse{display:flex;align-items:center;gap:6px;width:100%;height:22px;min-height:22px;margin-top:6px;padding:0;background:transparent;color:var(--muted);font-size:11px}
+.reader-resource-details button.reader-resource-collapse:hover{color:var(--text)}
+.reader-resource-collapse svg{width:11px;height:13px;transform:rotate(-90deg);flex:none}
+.pdf-pan-ready,.pdf-pan-ready *{cursor:grab!important}
+.pdf-is-panning,.pdf-is-panning *{cursor:grabbing!important;user-select:none!important}
 .reader-media-dock-stage[data-layout=side]>.reader-media-preview+div{border-left:1px solid var(--line)}
 .reader-media-dock-stage[data-layout=stack]>.reader-media-preview+div{border-top:1px solid var(--line)}
 .reader-media-preview>img,.reader-media-preview>picture img,.reader-media-preview>video,.reader-media-preview>canvas,.reader-media-preview>svg{display:block;max-width:100%;max-height:100%;object-fit:contain;margin:auto}

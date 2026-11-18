@@ -43,12 +43,6 @@ def install(static, legacy):
         "!p.progress_exempt||p.inline_questions||(/^(?:postprocess-preview|next-chapter-[a-f0-9]{20})--(?:block-|source-extra-)/.test(p.id))")
     app=substitute(app,r'function pendingTranslation\(\)\{return document\.createDocumentFragment\(\)\}',
         "function pendingTranslation(){return el('span','reader-translation-pending','待翻译')}")
-    # 资源详解和回答追问共用同一条折叠栏，仍分别保留各自的内容。
-    app=substitute(app,r"function answerFollowup\(q,segment,excerpt,legacy=false\)\{\n  const box=.*?box\.append\(label\);",
-        """function answerFollowup(q,segment,excerpt,legacy=false){
-  const box=el('details','followup answer-followup inline-question'),notice=el('span','question-sync-status');
-  const label=ReaderUI.followupSummary('针对这段回答提问','',notice),input=el('textarea');
-  box.append(label);""")
     app=substitute(app,r"root\.querySelectorAll\('\.inline-question'\)\)if\(!retained\.has\(old\)\)old\.remove\(\)",
         "root.querySelectorAll('.inline-question:not(.reader-resource-details)'))if(!retained.has(old))old.remove()")
     app=substitute(app,r'(?:\}node\.scrollTop=scroll;\n \}\n)(?= function renderOriginal)',
@@ -137,17 +131,7 @@ def install(static, legacy):
                   "svg.setAttribute('aria-hidden','true');svg.setAttribute('data-reader-icon','');")
     ui=substitute(ui,r'if\(!target\|\|target===tooltipOwner\)return;clearTimeout\(tooltipTimer\);tooltipTimer=setTimeout\(\(\)=>showTooltip\(target\),180\)',
         "if(!target||target===tooltipOwner||target.contains(e.relatedTarget))return;clearTimeout(tooltipTimer);tooltipTimer=setTimeout(()=>showTooltip(target),80)")
-    page.write_text(ui+"""
-ReaderUI.followupSummary=function(accessibleName,name,notice,icon='message'){
-    const label=ReaderUI.make('summary');
-    if (icon==='message') label.title=accessibleName;
-    label.setAttribute('aria-label',accessibleName);
-    label.append(ReaderUI.icon(icon),ReaderUI.icon('chevron'));
-    if(name)label.append(ReaderUI.make('span',null,name));
-    label.append(ReaderUI.make('span','inline-question-line'),notice||ReaderUI.make('span','question-sync-status'));
-    return label;
-};
-""",'utf8')
+    page.write_text(ui,'utf8')
 
     page=static/'app.css'
     css=page.read_text('utf8')

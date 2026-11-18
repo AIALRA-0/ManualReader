@@ -47,6 +47,11 @@ window.ReaderProjectFiles={
  function applyRatio(){slots.style.gridTemplateRows=weights.slice(0,split).map(w=>`minmax(0,${w}fr)`).join(' 8px ')}
  function persist(){if(!project)return;localStorage.setItem('reader-project-files:'+project,JSON.stringify({tabs:tabs.map(t=>({path:t.path,page:t.page||0,scroll:t.scroll||0,location:t.location||null})),active,split,weights,bottomMode,thirdMode,mode:ctx.mode()}))}
  function url(kind,path,extra=''){return '/api/project-files/'+kind+'?material='+encodeURIComponent(project)+'&path='+encodeURIComponent(path)+extra}
+ let previewZoom=null;
+ const pdfPreviewTip=ReaderUI.pdfNavigation(body,{
+  pageAt:()=>viewer.hidden||!previewZoom?null:body.querySelector(':scope > .project-document-page'),
+  resize:factor=>previewZoom?.(factor),
+ });
  function showMain(){if(active==='')return;clearFileWait();saveScroll();stopMedia();active='';request++;clearTimeout(poll);applyTab();persist()}
  function stopMedia(){for(const node of body.querySelectorAll('audio,video')){node.pause();node.removeAttribute('src');node.load()}}
  function saveScroll(){const tab=tabs.find(t=>t.path===active);if(tab)tab.scroll=body.scrollTop}
@@ -89,7 +94,7 @@ window.ReaderProjectFiles={
   }
  }
  async function preview(tab,quiet=false,where=null){
-  if(!tab)return;stopMedia();body.dataset.filePath=tab.path;clearTimeout(poll);const serial=++request,identity=project,key=identity+':'+tab.path+':'+(tab.page||0);let waiting=null,keepWaiting=false;
+  if(!tab)return;previewZoom=null;stopMedia();body.dataset.filePath=tab.path;clearTimeout(poll);const serial=++request,identity=project,key=identity+':'+tab.path+':'+(tab.page||0);let waiting=null,keepWaiting=false;
   if(!quiet){if(fileWait?.key!==key||!body.contains(fileWait.host)){clearFileWait();clearResources();const host=el('div','project-file-wait');body.replaceChildren(host);bar.replaceChildren();const step=ReaderUI.loading(host,'正在打开文件',[['preview','读取文件状态'],['content','准备文件内容'],['render','显示文件']]),job={key,host,step,statusRead:false,finish(){step();host.remove();if(fileWait===job)fileWait=null}};fileWait=job}waiting=fileWait}
   let data;try{data=await ctx.api(url('preview',tab.path),{},waiting&&!waiting.statusRead?waiting.step.task('preview'):null);if(identity!==project||serial!==request||active!==tab.path)return;
   if(quiet){clearResources();bar.replaceChildren()}
@@ -109,7 +114,27 @@ window.ReaderProjectFiles={
   let locatedCode;
   if(waiting){waiting.step.task('preview').done();waiting.step.stage('正在读取文件内容');waiting.step.task('content')({state:'waiting'})}
   if(data.kind==='pages'){
-   tab.page=Math.max(0,Math.min(data.pages-1,tab.page||0));const number=el('span','file-page-number'),image=el('img','reader-page-preview project-document-page');image.alt=data.name;image.loading='eager';image.src=await resource(url('page',tab.path,'&page='+tab.page+'&scale=1.4'),waiting?.step.task('content'));if(serial!==request||identity!==project)return;let scale=tab.scale||1;const zoom=()=>{image.style.width=(scale*100)+'%';image.style.maxWidth='none';tab.scale=scale};zoom();const prev=button('back','上一文件页',()=>{tab.page--;preview(tab);persist()}),next=button('forward','下一文件页',()=>{tab.page++;preview(tab);persist()});prev.disabled=!tab.page;next.disabled=tab.page>=data.pages-1;number.textContent=(tab.page+1)+' / '+data.pages;bar.prepend(prev,number,next,button('minus','缩小文件',()=>{scale=Math.max(.3,scale/1.2);zoom()}),button('plus','放大文件',()=>{scale=Math.min(4,scale*1.2);zoom()}),button('fit','适配文件宽度',()=>{scale=1;zoom()}));body.append(image);
+   tab.page=Math.max(0,Math.min(data.pages-1,tab.page||0));
+   const number=el('span','file-page-number'),image=el('img','reader-page-preview project-document-page');
+   image.alt=data.name;
+   image.title=pdfPreviewTip;
+   image.loading='eager';
+   image.src=await resource(url('page',tab.path,'&page='+tab.page+'&scale=1.4'),waiting?.step.task('content'));
+   if(serial!==request||identity!==project)return;
+   const setZoom=value=>{
+    tab.scale=Math.max(.3,Math.min(4,value));
+    image.style.width=(tab.scale*100)+'%';
+   };
+   setZoom(tab.scale||1);
+   previewZoom=factor=>setZoom(tab.scale*factor);
+   const prev=button('back','上一文件页',()=>{tab.page--;preview(tab);persist()});
+   const next=button('forward','下一文件页',()=>{tab.page++;preview(tab);persist()});
+   prev.disabled=!tab.page;
+   next.disabled=tab.page>=data.pages-1;
+   number.textContent=(tab.page+1)+' / '+data.pages;
+   bar.prepend(prev,number,next,button('minus','缩小文件',()=>previewZoom?.(1/1.2)),
+    button('plus','放大文件',()=>previewZoom?.(1.2)),button('fit','适配文件宽度',()=>setZoom(1)));
+   body.append(image);
    if(where){await image.decode();if(serial!==request||identity!==project)return false}
   }else if(location){
    locatedCode=window.ReaderCode?.block(data.text,{path:tab.path})||el('pre',null,data.text);
