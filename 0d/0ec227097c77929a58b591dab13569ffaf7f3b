@@ -1,0 +1,21 @@
+Demo/test_question_interactions.js
+  s_1c46d58ed67333::t_2c9da4881cf69b 34-41
+reader/static/app.js
+  s_1c46d58ed67333::t_04531a6c8d7fb5 230,232,239
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d0ec227097c77929a58b591dab13569ffaf7f3b",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
