@@ -1,0 +1,174 @@
+docs/assets/readme/next/source-relations.svg
+  s_1c46d58ed67333::t_4a71dc7ba20183 1
+README.en.md
+  s_1c46d58ed67333::t_59a6f809f615e0 13
+  s_1c46d58ed67333::t_ab10ed8b087232 1,3,5-12,14-113,115,117-234
+  s_1c46d58ed67333::t_38d36bf8d2a8f4 114,116
+Demo/test_code_languages.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 2
+Demo/test_project_files.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+reader/reader_next_teach.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 1-454
+Demo/test_text_layer_async.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+.gitignore
+  s_1c46d58ed67333::t_73fa635689117a 43
+  s_1c46d58ed67333::t_b9556a7340ef14 44-45
+Demo/check_media_diagrams.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 6
+Demo/test_learning_cache_lifetime.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+Demo/test_contracts.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/bench_progress.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_bootstrap_api.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+scripts/launch_reader.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 1-42
+docs/assets/readme/next/workflow.svg
+  s_1c46d58ed67333::t_4a71dc7ba20183 1
+Demo/test_database_lifecycle.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4,72,107
+Demo/test_request_isolation.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4,58
+Demo/test_media_interactions.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+scripts/code-highlight/build.cjs
+  s_1c46d58ed67333::t_73fa635689117a 1-7
+docs/diagrams/permissions.mmd
+  s_1c46d58ed67333::t_8247c19ce95c73 1-15
+scripts/serve_reader.py
+  s_1c46d58ed67333::t_73fa635689117a 1-45
+Demo/test_translation_markup.js
+  s_1c46d58ed67333::t_0bdb9f31581b2c 8
+README.md
+  s_1c46d58ed67333::t_4a71dc7ba20183 1,3,5-12,14-80,82-121,123-207,209-294
+  s_1c46d58ed67333::t_59a6f809f615e0 13,81,122,208
+next/src/manualreader/stepfinal_server.py
+  s_1c46d58ed67333::t_73fa635689117a 63
+Demo/test_reading_lookup.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+docs/diagrams/source-relations.mmd
+  s_1c46d58ed67333::t_8247c19ce95c73 1-17
+Demo/test_loading_progress.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_term_quality.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_media_references.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+scripts/README.md
+  s_1c46d58ed67333::t_4a71dc7ba20183 1-55
+docs/agent-connection.md
+  s_1c46d58ed67333::t_4a71dc7ba20183 1-79
+Demo/test_performance_contracts.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+docs/next-deployment.md
+  s_1c46d58ed67333::t_eddb5ba09f23f7 17,21,29,49-51
+next/README.md
+  s_1c46d58ed67333::t_c756a01743c49e 1-2,6,10-21,25-27,31,37-39,51-53,57,63,65
+  s_1c46d58ed67333::t_4a71dc7ba20183 3-5,7-9,22-24,28-30,32-36,40-50,54-56,58-62,64
+Demo/test_prose_contract.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 8
+Demo/test_lesson_tasks.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+THIRD_PARTY_NOTICES.md
+  s_1c46d58ed67333::t_b9556a7340ef14 6,20
+  s_1c46d58ed67333::t_ade22fc1c2a723 5,7-8
+Demo/test_global_gc_timing.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 6
+Demo/test_writer_http.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+Demo/test_question_interactions.js
+  s_1c46d58ed67333::t_0bdb9f31581b2c 6
+Demo/test_question_colors.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 6
+pytest.ini
+  s_1c46d58ed67333::t_ade22fc1c2a723 1-3
+Demo/test_startup_overlap.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+Demo/test_daily_summary.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 9
+Demo/test_file_actions.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+Demo/test_generation_pipeline.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+reader/reader_agent_contract.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 1-13
+Demo/test_learning_scope.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+Demo/test_statistics_consistency.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_project_file_links.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 7
+docs/diagrams/workflow.mmd
+  s_1c46d58ed67333::t_8247c19ce95c73 1-34
+Demo/test_web_worker.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+Demo/test_reader.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+docs/architecture.md
+  s_1c46d58ed67333::t_4a71dc7ba20183 1-97
+Demo/test_reading_layouts.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+Demo/test_source_cache.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_research_transport.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_palettes_headings_waiting.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+scripts/bootstrap_reader.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 1-35
+Demo/test_readonly_optimizations.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+Demo/test_term_maintenance.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 5
+Demo/test_search_contract.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+.gitattributes
+  s_1c46d58ed67333::t_b9556a7340ef14 19
+Demo/check_code_highlight.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 7
+Demo/test_shared_term_writeback.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 11
+docs/assets/readme/next/permissions.svg
+  s_1c46d58ed67333::t_4a71dc7ba20183 1
+Demo/test_source_image_priority.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+Demo/check_code_themes.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 6
+Demo/test_startup_performance.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4,183
+docs/assets/readme/next/README.md
+  s_1c46d58ed67333::t_4a71dc7ba20183 1-27
+scripts/Start-Reader.sh
+  s_1c46d58ed67333::t_b9556a7340ef14 1-10
+CHANGELOG.md
+  s_1c46d58ed67333::t_a12018ff5b6b80 3-8
+Demo/test_question_lifecycle.py
+  s_1c46d58ed67333::t_ade22fc1c2a723 4
+scripts/render_readme_diagrams.py
+  s_1c46d58ed67333::t_8247c19ce95c73 1-23,29-35
+  s_1c46d58ed67333::t_38d36bf8d2a8f4 24-28
+Demo/test_selection_controls.js
+  s_1c46d58ed67333::t_ade22fc1c2a723 3
+reader/static/app.js
+  s_1c46d58ed67333::t_49db2f317b0aaf 43-48
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e16716ebbfa82a92eeca40ca93fb87a894d9669c",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
