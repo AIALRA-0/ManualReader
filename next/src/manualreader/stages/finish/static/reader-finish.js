@@ -13,6 +13,13 @@
     return item;
   }
 
+  function resourceProse(text, item, names) {
+    return (text || '').replace(/`?(\bres-[a-f0-9]{20,64}\b)`?/gi, (_, id) => {
+      if (id === item.resource_id) return '这'+(labels[item.kind]==='公式'?'个公式':labels[item.kind]==='图'?'张图':'项内容');
+      return names.get(id) || '相关资源';
+    });
+  }
+
   function resourceNodes(article,item) {
     const body=article.querySelector(':scope > .chinese.markdown-body');
     if (!body) return [];
@@ -68,33 +75,34 @@
     return container;
   }
 
-  function questionExcerpt(item) {
+  function questionExcerpt(item,names) {
     const name=(labels[item.kind]||'资源')+(item.ordinal?' '+item.ordinal:'');
-    const context=[item.heading,item.overview].filter(Boolean).join('\n\n');
+    const context=[item.heading,resourceProse(item.overview,item,names)].filter(Boolean).join('\n\n');
     const original=item.asset_url
       ? '!['+name+']('+item.asset_url+')'
       : item.raw_content;
     return [name,original,context].filter(Boolean).join('\n\n').slice(0,8000);
   }
 
-  function displayElement(element,ctx,kind) {
+  function displayElement(element,ctx,item,names) {
     let raw=element.raw_content.trim();
-    const formula=['formula_display','equation'].includes(kind);
+    const formula=['formula_display','equation'].includes(item.kind);
+    const meaning=resourceProse(element.meaning,item,names);
     const commandName=/^\\(?:[dt]?frac|sqrt|binom|text|mathrm|mathbf|mathcal|left|right|begin|end)$/;
     const row=el('li');
     if (formula && commandName.test(raw)) {
-      row.append(el('code',null,raw),rich(element.meaning,ctx));
+      row.append(el('code',null,raw),rich(meaning,ctx));
       return row;
     }
     if (formula && !/^(?:\\[[(]|\$|\x60)/.test(raw) && !/[\u3400-\u9fff]/.test(raw) &&
         (/[_^{}\\=∑∏≤≥<>]/.test(raw) || /^[a-zA-Z](?:\s*,\s*[a-zA-Z])*$/.test(raw))) {
       raw='\\('+raw+'\\)';
     }
-    row.append(rich(raw,ctx),rich(element.meaning,ctx));
+    row.append(rich(raw,ctx),rich(meaning,ctx));
     return row;
   }
 
-  function details(item,ctx) {
+  function details(item,ctx,names) {
     const fold=el('details','followup answer-followup inline-question reader-resource-details');
     fold.dataset.resourceId=item.resource_id;
     fold.dataset.status=item.status;
@@ -103,15 +111,16 @@
     fold.append(inside);
     fold.addEventListener('toggle',()=>{
       if (!fold.open || inside.childElementCount) return;
-      if (item.overview) inside.append(rich(item.overview,ctx));
+      const appendProse=text=>inside.append(rich(resourceProse(text,item,names),ctx));
+      if (item.overview) appendProse(item.overview);
       if (item.components?.length) {
         const entries=el('ul');
-        entries.append(...item.components.map(element=>displayElement(element,ctx,item.kind)));
+        entries.append(...item.components.map(element=>displayElement(element,ctx,item,names)));
         inside.append(entries);
       }
-      for (const text of item.steps || []) inside.append(rich(text,ctx));
-      for (const text of item.limits || []) inside.append(rich(text,ctx));
-      if (item.summary) inside.append(rich(item.summary,ctx));
+      for (const text of item.steps || []) appendProse(text);
+      for (const text of item.limits || []) appendProse(text);
+      if (item.summary) appendProse(item.summary);
     });
     return fold;
   }
@@ -227,7 +236,11 @@
     const used=new Set();
     const byContainer=new Map();
     const missing=[];
-    for (const [block,items] of Object.entries(doc.resources || {})) {
+    const resources=Object.entries(doc.resources || {});
+    const names=new Map(resources.flatMap(([,items])=>items.map(item=>[
+      item.resource_id,(labels[item.kind]||'资源')+(item.ordinal?' '+item.ordinal:'')
+    ])));
+    for (const [block,items] of resources) {
       const article=blocks.get(id+'--'+block);
       if (!article) { missing.push(...items.map(item=>item.resource_id)); continue; }
       for (const item of items) {
@@ -244,10 +257,10 @@
         const hasExplanation=item.overview || item.components?.length || item.steps?.length || item.summary;
         const slot=el('div','reader-resource-question');
         slot.dataset.segmentId='resource:'+item.resource_id;
-        slot.dataset.sourceExcerpt=questionExcerpt(item);
+        slot.dataset.sourceExcerpt=questionExcerpt(item,names);
         questionResources.set(material.id+'|'+slot.dataset.segmentId,item);
         slot.append(el('span','sr-only','针对这项资源提问'));
-        if (hasExplanation) anchor.after(details(item,ctx),slot);
+        if (hasExplanation) anchor.after(details(item,ctx,names),slot);
         else anchor.after(slot);
         byContainer.set(target,slot);
         slots.set(article,[...(slots.get(article)||[]),slot]);

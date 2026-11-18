@@ -11,3 +11,5 @@
 符号的外部定义没有写明时，仍须解释它在当前式中可以直接确认的计算作用，并在条件里说明原件未提供的范围。你在解释完资源的可确认主体后可以标 `explained`；只有主体无法读出或关键组成关系无法解释时才使用 `partial` 或 `needs_review`。每组解释仍要交代各式中容易混淆的量和步骤。同名符号在不同公式里承担不同角色时，按各自资源 ID 分点写清。
 
 行内公式、行内图片和未登记为独立资源的普通文字不在本阶段解释范围。严格按请求 Schema 输出 JSON：`groups:[{group_id,resource_ids,kind:"math",overview,components:[{component_id,raw,meaning,certainty}],composition:[string],conditions:[string],summary,status:"explained|partial|needs_review"}]` 和 `unresolved_resource_ids:[]`。输入中的每个 resource_id 必须出现在组或未完成清单中。用 summary 简短交代读者怎样读这个算式。每项描述直接针对资源本身。
+
+资源 ID 只写在字段里。读者看到的解释直接叫出公式、图表或元素的名称，或说“这个公式”“这张图”；需要区分多个资源时，使用已确认的图名、算式或正文编号。不把 res- 或 group_id 等内部编号写进句子。

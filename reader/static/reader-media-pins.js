@@ -176,6 +176,68 @@ function createReaderMediaPins(pane){
   return [...pinned.values()].some(other=>other.key!==item.key&&other.label===item.label)&&item.section
    ? item.label+' · '+item.section : item.label;
  }
+ function mountImage(view,item){
+  const viewport=el('div','reader-pinned-image');
+  viewport.tabIndex=0;
+  viewport.setAttribute('aria-label',item.label+'，滚轮缩放，拖动查看，Home 恢复居中');
+  const transform=el('div','reader-pinned-image-transform');
+  const toolbar=el('div','reader-pinned-image-tools');
+  viewport.append(transform);
+  view.append(viewport,toolbar);
+  view.classList.add('has-pinned-image');
+  const copy=ReaderMediaView.mountCopy(item.snapshot,transform);
+  for(const image of copy.matches('img')?[copy]:copy.querySelectorAll('img'))image.draggable=false;
+  const position=item.imageView??={scale:1,x:0,y:0};
+  let gesture=null;
+  const paint=()=>{
+   transform.style.transform=`translate3d(${position.x}px,${position.y}px,0) scale(${position.scale})`;
+   viewport.dataset.zoom=String(position.scale);
+  };
+  const zoom=(factor,x=0,y=0)=>{
+   const next=Math.max(.25,Math.min(8,position.scale*factor)),ratio=next/position.scale;
+   position.x=x-(x-position.x)*ratio;
+   position.y=y-(y-position.y)*ratio;
+   position.scale=next;
+   paint();
+  };
+  const reset=()=>{Object.assign(position,{scale:1,x:0,y:0});paint()};
+  toolbar.append(button('minus','缩小置顶图片',()=>zoom(1/1.2)),button('plus','放大置顶图片',()=>zoom(1.2)),
+   button('fit','恢复置顶图片居中',reset),button('fullscreen','单独放大查看',()=>ReaderMediaView.open(item.snapshot,item.label+' '+item.name)));
+  viewport.addEventListener('wheel',event=>{
+   event.preventDefault();
+   if(!event.deltaY)return;
+   const rect=viewport.getBoundingClientRect();
+   zoom(event.deltaY<0?1.12:1/1.12,event.clientX-rect.left-rect.width/2,event.clientY-rect.top-rect.height/2);
+  },{passive:false});
+  viewport.addEventListener('pointerdown',event=>{
+   if(event.button!==0||gesture)return;
+   viewport.focus({preventScroll:true});
+   viewport.setPointerCapture(event.pointerId);
+   gesture={id:event.pointerId,x:event.clientX-position.x,y:event.clientY-position.y};
+   viewport.classList.add('is-dragging');
+  });
+  viewport.addEventListener('pointermove',event=>{
+   if(gesture?.id!==event.pointerId)return;
+   position.x=event.clientX-gesture.x;
+   position.y=event.clientY-gesture.y;
+   paint();
+  });
+  for(const type of ['pointerup','pointercancel','lostpointercapture'])viewport.addEventListener(type,event=>{
+   if(gesture?.id!==event.pointerId)return;
+   gesture=null;
+   viewport.classList.remove('is-dragging');
+  });
+  viewport.addEventListener('keydown',event=>{
+   const moves={ArrowLeft:[-24,0],ArrowRight:[24,0],ArrowUp:[0,-24],ArrowDown:[0,24]};
+   if(event.key==='Home'||event.key==='0')reset();
+   else if(event.key==='+'||event.key==='=')zoom(1.2);
+   else if(event.key==='-')zoom(1/1.2);
+   else if(moves[event.key]){position.x+=moves[event.key][0];position.y+=moves[event.key][1];paint()}
+   else return;
+   event.preventDefault();
+  });
+  paint();
+ }
  function paint(){
   root.parentElement.classList.toggle('has-media-pins',pinned.size>0);
   dock.hidden=!pinned.size;
@@ -223,13 +285,16 @@ function createReaderMediaPins(pane){
    view.hidden=!item;
    if(!item){
     view.replaceChildren();
+    view.classList.remove('has-pinned-image');
     view.mediaSnapshot=null;
     continue;
    }
    view.setAttribute('aria-labelledby',domId+'tab-'+keys.indexOf(key));
    if(view.mediaSnapshot===item.snapshot)continue;
    view.replaceChildren();
-   ReaderMediaView.mountCopy(item.snapshot,view);
+   view.classList.remove('has-pinned-image');
+   if(item.snapshot.matches('img,picture,svg,.reader-source-crop:not(:has(button))'))mountImage(view,item);
+   else ReaderMediaView.mountCopy(item.snapshot,view);
    view.mediaSnapshot=item.snapshot;
   }
   for(const item of items){

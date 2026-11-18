@@ -172,6 +172,12 @@ class Workspace:
                 alternatives=[passages_by_id.get(link['passage_id'],{}).get(k,'') for link in p.get('source_links',[]) for k in ('en','zh')]
                 p['display_markdown']=lesson_display(text,p.get('source_quote',''),alternatives)
                 if not p['display_markdown'].strip():p['display_omit']=True
+        try:
+            from manualreader.stages.finish.formatting import format_saved_openings
+        except ImportError:
+            pass  # 旧版独立安装没有 Next 排版模块。
+        else:
+            format_saved_openings(result['passages'])
         headings_file=self.folder/'reading-headings.json'
         if headings_file.exists():
             headings=json.loads(headings_file.read_text('utf8')).get('headings',{})

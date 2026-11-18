@@ -21,19 +21,19 @@
     "step": "step_12_resource_explanation",
     "variant": "resource_explanation_math",
     "prompt": "prompts/step_12_resource_explanation_math.md",
-    "sha256": "4c1438033d516782077b8cee56d46bde08de851b64f0ba2b58bdb2e969725353"
+    "sha256": "cf75f16527ac72c17662c48feafe4cb2745dcd02d5c95fd3cf00f8b5436c68b6"
   },
   "A2": {
     "step": "step_12_resource_explanation",
     "variant": "resource_explanation_visual",
     "prompt": "prompts/step_12_resource_explanation_visual.md",
-    "sha256": "9263367e704aa35c4d292a3f7bad4ad3dda04f3bb689ff7ec17fed5a6e08745b"
+    "sha256": "816677456eaeba5ab56dfb7da038f27a222c6e7e3676006bbba3bac6515fef27"
   },
   "F2": {
     "step": "step_13_terminology",
     "variant": "terminology",
     "prompt": "prompts/step_13_terminology.md",
-    "sha256": "69789e91dcbacc52a3e1564805c4667de87cba03b71e9f04fc69524e97382a99"
+    "sha256": "a12b96f9d7b958c5252c4d8649fe5f1ef7e344dc39486db4f5d2f87ff258ad6b"
   },
   "F3": {
     "step": "step_14_practice",

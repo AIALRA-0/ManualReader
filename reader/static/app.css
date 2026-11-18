@@ -671,6 +671,14 @@ pre .hljs{display:block;background:transparent;color:var(--text);font:inherit;wh
 .reader-media-dock-stage[data-layout=side]{grid-template-columns:repeat(2,minmax(0,1fr))}
 .reader-media-dock-stage[data-layout=stack]{grid-template-rows:repeat(2,minmax(0,1fr))}
 .reader-media-preview{min-width:0;min-height:0;overflow:auto;overscroll-behavior:contain;padding:6px 10px}
+.reader-media-preview.has-pinned-image{position:relative;overflow:hidden;padding:0}
+.reader-pinned-image{height:100%;overflow:hidden;cursor:grab;touch-action:none;user-select:none}
+.reader-pinned-image.is-dragging{cursor:grabbing}
+.reader-pinned-image-transform{display:grid;place-items:center;height:100%;width:100%;pointer-events:none;transform-origin:center}
+.reader-pinned-image-transform>:is(img,picture,svg,.reader-source-crop){display:block;max-width:100%;max-height:100%;object-fit:contain;margin:0}
+.reader-pinned-image-transform :is(picture,.reader-source-crop) img{display:block;max-width:100%;max-height:100%;object-fit:contain;margin:auto}
+.reader-pinned-image-tools{position:absolute;inset:auto 6px 4px auto;display:flex;gap:1px;padding:2px;border:1px solid var(--line);border-radius:5px;background:var(--panel)}
+.reader-pinned-image-tools>.icon-btn{width:25px;height:25px;min-width:25px}
 .reader-media-dock-stage[data-layout=side]>.reader-media-preview+div{border-left:1px solid var(--line)}
 .reader-media-dock-stage[data-layout=stack]>.reader-media-preview+div{border-top:1px solid var(--line)}
 .reader-media-preview>img,.reader-media-preview>picture img,.reader-media-preview>video,.reader-media-preview>canvas,.reader-media-preview>svg{display:block;max-width:100%;max-height:100%;object-fit:contain;margin:auto}

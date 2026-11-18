@@ -11,3 +11,5 @@
 可辨认的主要组成、关系和读法都已说明时，个别模糊标签可单列在 `unreadable`，其余解释正常交付。只有无法读懂资源主体或关键关系时才使用 `partial` 或 `needs_review`。
 
 行内公式、行内图片和没有独立资源身份的文字不单独生成详解。如果表格单元格中含有实际图片，使用 related_images 提供的图像，按单元格说明关联。按请求 Schema 输出 JSON：`groups:[{group_id,resource_ids,kind,overview,components:[{component_id,raw,meaning,certainty,location_hint}],relations:[string],unreadable:[string],summary,status:"explained|partial|needs_review"}]`，`verified_labels:[{resource_id,label_id,original,location_hint,certainty}]`，`unresolved_resource_ids:[]`。用 summary 简短交代读者怎样用这项资源理解对应内容。仅当实际识别或输入确证时返回 verified_labels。
+
+资源 ID 只写在字段里。读者看到的解释直接叫出公式、图表或元素的名称，或说“这个公式”“这张图”；需要区分多个资源时，使用已确认的图名、算式或正文编号。不把 res- 或 group_id 等内部编号写进句子。

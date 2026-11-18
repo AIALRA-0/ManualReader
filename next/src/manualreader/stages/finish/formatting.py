@@ -15,7 +15,9 @@ SEPARATORS = '；;'
 STRUCTURAL = {'blockquote_open', 'html_block', 'code_block', 'fence'}
 NATURAL_KEYS = {
     'application', 'assumptions_and_limits', 'background', 'cause', 'causes',
-    'chapter_intro', 'chapter_outro', 'composition', 'composition_or_steps', 'conclusion',
+    'chapter_intro', 'chapter_outro', 'chapter_synthesis', 'previous_transition',
+    'context', 'problem', 'claim', 'reason', 'implication', 'professional_definition',
+    'intuitive_explanation', 'composition', 'composition_or_steps', 'conclusion',
     'conditions', 'definition', 'description', 'evidence', 'explanation', 'focus', 'intuition',
     'meaning', 'synthesis', 'summary', 'next_transition', 'options', 'overview', 'prompt', 'question', 'relations', 'title', 'translated',
 }
@@ -24,7 +26,7 @@ LITERALS = re.compile(
     r'|\[[^\n\]]+\]\([^\n)]*\)|<[^>\n]+>'
     r'|(?:[A-Za-z][A-Za-z\d+.-]*://|(?:www\.)|[A-Za-z]:[\\/]|(?:^|(?<=\s))[.]{0,2}[\\/])'
     r'[^\s<>，。；、！？：]+'
-    r'|(?:「[^」\n]*」|『[^』\n]*』|“[^”\n]*”|‘[^’\n]*’|"[^"\n]*")'
+    r'|(?:《[^》\n]*》|「[^」\n]*」|『[^』\n]*』|“[^”\n]*”|‘[^’\n]*’|"[^"\n]*")'
 )
 SPACING = re.compile(
     rf'(?<=[{HAN}])(?=[A-Za-z0-9])|(?<=[A-Za-z0-9])(?=[{HAN}])'
@@ -69,8 +71,9 @@ def find_candidates(key, text, scan, spans):
             continue
         markers = [(i, c) for i, c in enumerate(raw)
                    if c in ':：' + SEPARATORS and not locked(start + i, start + i + 1, spans)]
+        first = None
         for point, mark in markers:
-            if mark not in ':：' or not 1 <= point <= 110:
+            if mark not in ':：' or point < 1:
                 continue
             separators = [i for i, c in markers if c in SEPARATORS and point < i < len(raw.rstrip()) - 1]
             if not separators:
@@ -80,13 +83,19 @@ def find_candidates(key, text, scan, spans):
             if any(a == b for a, b in optional):
                 continue
             candidate_id = identity('format', key, sha(raw), start, point)
-            yield {
+            candidate = {
                 'candidate_id': candidate_id, 'original': raw, 'colon_offset': point,
                 'separator_offsets': separators, 'possible_item_spans': [{'start': a, 'end': b} for a, b in optional],
                 'before': text[max(0, start - 160):start].strip(),
                 'after': text[end:end + 160].strip(), '_start': start,
             }
-            break
+            if explicit_list(candidate):
+                first = candidate
+                break
+            if first is None:
+                first = candidate
+        if first:
+            yield first
 
 
 def operation(text, start, end, replacement, kind):
@@ -116,7 +125,9 @@ def list_patches(text, candidate, decision, spans):
         starts.append(a)
         ends.append(b)
     first = candidate['possible_item_spans'][0]['start']
-    if starts[0] != first or original[ends[-1]:].strip() not in ('', '。', '；', ';'):
+    suffix = original[ends[-1]:].strip()
+    trailing = re.match(r'^[；;]\s*(?=(?:同时|此外|另外|除此之外|阅读时|需要注意))', suffix)
+    if starts[0] != first or (suffix not in ('', '。', '；', ';') and not trailing):
         return []
 
     offset = candidate['_start']
@@ -133,9 +144,29 @@ def list_patches(text, candidate, decision, spans):
             return []
         space = nl if action == 'list' else nl * 2
         boundaries.append((last, following, separators + space + list_item))
+    if trailing:
+        tail = ends[-1] + len(original[ends[-1]:]) - len(original[ends[-1]:].lstrip()) + trailing.end()
+        boundaries.append((ends[-1], tail, nl * 2))
     if any(locked(offset + a, offset + b, spans) for a, b, _ in boundaries):
         return []
     return [operation(text, offset + a, offset + b, new, 'parallel_list') for a, b, new in boundaries]
+
+
+def explicit_list(candidate):
+    """原句明确说有几项时，按现有分号拆行，末尾补充说明另起段。"""
+    lead = candidate['original'][:candidate['colon_offset']]
+    match = re.search(r'([二两三四五六七八九2-9])(?:件事|个方面|个问题|个部分|个步骤|项内容|项要求|种方式|种扩展|种方案|点)\s*$', lead)
+    if not match:
+        return {}
+    count = int(match[1]) if match[1].isdigit() else {'二':2,'两':2,'三':3,'四':4,'五':5,'六':6,'七':7,'八':8,'九':9}[match[1]]
+    spans = candidate['possible_item_spans']
+    if len(spans) < count:
+        return {}
+    if len(spans) > count:
+        tail = candidate['original'][spans[count]['start']:]
+        if not re.match(r'(?:同时|此外|另外|除此之外|阅读时|需要注意)', tail):
+            return {}
+    return {'action':'list', 'item_spans':spans[:count]}
 
 
 def type_patches(text, scan, resources=()):
@@ -227,21 +258,51 @@ async def classify(ask, candidates):
     return {key: rows[0] for key, rows in decisions.items() if len(rows) == 1}
 
 
-async def format_artifact(value, path):
-    """Format one finished attachment independently of the other branches."""
+def format_fields(value, path):
     leaves=list(text_leaves(value))
     if not leaves:
         return value,[]
-    scans=await asyncio.to_thread(scan_batch,[text for _,text in leaves])
+    scans=scan_batch([text for _,text in leaves])
+    listed=[]
+    for (key,text),scan in zip(leaves,scans,strict=True):
+        protected=protection(text,scan)
+        edits=[] if 'terms' in path else [op for c in find_candidates(key,text,scan,protected)
+                                         for op in list_patches(text,c,explicit_list(c),protected)]
+        listed.append(layer(text,edits))
+    changed=[i for i,(_,edits) in enumerate(listed) if edits]
+    if changed:
+        for i,scan in zip(changed,scan_batch([listed[i][0] for i in changed]),strict=True):
+            scans[i]=scan
     changes={}
     patches=[]
-    for (key,text),scan in zip(leaves,scans,strict=True):
-        trimmed,edits=layer(text,type_patches(text,scan))
-        if edits:
+    for (key,text),(prepared,list_edits),scan in zip(leaves,listed,scans,strict=True):
+        trimmed,edits=layer(prepared,type_patches(prepared,scan))
+        phases=[{'name':'parallel_structure','operations':list_edits},{'name':'typography','operations':edits}]
+        if list_edits or edits:
             changes[key]=trimmed
             patches.append({'path':[*path,*key],'from_sha256':sha(text),'to_sha256':sha(trimmed),
-                            'formatted_text':trimmed,'phases':[{'name':'typography','operations':edits}]})
+                            'formatted_text':trimmed,'phases':[p for p in phases if p['operations']]})
     return replace_leaves(value,changes),patches
+
+
+async def format_artifact(value, path):
+    """Format one finished attachment independently of the other branches."""
+    return await asyncio.to_thread(format_fields,value,path)
+
+
+def format_saved_openings(passages):
+    """旧导读只更新显示 Markdown，原始段落与正文坐标继续使用保存时的值。"""
+    selected=[p for p in passages if p.get('content_kind')=='explanation' and p.get('progress_exempt')
+              and re.search(r'--framework-start-[12]$',p['id'])
+              and '：' in p.get('display_markdown','') and re.search(r'[；;]',p['display_markdown'])]
+    if not selected:
+        return
+    try:
+        formatted,_=format_fields([{'chapter_intro':p['display_markdown']} for p in selected],('guidance',))
+    except (OSError,RuntimeError,ValueError):
+        return
+    for passage,row in zip(selected,formatted,strict=True):
+        passage['display_markdown']=row['chapter_intro']
 
 
 async def finalize(root, sample, structure, attachments, translations, ask=None):
@@ -264,8 +325,12 @@ async def finalize(root, sample, structure, attachments, translations, ask=None)
         return by_carrier['body'] if key == ('body',) else by_carrier[key[1]] if key[0] == 'deferred' else []
 
     protected = {key: protection(fields[key], scans[key], provenance(key)) for key in keys}
-    candidates = {key: list(find_candidates(key, fields[key], scans[key], protected[key])) for key in keys}
-    decisions = await classify(ask, [row for key in keys for row in candidates[key]])
+    candidates = {key: list(find_candidates(key, fields[key], scans[key], protected[key]))
+                  if key[:2] != ('attachments','terms') else [] for key in keys}
+    decisions = {row['candidate_id']: decision for key in keys for row in candidates[key]
+                 if (decision := explicit_list(row))}
+    decisions.update(await classify(ask, [row for key in keys for row in candidates[key]
+                                         if row['candidate_id'] not in decisions]))
     stages = defaultdict(list)
     listed = {}
     for key, text in fields.items():

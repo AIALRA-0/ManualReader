@@ -2,7 +2,7 @@ import asyncio
 from hashlib import sha256
 import json
 
-from manualreader.stages.finish.formatting import finalize, type_patches
+from manualreader.stages.finish.formatting import finalize, format_saved_openings, type_patches
 from manualreader.stages.finish.structure import build_structure, reading_groups
 from manualreader.stages.step07.fusion import invert
 from manualreader.stages.step07.resources import scan_batch
@@ -99,6 +99,20 @@ def test_invalid_model_spans_do_not_drop_readable_content(tmp_path):
     structure = build_structure(tmp_path, 's')
     result = asyncio.run(finalize(tmp_path, 's', structure, {}, {}, ask))
     assert result['body'] == body
+
+
+def test_saved_opening_keeps_title_and_breaks_explicit_list_without_moving_source():
+    intro=('参照《Example: A Technical Introduction》理解整个过程，'+'先介绍背景，'*20+
+           '然后追踪两件事：第一项如何经过 $x$；第二项如何到达 $y$；同时留意原件的限制')
+    saved={'id':'chapter--framework-start-1','content_kind':'explanation','progress_exempt':True,
+           'zh':intro,'display_markdown':intro}
+    ordinary={**saved,'id':'chapter--another','progress_exempt':False}
+    format_saved_openings([saved,ordinary])
+    assert saved['zh']==ordinary['zh']==ordinary['display_markdown']==intro
+    assert saved['display_markdown']==intro.replace('事：第一','事：\n\n- 第一').replace('；第二','；\n- 第二').replace('；同时','\n\n同时')
+    formatted=saved['display_markdown']
+    format_saved_openings([saved])
+    assert saved['display_markdown']==formatted
 
 
 def test_reading_group_never_crosses_file_or_page():
