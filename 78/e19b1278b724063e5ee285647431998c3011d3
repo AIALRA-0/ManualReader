@@ -1,0 +1,70 @@
+README.md
+  s_1c46d58ed67333::t_883587d83a2c25 172-173
+docs/architecture.md
+  s_1c46d58ed67333::t_1eaab56dde872f 61
+  s_1c46d58ed67333::t_883587d83a2c25 53-56
+next/tests/test_final_stability.py
+  s_1c46d58ed67333::t_76f8242bed54bd 156
+  s_1c46d58ed67333::t_4cb7c7442a2b8b 133,175-177
+  s_1c46d58ed67333::t_5c29d573e7d038 158-174,178-200
+  s_1c46d58ed67333::t_ea1902b51a1c10 1-128
+  s_1c46d58ed67333::t_940ea2718b675b 129-132,134-155,157
+reader/reader_next_teach.py
+  s_1c46d58ed67333::t_1eaab56dde872f 369-373,404-405
+next/src/manualreader/stages/finish/runner.py
+  s_1c46d58ed67333::t_9820b024f5821e 65,68-69,73,75,77,82
+  s_1c46d58ed67333::t_5c0dfa463bb43a 74
+README.en.md
+  s_1c46d58ed67333::t_1eaab56dde872f 136-137
+Demo/test_term_maintenance.py
+  s_1c46d58ed67333::t_65f31be9805367 1,28,32,40
+reader/reader_execute.py
+  s_1c46d58ed67333::t_4888d50c054c14 184-185
+  s_1c46d58ed67333::t_239f01a7877fc3 613,619
+reader/reader_writer_transport.py
+  s_1c46d58ed67333::t_31d2cbaed5d1d8 271-273
+  s_1c46d58ed67333::t_3f5d51801c87f8 274
+reader/reader_term_maintenance.py
+  s_1c46d58ed67333::t_239f01a7877fc3 83,85
+next/src/manualreader/stages/finish/content.py
+  s_1c46d58ed67333::t_c27366fbaf842b 115
+  s_1c46d58ed67333::t_9820b024f5821e 269,273-290,295-300
+next/src/manualreader/stages/finish/pipeline.py
+  s_1c46d58ed67333::t_95424b14ee539d 407-410
+  s_1c46d58ed67333::t_65f31be9805367 22-40,44-46,167,169,282-288
+  s_1c46d58ed67333::t_9820b024f5821e 41-43,50,52-55
+reader/reader_server.py
+  s_1c46d58ed67333::t_486b5175737437 188-189,496-497
+reader/reader_writer_profiles.py
+  s_1c46d58ed67333::t_95424b14ee539d 12
+  s_1c46d58ed67333::t_486b5175737437 3-4
+reader/reader_practice_upgrade.py
+  s_1c46d58ed67333::t_239f01a7877fc3 140,151-152
+reader/reader_work.py
+  s_1c46d58ed67333::t_486b5175737437 189
+reader/reader_part_practice.py
+  s_1c46d58ed67333::t_e1945d2845e9a4 135-168
+reader/static/reader-inline-practice.js
+  s_1c46d58ed67333::t_239f01a7877fc3 64-65
+next/src/manualreader/connected.py
+  s_1c46d58ed67333::t_9820b024f5821e 142,146-147
+  s_1c46d58ed67333::t_1eaab56dde872f 8,21,51-80,128,137-140
+next/src/manualreader/steps/step_13_terminology.py
+  s_1c46d58ed67333::t_cc12920e9985df 4,136,144-147,150-171,185-186
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "78e19b1278b724063e5ee285647431998c3011d3",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
