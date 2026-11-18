@@ -1,0 +1,47 @@
+next/src/manualreader/steps/compat/step_aliases.json
+  s_1c46d58ed67333::t_f9d10369a5e69b 24,30,36
+next/src/manualreader/stages/finish/formatting.py
+  s_1c46d58ed67333::t_ad4eb16accb7cf 158,261,265-266,269-275,278-279,288-305,328-329
+  s_1c46d58ed67333::t_5156294315585b 18-20,29,76,128-130,147-149,155-157,159-171,267-268,280-281,284,306-307,330-333
+  s_1c46d58ed67333::t_fd6b6496674373 74,86,92-98
+next/tests/test_finish_structure.py
+  s_1c46d58ed67333::t_de7570d94321bd 5,104-117
+next/src/manualreader/steps/prompts/step_12_resource_explanation_visual.md
+  s_1c46d58ed67333::t_f9d10369a5e69b 14-15
+next/src/manualreader/steps/prompts/step_13_terminology.md
+  s_1c46d58ed67333::t_35c0f7c664ff3a 9
+next/src/manualreader/steps/prompts/step_12_resource_explanation_math.md
+  s_1c46d58ed67333::t_f9d10369a5e69b 14-15
+reader/static/app.js
+  s_1c46d58ed67333::t_c5457e8b7e2ba1 173-179,405
+reader/reader_workspace.py
+  s_1c46d58ed67333::t_ca60029997453c 175-180
+reader/static/app.css
+  s_1c46d58ed67333::t_214c89eefb04be 674-681
+next/src/manualreader/steps/step_13_terminology.py
+  s_1c46d58ed67333::t_cc584130c7716d 183-184
+reader/static/reader-media-pins.js
+  s_1c46d58ed67333::t_36c2f3b438f3e4 179-240,288,295-297
+next/src/manualreader/stages/finish/static/reader-finish.js
+  s_1c46d58ed67333::t_37707900173917 16-22,78,80,87,89-90,94,101,105,114-115,118,121-123,239-243,260,263
+reader/static/reader-media-view.js
+  s_1c46d58ed67333::t_e56ea124d0e4ea 10,57
+reader/static/workspace-ui.js
+  s_1c46d58ed67333::t_f9d10369a5e69b 109
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "dc554a2bd09590bfb46024d41098982a1ad21c8c",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
