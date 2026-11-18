@@ -1,0 +1,55 @@
+reader/reader_import.py
+  s_1c46d58ed67333::t_ade80036d6dda3 8,178,236-242,268
+reader/source_parser.py
+  s_1c46d58ed67333::t_b3b82cfc1f6dab 574
+  s_1c46d58ed67333::t_a1bee9f0a99757 14,418-422,424-425,433,438,442,444-450,475-494,500-504,506,518,537-559,572-573,651,653-667,673-677
+  s_1c46d58ed67333::t_dcd6d988f41287 423,426-432
+  s_1c46d58ed67333::t_191447e8758030 5-6,10-12,434-437,439-441,443,451-474,505,519
+  s_1c46d58ed67333::t_c0cb411e039adc 13,297-307,668-672
+  s_1c46d58ed67333::t_981f202d013d54 252,631,634,638,679,682-683
+  s_1c46d58ed67333::t_0b4d2d8c847021 15
+next/src/manualreader/stages/step02/original.py
+  s_1c46d58ed67333::t_dcd6d988f41287 52-56
+  s_1c46d58ed67333::t_981f202d013d54 95-96,128-130
+next/src/manualreader/stages/step02/html_view.py
+  s_1c46d58ed67333::t_c0cb411e039adc 29,71-75
+  s_1c46d58ed67333::t_981f202d013d54 6,25
+reader/static/app.js
+  s_1c46d58ed67333::t_c0cb411e039adc 145,152-157
+  s_1c46d58ed67333::t_b3b82cfc1f6dab 513,515,517
+next/src/manualreader/stages/step03/engine.py
+  s_1c46d58ed67333::t_9e1629cba14b5c 23,230
+next/src/manualreader/source_formats.py
+  s_1c46d58ed67333::t_dcd6d988f41287 143-144
+  s_1c46d58ed67333::t_a1bee9f0a99757 10,103-142,145-158
+  s_1c46d58ed67333::t_981f202d013d54 1-3,11-12,14-38,40-45,47-50,52-58,64
+  s_1c46d58ed67333::t_ade80036d6dda3 4-9,13,39,46,51,59-63,65-102
+next/tests/test_source_formats.py
+  s_1c46d58ed67333::t_bb336107866ef0 1-98
+reader/static/reader-source-flow.js
+  s_1c46d58ed67333::t_dcd6d988f41287 164
+  s_1c46d58ed67333::t_981f202d013d54 165-168,185
+reader/static/index.html
+  s_1c46d58ed67333::t_217bfcec0ad85b 48
+next/src/manualreader/stages/step03/documents.py
+  s_1c46d58ed67333::t_981f202d013d54 60,307,341,345,356
+  s_1c46d58ed67333::t_ade80036d6dda3 68,308-316
+  s_1c46d58ed67333::t_dcd6d988f41287 229-234
+  s_1c46d58ed67333::t_c0cb411e039adc 18,43,70,94-95,97-98,121,241-247
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "b0f3149179822878e15bb0a27604494e3f1bcc0f",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
