@@ -1,6 +1,6 @@
 // 文字层延迟或旧请求返回时，原图联动仍立即完成，旧页不能覆盖新页。
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict'),path=require('path');
-const source=fs.readFileSync(path.join(__dirname,'../static/app.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../reader/static/app.js'),'utf8');
 const draw=source.slice(source.indexOf('async function drawPage('),source.indexOf(' function sourceDisplay('));
 function node(){return {dataset:{},style:{},textContent:'',replaceChildren(...items){this.items=items},append(){},querySelectorAll(){return []}}}
 const nodes=new Map(['pdf-img','page-info','pdf-highlights','pdf-status','pdf-text','pdf-viewport'].map(x=>[x,node()]));

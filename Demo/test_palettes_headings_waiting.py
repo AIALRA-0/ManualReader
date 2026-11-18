@@ -2,7 +2,7 @@ from pathlib import Path
 import sys,unittest,tempfile,json,copy,os,subprocess,time
 from contextlib import closing
 from unittest.mock import patch
-root=Path(__file__).resolve().parents[1];sys.path.insert(0,str(root))
+root=(Path(__file__).resolve().parents[1]/'reader');sys.path.insert(0,str(root))
 from reader_quality import explanation_headings,standalone_heading
 from reader_workspace import Workspace
 from reader_features import settings,save_settings

@@ -1,7 +1,7 @@
 """检查连接及时释放，写入复用只在原始记录完全一致且尚未使用时生效。"""
 from pathlib import Path
 import sqlite3,tempfile,unittest,subprocess,sys
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_database import DatabaseConnections,ReadSnapshot
 
 class DatabaseLifecycle(unittest.TestCase):
@@ -69,7 +69,7 @@ assert after['read_passages']==before['read_passages']and after['rounds']==befor
 print('TRANSACTIONS_OK')
 '''
         with tempfile.TemporaryDirectory()as tmp:
-            r=subprocess.run([sys.executable,'-X','utf8','-c',code,str(Path(__file__).resolve().parents[1]),tmp],capture_output=True,text=True,encoding='utf8',timeout=30)
+            r=subprocess.run([sys.executable,'-X','utf8','-c',code,str((Path(__file__).resolve().parents[1]/'reader')),tmp],capture_output=True,text=True,encoding='utf8',timeout=30)
         self.assertEqual(r.returncode,0,r.stdout+r.stderr)
 
     def test_http_selection_rechecks_version_inside_transaction(self):
@@ -104,7 +104,7 @@ assert state['notes']=={'p':'保留'}and state['read_passages']=={'p':True}
 server.shutdown()
 '''
         with tempfile.TemporaryDirectory()as tmp:
-            result=subprocess.run([sys.executable,'-X','utf8','-c',code,str(Path(__file__).resolve().parents[1]),tmp],capture_output=True,text=True,encoding='utf8',timeout=30)
+            result=subprocess.run([sys.executable,'-X','utf8','-c',code,str((Path(__file__).resolve().parents[1]/'reader')),tmp],capture_output=True,text=True,encoding='utf8',timeout=30)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 

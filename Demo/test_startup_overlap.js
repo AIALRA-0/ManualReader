@@ -1,6 +1,6 @@
 // 下载界面时启动读取；主程序领取同一结果后不再保留它。
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict'),path=require('path');
-const html=fs.readFileSync(path.join(__dirname,'../static/index.html'),'utf8').replace(/\r\n/g,'\n');
+const html=fs.readFileSync(path.join(__dirname,'../reader/static/index.html'),'utf8').replace(/\r\n/g,'\n');
 const code=html.slice(html.indexOf('(function(){\n const requested='),html.indexOf('</script>',html.indexOf('(function(){\n const requested=')));
 async function run(query){
  const calls=[],ReaderBoot={},context={ReaderBoot,URL,location:{href:'http://localhost/'+query},fetch:async(url,options)=>{calls.push({url,options});return{ok:true,json:async()=>url==='/api/session'?{pin:'test-pin'}:{path:url}}}};

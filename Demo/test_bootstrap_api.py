@@ -1,7 +1,7 @@
 """HTTP 回归只使用合成项目，检查精简连接与术语读写不触及笔记或进度。"""
 from pathlib import Path
 import json,subprocess,sys,tempfile,unittest
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=(Path(__file__).resolve().parents[1]/'reader')
 class BootstrapApiTests(unittest.TestCase):
     def test_scoped_terms_and_bootstrap(self):
         code=r'''

@@ -3,7 +3,7 @@ const fs = require('node:fs');
 const vm = require('node:vm');
 const path = require('node:path');
 const assert = require('node:assert/strict');
-const root = process.argv[2] || path.resolve(__dirname, '..');
+const root = process.argv[2] || path.resolve(__dirname, '../reader');
 const app = fs.readFileSync(path.join(root, 'static/app.js'), 'utf8');
 const workspace = fs.readFileSync(path.join(root, 'static/workspace-ui.js'), 'utf8');
 function line(source, name) {

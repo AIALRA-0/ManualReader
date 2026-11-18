@@ -3,7 +3,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import argparse,json,threading,tempfile
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=(Path(__file__).resolve().parents[1]/'reader')
 HTML='''<!doctype html><html data-theme="dark"><head><meta charset="utf-8">
 <link rel="stylesheet" href="/vendor/reader.css"><link rel="stylesheet" href="/static/app.css">
 <link rel="stylesheet" href="/static/reader-project-files.css"></head><body class="utility-page"><main>

@@ -1,7 +1,7 @@
 from pathlib import Path
 from unittest.mock import patch
 import sys,tempfile,unittest,json
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_contract import writing_guide
 from reader_bridge import Bridge
 from reader_quality import public_rules

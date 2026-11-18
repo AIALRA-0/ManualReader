@@ -1,7 +1,7 @@
 """用合成资料检查格式、图像引用和语音边界，不连接官网。"""
 import base64,json,sys,unittest,tempfile
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+ROOT=(Path(__file__).resolve().parents[1]/'reader');sys.path.insert(0,str(ROOT))
 from reader_questions import answer_body,decorate_question
 from reader_media import annotate_questions,ensure_visible_sources,ensure_result_media
 from reader_prompts import TEACHING_METHOD,writing_method

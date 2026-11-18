@@ -1,7 +1,7 @@
 """用合成术语检查两段式规则、版本冲突与旧内容保留，不连接官网。"""
 import copy,json,os,subprocess,sys,tempfile,unittest
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=(Path(__file__).resolve().parents[1]/'reader')
 sys.path.insert(0,str(ROOT))
 from reader_term_quality import INSTRUCTION,inspect,revision_fields,validate_new_terms,repair_fields
 from reader_terms import revise_term

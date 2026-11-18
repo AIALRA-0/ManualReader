@@ -4,7 +4,7 @@ const vm = require('node:vm');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const box = { window: {}, URL, location: { origin: 'https://reader.example' } };
-vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../static/reader-project-files.js'), 'utf8'), box);
+vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../reader/static/reader-project-files.js'), 'utf8'), box);
 const resolve = (href, basePath = '') => box.window.ReaderProjectFiles.resolveLink(href, { origin: box.location.origin, project: 'demo', basePath });
 assert.equal(resolve('/api/project-files/raw?path=src%2Fexample.py').path, 'src/example.py');
 assert.equal(resolve('https://reader.example/api/project-files/raw?path=src/a.py&material=demo').path, 'src/a.py');

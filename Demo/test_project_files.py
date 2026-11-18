@@ -1,7 +1,7 @@
 """用临时项目检查文件范围、隐藏文件、版本核对和常见预览。"""
 from pathlib import Path
 import base64,json,sys,tempfile,unittest,zipfile
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_project_files import ProjectFiles
 
 class ProjectFileTests(unittest.TestCase):

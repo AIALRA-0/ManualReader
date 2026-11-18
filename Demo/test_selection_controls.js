@@ -1,6 +1,6 @@
 // 保留正文选区时，点击折叠栏和输入控件仍应执行它们自己的动作。
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict');
-const source=fs.readFileSync(path.join(__dirname,'../static/reader-markdown.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../reader/static/reader-markdown.js'),'utf8');
 const line=source.split('\n').find(row=>row.startsWith(' function preserveSelectionClick('));
 assert(line);assert(source.includes("root.addEventListener('click',preserveSelectionClick,true)"));
 let collapsed=false;

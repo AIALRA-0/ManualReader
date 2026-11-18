@@ -1,7 +1,7 @@
 """现有状态读取不等待长写入；不同项目的写入锁互不阻塞。"""
 from pathlib import Path
 import json,subprocess,sys,tempfile,threading,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_performance import ScopedRLock
 
 class RequestIsolation(unittest.TestCase):
@@ -55,7 +55,7 @@ thread.join(2);assert server.read_state()['notes']['p']=='new'
 assert server.read_state()['read_passages']==initial['read_passages']
 '''
         with tempfile.TemporaryDirectory()as folder:
-            result=subprocess.run([sys.executable,'-c',code,str(Path(__file__).resolve().parents[1]),folder],capture_output=True,text=True,timeout=20)
+            result=subprocess.run([sys.executable,'-c',code,str((Path(__file__).resolve().parents[1]/'reader')),folder],capture_output=True,text=True,timeout=20)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__=='__main__':unittest.main()

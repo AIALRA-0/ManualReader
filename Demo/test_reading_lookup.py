@@ -2,7 +2,7 @@
 from pathlib import Path
 import copy,sys,unittest
 from collections import defaultdict
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_reading import page_ids,groups,_LOCK
 
 class ReadingLookup(unittest.TestCase):

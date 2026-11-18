@@ -1,6 +1,6 @@
 // 远离视口的裁图不抢先下载；进入视口才请求，移除的元素不继续保留。
 const fs=require('fs'),vm=require('vm'),assert=require('node:assert/strict'),path=require('path');
-const source=fs.readFileSync(path.join(__dirname,'../static/reader-source-flow.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../reader/static/reader-source-flow.js'),'utf8');
 const helper=source.slice(source.indexOf(' const deferredCrops='),source.indexOf(' function crop(group)'));
 let observer;const scheduled=[];
 class Observer {

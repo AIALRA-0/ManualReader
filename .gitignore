@@ -40,3 +40,6 @@ source-cache/
 .pytest_cache/
 .ruff_cache/
 next/instance/
+instance/
+reader/reading-geometry.json
+reader/reading-layout.json

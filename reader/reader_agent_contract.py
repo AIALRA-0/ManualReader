@@ -4,7 +4,7 @@ CLIENT_MODULES+=('reader_chapter_sources.py','reader_step01_client.py','reader_s
 CLIENT_MODULES+=('reader_step02_client.py','reader_step02_card.py','reader_step02_mcp.py','reader_step02_policies.json',
                  'reader_step02_normal.txt','reader_step02_intro.txt','reader_step02_finale.txt','reader_step02_answer.txt')
 CLIENT_RESOURCES={'reader_step04_'+mode.lower()+'.txt':
-                  'next/src/manualreader/stages/step04/'+mode+'.txt'
+                  '../next/src/manualreader/stages/step04/'+mode+'.txt'
                   for mode in ('NORMAL','INTRO','FINALE')}
 CLIENT_MODULES+=('reader_next_teach.py',*CLIENT_RESOURCES)
 CLIENT_MODULES+=('reader_next_runtime.zip',)

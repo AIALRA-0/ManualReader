@@ -2,7 +2,7 @@
 import gc,json,sys,unittest,weakref
 from pathlib import Path
 from unittest.mock import patch
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 import reader_learning as learning
 from reader_workspace import MaterialSnapshot
 

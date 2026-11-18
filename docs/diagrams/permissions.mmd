@@ -1,0 +1,15 @@
+flowchart TD
+    U[用户在 Reader 中授权<br/>You choose project permissions]
+    P[项目连接 · Project-scoped connection<br/>默认可读 · Read by default]
+    F[项目文件目录 · Project files<br/>新增 / 修改 / 删除分别勾选]
+    C[本机 Codex · Local agent<br/>按当前任务调用模型与工具]
+    R[Reader 保存与展示<br/>Sources / Chapters / Questions / Assets]
+    M[用户手动阅读与作答<br/>Manual learning records]
+    U --> P
+    P --> F
+    P --> C
+    C --> R
+    F --> R
+    U --> M
+    M --> R
+    U -. 可随时撤销连接 .-> P

@@ -1,7 +1,7 @@
 """用合成记录验证删答、改题、二次确认和回答阅读状态，不访问网站或模型。"""
 import copy,sys,unittest
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_questions import needs_answer,has_current_answer,question_pool_status,change_question,answer_revision,mark_answers_seen
 from reader_question_actions import DeletionReviews
 

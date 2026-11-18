@@ -3,7 +3,7 @@ from pathlib import Path
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import argparse,json,mimetypes,tempfile,threading
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=(Path(__file__).resolve().parents[1]/'reader')
 HTML='''<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="stylesheet" href="/vendor/reader.css"><link rel="stylesheet" href="/static/app.css">
 <script defer src="/static/markdown-vendor.js"></script><script defer src="/static/reader-markdown.js"></script>

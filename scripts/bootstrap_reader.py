@@ -6,11 +6,11 @@ import sys
 import urllib.request
 import venv
 
-ROOT=Path(__file__).resolve().parent
+ROOT=Path(__file__).resolve().parent.parent
 
 
 def main():
-    if sys.version_info<(3,10):raise SystemExit('请使用 Python 3.10 或以上版本')
+    if sys.version_info<(3,12):raise SystemExit('请使用 Python 3.12 或以上版本')
     environment=ROOT/'.reader-venv';python=environment/('Scripts/python.exe' if os.name=='nt' else 'bin/python')
     if not python.exists():
         print('正在本目录创建独立 Python 环境',flush=True)
@@ -29,7 +29,7 @@ def main():
             pip=[str(python),str(archive)]
         subprocess.run([*pip,'install','--disable-pip-version-check','-r',str(requirements)],check=True)
         marker.write_bytes(requirements.read_bytes())
-    os.execv(str(python),[str(python),'-X','utf8',str(ROOT/'launch_reader.py'),*sys.argv[1:]])
+    os.execv(str(python),[str(python),'-X','utf8',str(ROOT/'scripts/launch_reader.py'),*sys.argv[1:]])
 
 
 if __name__=='__main__':main()

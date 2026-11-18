@@ -4,7 +4,7 @@ from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 from urllib.parse import urlsplit
 import argparse,json,threading,tempfile
 
-ROOT=Path(__file__).resolve().parents[1]
+ROOT=(Path(__file__).resolve().parents[1]/'reader')
 SAMPLES=[
  ('counter.sv','verilog','module counter(input logic clk);\n always_ff @(posedge clk) count <= count + 1;\nendmodule'),
  ('arb.v','verilog','module arb(input clk);\nreg [3:0] grant;\nalways @(posedge clk) grant <= 4\'b0001;\nendmodule'),

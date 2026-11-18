@@ -20,7 +20,7 @@ INTRO_TITLES = {'导读', '0. 导读', '宏观导读', '第 0 章 导读', '第 
 def runtime_archive():
     import io
     import zipfile
-    root = Path(__file__).resolve().parent / 'next/src'
+    root = Path(__file__).resolve().parent.parent / 'next/src'
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, 'w', zipfile.ZIP_DEFLATED) as archive:
         for path in sorted((root / 'manualreader').rglob('*')):
@@ -100,7 +100,7 @@ def prepare(workspace, material, records, mode=None):
 def writer_prompt(mode):
     here = Path(__file__).resolve().parent
     exported = here / ('reader_step04_' + mode.lower() + '.txt')
-    path = exported if exported.is_file() else here / 'next/src/manualreader/stages/step04' / (mode + '.txt')
+    path = exported if exported.is_file() else here.parent / 'next/src/manualreader/stages/step04' / (mode + '.txt')
     raw = path.read_bytes()
     # 冻结基线按 LF 计算；发布包或客户端使用 CRLF 时仍核对同一份提示词内容。
     if sha256(raw.replace(b'\r\n', b'\n')).hexdigest() != PROMPTS[mode]:

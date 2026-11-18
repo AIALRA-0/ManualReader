@@ -1,7 +1,7 @@
 """检查讲解任务和阅读位置分离，同时保留章节与连接权限。"""
 import copy,sys,unittest
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_lesson_tasks import LessonConflict,task_for,resolve_task,selection_guard,record_selection
 
 class LessonTasks(unittest.TestCase):

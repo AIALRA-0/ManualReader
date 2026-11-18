@@ -1,7 +1,7 @@
 """只使用临时数据，检查缓存、文件读取和失效规则。"""
 from pathlib import Path
 import json,subprocess,sys,tempfile,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_performance import ReadCache,asset_digest,reader_main_assets,version_html
 
 class StartupPerformance(unittest.TestCase):
@@ -180,7 +180,7 @@ with patch.object(app.Workspace,'project',side_effect=prepare):
 server.shutdown()
 '''
         with tempfile.TemporaryDirectory()as tmp:
-            result=subprocess.run([sys.executable,'-X','utf8','-c',code,str(Path(__file__).resolve().parents[1]),tmp],capture_output=True,text=True,encoding='utf8',timeout=60)
+            result=subprocess.run([sys.executable,'-X','utf8','-c',code,str((Path(__file__).resolve().parents[1]/'reader')),tmp],capture_output=True,text=True,encoding='utf8',timeout=60)
         self.assertEqual(result.returncode,0,result.stdout+result.stderr)
 
 if __name__=='__main__':unittest.main()

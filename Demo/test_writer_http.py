@@ -2,7 +2,7 @@
 from pathlib import Path
 from unittest.mock import patch
 import http.client,json,socket,struct,sys,tempfile,time,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_writer_transport import Gate,measured_usage
 
 SPEC={'model':'gpt-6.1-sol','effort':'high','service_tier':'default'}

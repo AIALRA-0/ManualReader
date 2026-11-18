@@ -1,7 +1,7 @@
 """比较两个版本的章节计数，使用同一组合成数据，不读取个人材料。"""
 import argparse,importlib.util,json,platform,statistics,sys,time
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+ROOT=(Path(__file__).resolve().parents[1]/'reader');sys.path.insert(0,str(ROOT))
 
 def module(name,path):
     spec=importlib.util.spec_from_file_location(name,path);value=importlib.util.module_from_spec(spec);spec.loader.exec_module(value);return value

@@ -1,6 +1,6 @@
 // 排列只改变窗口位置，保留内容顺序；旧布局继续按已有 columns 恢复。
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict');
-const source=fs.readFileSync(path.join(__dirname,'../static/workspace-ui.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../reader/static/workspace-ui.js'),'utf8');
 const line=source.split('\n').find(s=>s.startsWith(' function arrangeColumns('));assert(line);
 const arrange=vm.runInNewContext(line+';arrangeColumns');
 const current=[['explanation'],['translation','original']],before=JSON.stringify(current);

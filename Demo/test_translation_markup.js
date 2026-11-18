@@ -5,7 +5,7 @@ const vm = require('node:vm');
 const context = vm.createContext({window: {}});
 
 for (const file of ['markdown-vendor.js','math-text.js','reader-markdown.js']) {
-  const source = fs.readFileSync(path.join(__dirname,'../static',file),'utf8');
+  const source = fs.readFileSync(path.join(__dirname,'../reader/static',file),'utf8');
   vm.runInContext(source,context,{filename:file});
 }
 

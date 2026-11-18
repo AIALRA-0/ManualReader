@@ -8,7 +8,7 @@ import unittest
 
 class SharedTermWritebackTests(unittest.TestCase):
     def test_two_rounds_share_one_term_revision(self):
-        app = Path(__file__).resolve().parents[1]
+        app = (Path(__file__).resolve().parents[1]/'reader')
         code = r'''
 from pathlib import Path
 import json, os, sys, threading

@@ -2,7 +2,7 @@
 from pathlib import Path
 from unittest.mock import patch
 import copy,json,sys,tempfile,threading,time,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_term_maintenance import task,updates,maintain
 from reader_terms import revise_term
 from test_term_quality import DEFINITION,INTUITION

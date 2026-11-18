@@ -1,6 +1,6 @@
 import copy,sys,unittest
 from pathlib import Path
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_learning_scope import excluded_sources,update_exclusions,reading_material,chapterwise_outline_guard
 from reader_responsibility import complete_outline
 from reader_learning import learning_payload,validate_outline

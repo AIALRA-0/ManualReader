@@ -1,7 +1,7 @@
 """检索缓存只保存各页自己的已打开正文，查询与网页摘要不冒充来源。"""
 from pathlib import Path
 import json,sys,tempfile,time,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_source_cache import SourceCache
 from reader_web_sources import opened,pieces
 

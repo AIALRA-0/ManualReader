@@ -1,6 +1,6 @@
 // SVG 的选择器和片段链接重新编号，颜色与相似编号保持原样。
 const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path'),assert=require('node:assert/strict');
-const source=fs.readFileSync(path.join(__dirname,'../static/reader-media-view.js'),'utf8');
+const source=fs.readFileSync(path.join(__dirname,'../reader/static/reader-media-view.js'),'utf8');
 const code=source.split('\n').filter(l=>l.startsWith(' const escapePattern=')||l.startsWith(' function mediaSelectorMap(')||l.startsWith(' function remapMediaURLs(')).join('\n');
 const api=vm.runInNewContext(code+';({mediaSelectorMap,remapMediaURLs})',{CSS:{escape:s=>s.replace(/[.:]/g,c=>'\\'+c)}});
 const ids=new Map([['graph-1','media-graph-1'],['arrow','media-arrow'],['a.b','media-a.b']]);

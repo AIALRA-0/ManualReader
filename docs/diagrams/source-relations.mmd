@@ -1,0 +1,17 @@
+flowchart TD
+    A[原始文件 · Original files<br/>真实路径 + 文件版本]
+    S[原文单元 S · Source units<br/>source_id + 页码 / 时间 / 位置]
+    T[译文句组 T · Translations<br/>translation_id + source_ids]
+    E[讲解片段 E · Explanation blocks<br/>block_id + source_ids]
+    R[独立资源 · Resources<br/>公式 / 图片 / 表格 / 流程图 / 代码]
+    Q[读者问题与追问 · Questions<br/>原句 + 资源 + 父问题]
+    U[点击即可双向定位<br/>Navigate through shared source IDs]
+    A --> S
+    S <--> T
+    S <--> E
+    E --> R
+    S --> Q
+    E --> Q
+    R --> Q
+    T --> U
+    E --> U

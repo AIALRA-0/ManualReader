@@ -1,7 +1,7 @@
 // 检查百分比来自实际完成步骤和解压后字节；失败读取可重试，写入不重复发送。
 const fs=require('fs'),vm=require('vm'),path=require('path'),assert=require('node:assert/strict');
 let clock=0,calls=0,fetcher;const context={window:{},performance:{now:()=>clock},setTimeout,clearTimeout,setInterval,clearInterval,AbortController,DOMException,Headers,TextDecoder,Uint8Array,TypeError,fetch:(...args)=>fetcher(...args)};
-vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../static/reader-loading.js'),'utf8'),context);const loading=context.window.ReaderLoading;
+vm.createContext(context);vm.runInContext(fs.readFileSync(path.join(__dirname,'../reader/static/reader-loading.js'),'utf8'),context);const loading=context.window.ReaderLoading;
 async function run(){
  const op=loading.create('读取材料',[['material','读取原文'],['render','显示页面']]),update=op.task('material');
  clock=60000;assert.equal(op.snapshot().percent,0);assert.equal(op.snapshot().elapsed_ms,60000);

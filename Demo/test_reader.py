@@ -1,7 +1,7 @@
 """在隔离资料上检查旧记录兼容、名称完整性和错题本状态。"""
 import copy,sys,unittest
 from pathlib import Path
-ROOT=Path(__file__).resolve().parents[1];sys.path.insert(0,str(ROOT))
+ROOT=(Path(__file__).resolve().parents[1]/'reader');sys.path.insert(0,str(ROOT))
 from reader_practice import change,record_answer,payload
 from reader_term_names import analyze_name,display_state,english_title
 class ReaderTests(unittest.TestCase):

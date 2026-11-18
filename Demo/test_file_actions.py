@@ -1,6 +1,6 @@
 from pathlib import Path
 import base64,json,sys,tempfile,unittest,time,threading,os
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_project_files import ProjectFiles
 from reader_file_events import EVENTS
 

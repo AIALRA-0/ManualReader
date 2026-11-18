@@ -14,11 +14,11 @@ Agent 默认可读取当前项目文件。用户在「连接 Codex」中分别�
 
 ## 怎样生成一个新的项目
 
-需要 Python 3.12 和已登录的 Codex CLI。安装根目录的 `requirements.txt`，再把 `next/src` 加到 Python 模块查找路径。翻译使用部署配置中的 DS 服务，语音使用已有语音服务。
+需要 Python 3.12 和已登录的 Codex CLI。以下命令从仓库根目录运行。安装 `requirements.txt`，再把 `next/src` 加到 Python 模块查找路径。翻译使用部署配置中的 DS 服务，语音使用已有语音服务。
 
 ```sh
 PYTHONPATH=next/src python next/tools/run_isolated_material.py \
-  <原件.html> <新的私有运行目录> --legacy . --preview-url http://127.0.0.1:9115
+  <原件.html> <新的私有运行目录> --legacy reader --preview-url http://127.0.0.1:9115
 ```
 
 工具接受 HTML、PDF 或 DOCX。它登记原件哈希和真实 Source ID，调用已配置的模型，并把正文、附件和实际回执保存在指定目录。部署方将运行目录放在批准的私有实例中，再用下列命令登记一个新项目。新项目有独立目录。批量材料可在各自的运行目录并行执行，样本编号可在运行目录中的 `whiteboard-inputs.json` 查到。
@@ -26,7 +26,7 @@ PYTHONPATH=next/src python next/tools/run_isolated_material.py \
 可使用 `--resume-attachments` 在核对完原件和已有首稿后继续处理本轮附件。翻译仍优先走 DS。允许使用 Sol High 补译时，设置 `MANUAL_READER_DS_FALLBACK=sol`。它只处理 DS 返回 524 超时或连续两次成功响应没有正文的批次，回执会记录两条线路的实际结果。
 
 ```sh
-PYTHONPATH=next/src python -m manualreader.production --reader . project \
+PYTHONPATH=next/src python -m manualreader.production --reader reader project \
   --run <新的私有运行目录> --sample <本轮样本编号>
 ```
 
@@ -46,7 +46,9 @@ PYTHONPATH=next/src python -m manualreader.production --reader . project \
 
 ## 服务怎样使用现有登录
 
-使用 `python -m manualreader.production --reader . assets --output <新静态目录>` 构建网页文件。配置现有 HTTPS 地址、代理验证凭据、项目数据路径和新静态目录，再启动 `python -m manualreader.production --reader . serve --runs <私有运行目录父目录>`。该进程只监听回环地址，现有登录代理承担对外连接。每个 Next 项目的质检目录使用它在 Reader 中的完整项目编号。
+使用 `python -m manualreader.production --reader reader assets --output <新静态目录>` 构建网页文件。配置现有 HTTPS 地址、代理验证凭据、项目数据路径和新静态目录，再启动 `python -m manualreader.production --reader reader serve --runs <私有运行目录父目录>`。该进程只监听回环地址，现有登录代理承担对外连接。每个 Next 项目的质检目录使用它在 Reader 中的完整项目编号。
+
+源码现已按职责整理：Reader 在 `reader/`，引擎在 `next/`，启动工具在 `scripts/`。从旧目录布局升级服务时，除了替换源码发布目录，还需把服务的 `--reader` 改到新发布目录下的 `reader/`，并将 `MANUAL_READER_VENDOR` 指向 `reader/vendor/`。`PYTHONPATH` 仍指向 `next/src`，原数据库、项目目录、设置和安全凭据继续使用既有私有路径。
 
 部署前保留前一版程序与代理路由。试运行使用独立端口及独立测试项目，通过后再切换代理。退回时恢复前一条代理路由，已有原件和学习数据库继续保存在原位置。不要用示例数据库替换真实数据。
 

@@ -1,0 +1,34 @@
+flowchart TD
+    A[项目文件与本章范围<br/>STEP 01–03 · Snapshot / Plan / Sources]
+    B[四种独立写作任务<br/>NORMAL · INTRO · FINALE · ANSWER]
+    C[作者独立组织完整正文<br/>STEP 04 · Original draft]
+    D[来源对应与遗漏补充<br/>STEP 05 + 06A · Source coverage]
+    E[教学深度与图示补充<br/>STEP 06B · Content augmentation]
+    T[原文分组与翻译<br/>STEP 09–11 · Reading / Translation]
+    F[自然融合并保留首稿<br/>STEP 07 · Reversible fusion]
+    G[确定章节片段与资源编号<br/>STEP 08 · Parts / Blocks / Resources]
+    H[资源元素详解<br/>STEP 12 · Resource explanations]
+    I[术语与已有词库<br/>STEP 13 · Terminology]
+    J[练习与答案解析<br/>STEP 14 · Practice]
+    K[导读、路线、回顾与承接<br/>STEP 15 · Chapter guidance]
+    L[最终排版与关系核对<br/>STEP 16 + 18 · Format / Alignment]
+    M[原生 Reader 装配与检查<br/>STEP 17 + 19 · Reader / Checks]
+    N[用户确认交稿后提交进度<br/>STEP 20 · Confirmed delivery]
+    A --> B --> C
+    C --> D
+    C --> E
+    C --> T
+    D --> F
+    E --> F
+    F --> G
+    G --> H
+    G --> I
+    G --> J
+    G --> K
+    T --> L
+    H --> L
+    I --> L
+    J --> L
+    K --> L
+    L --> M --> N
+    G -. 正文就绪后可先预览 .-> M

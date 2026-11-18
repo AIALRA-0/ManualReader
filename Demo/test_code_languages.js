@@ -1,5 +1,5 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
-const folder=path.join(__dirname,'../vendor/code-highlight');let reply;
+const folder=path.join(__dirname,'../reader/vendor/code-highlight');let reply;
 const scope={console,performance,self:{postMessage:value=>reply=value},importScripts:name=>vm.runInContext(fs.readFileSync(path.join(folder,name),'utf8'),context)};
 const context=vm.createContext(scope);vm.runInContext(fs.readFileSync(path.join(folder,'worker.js'),'utf8'),context);
 const languages=scope.self.ReaderHighlighter.listLanguages();assert.equal(languages.length,193);

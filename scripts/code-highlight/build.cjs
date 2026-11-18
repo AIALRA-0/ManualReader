@@ -1,5 +1,5 @@
 const fs=require('node:fs'),path=require('node:path');
-const root=path.resolve(__dirname,'../..'),dependencies=process.argv[2]||__dirname;
+const root=path.resolve(__dirname,'../../reader'),dependencies=process.argv[2]||__dirname;
 const locate=name=>require.resolve(name,{paths:[dependencies]});
 const esbuild=require(locate('esbuild')),entry=locate('highlight.js');
 esbuild.buildSync({stdin:{contents:'self.ReaderHighlighter=require('+JSON.stringify(entry)+')',resolveDir:dependencies},bundle:true,minify:true,platform:'browser',target:'es2020',outfile:path.join(root,'vendor/code-highlight/highlight.min.js'),legalComments:'eof'});

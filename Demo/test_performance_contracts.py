@@ -2,7 +2,7 @@
 import copy,random,sys,unittest
 from pathlib import Path
 from unittest.mock import patch
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_features import reading_progress
 from reader_completion import completion_payload,completion_scope
 

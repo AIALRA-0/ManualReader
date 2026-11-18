@@ -60,7 +60,7 @@ def server_handler(backend, script, run=None, *, production_runs=None):
             path=urlsplit(self.path).path
             if production_runs is not None and path=='/healthz':
                 return self.json({'application':'codex-manual-reader','version':'Next 0.8.1',
-                                  'status':'ready','authentication':'authentik'})
+                                  'status':'ready','authentication':'authentik' if os.environ.get('MANUAL_READER_PUBLIC_ORIGIN','').startswith('https://') else 'local-pin'})
             if path=='/acceptance' and run is not None:
                 self.context()
                 ready=optional(run,'reader-service-ready.json',{}).get('samples',{})

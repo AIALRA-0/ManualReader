@@ -1,7 +1,9 @@
 """启动这一份阅读器；端口已被别的程序占用时换一个端口，保留对方进程。"""
 from pathlib import Path
 import argparse,json,os,socket,subprocess,sys,time,urllib.request,webbrowser
-ROOT=Path(__file__).resolve().parent
+REPO=Path(__file__).resolve().parent.parent
+ROOT=REPO/'reader'
+DATA=REPO/'instance'
 
 def session(port):
     try:return json.load(urllib.request.urlopen(f'http://127.0.0.1:{port}/api/session',timeout=.4))
@@ -17,17 +19,18 @@ def launch(preferred=8939):
             probe.bind(('127.0.0.1',port))
         except OSError:probe.close();continue
         probe.close()
-        env={**os.environ,'MANUAL_READER_PORT':str(port),'MANUAL_READER_DB':str(ROOT/'reader.sqlite3'),
-             'MANUAL_READER_MATERIAL':str(ROOT/'material.json'),'MANUAL_READER_STATIC':str(ROOT/'static'),
-             'MANUAL_READER_LIBRARY':str(ROOT/'library'),'MANUAL_READER_SETTINGS':str(ROOT/'reader-settings.json'),'PYTHONIOENCODING':'utf-8'}
+        DATA.mkdir(parents=True,exist_ok=True)
+        env={**os.environ,'MANUAL_READER_PORT':str(port),'MANUAL_READER_DB':str(DATA/'reader.sqlite3'),
+             'MANUAL_READER_MATERIAL':str(ROOT/'material.json'),'MANUAL_READER_STATIC':str(DATA/'static'),
+             'MANUAL_READER_LIBRARY':str(DATA/'library'),'MANUAL_READER_SETTINGS':str(DATA/'reader-settings.json'),'PYTHONIOENCODING':'utf-8'}
         if (ROOT/'vendor').exists():env['MANUAL_READER_VENDOR']=str(ROOT/'vendor')
-        process=subprocess.Popen([sys.executable,str(ROOT/'reader_server.py')],cwd=ROOT,env=env,
-                    stdout=(ROOT/'reader-server.stdout.log').open('a',encoding='utf8'),
-                    stderr=(ROOT/'reader-server.stderr.log').open('a',encoding='utf8'),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),start_new_session=os.name!='nt')
+        process=subprocess.Popen([sys.executable,str(REPO/'scripts/serve_reader.py')],cwd=ROOT,env=env,
+                    stdout=(DATA/'reader-server.stdout.log').open('a',encoding='utf8'),
+                    stderr=(DATA/'reader-server.stderr.log').open('a',encoding='utf8'),creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0),start_new_session=os.name!='nt')
         for _ in range(100):
             ready=session(port)
             if ready and ready.get('application')=='codex-manual-reader' and Path(ready.get('instance_path','')).resolve()==ROOT:
-                (ROOT/'reader-url.txt').write_text(ready['api_base'],'utf8');return ready['api_base']
+                (DATA/'reader-url.txt').write_text(ready['api_base'],'utf8');return ready['api_base']
             if process.poll() is not None:raise RuntimeError('阅读器没有启动，请查看 reader-server.stderr.log')
             time.sleep(.1)
         raise RuntimeError('阅读器仍在启动，请查看 reader-server.stderr.log')

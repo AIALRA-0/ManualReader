@@ -1,7 +1,7 @@
 """回归真实生成中出现过的缺漏和格式故障；只用合成资料，不调用模型。"""
 from pathlib import Path
 import copy,json,sys,tempfile,time,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_generation import normalize_output,validate_plan,source_groups
 from reader_writer_format import normalize
 from reader_writer_input import compact_packet,restore_output

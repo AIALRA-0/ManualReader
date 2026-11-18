@@ -1,7 +1,7 @@
 """验证搜索策略保留原文范围，断行与中文分片不会丢掉用量回执。"""
 from pathlib import Path
 import json,sys,unittest
-sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
+sys.path.insert(0,str((Path(__file__).resolve().parents[1]/'reader')))
 from reader_research_transport import compact_history, prepare,events
 class ResearchTransportTests(unittest.TestCase):
     def send(self,commands,path='/alpha/search'):

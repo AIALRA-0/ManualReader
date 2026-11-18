@@ -1,7 +1,7 @@
 from pathlib import Path
 import copy,sys,tempfile,unittest
 from unittest.mock import patch,Mock
-root=Path(__file__).resolve().parents[1];sys.path.insert(0,str(root))
+root=(Path(__file__).resolve().parents[1]/'reader');sys.path.insert(0,str(root))
 from reader_coverage import coverage_payload
 from reader_learning_scope import update_exclusions
 from reader_features import settings,save_settings
