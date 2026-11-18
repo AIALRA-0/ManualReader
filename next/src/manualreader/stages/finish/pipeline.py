@@ -19,17 +19,45 @@ def result_at(job,name,default=None):
     return read(p) if p.is_file() else default
 
 
+def attachment_gaps(job):
+    """从实际产物找可继续补齐的附件，不用上次的完成标签替代资源和 Part 编号。"""
+    from .content import p2_inventory
+    from reader_term_quality import repair_fields
+    structure=result_at(job,'part-blocks.json',{})
+    wanted={p['part_id'] for p in structure.get('parts',[]) if p.get('block_ids')}
+    present={q.get('part_id') for q in result_at(job,'quiz-candidates.json',[]) if q.get('prompt')}
+    gaps={}
+    if wanted-present:
+        gaps['practice']=sorted(wanted-present)
+    resources=result_at(job,'resource-explanations.json',{})
+    delivered={rid for group in resources.get('groups',[]) for rid in group.get('resource_ids',[])}
+    expected={rid for rid,row in p2_inventory(structure).items() if row['eligible']}
+    if expected-delivered:
+        gaps['resources']=sorted(expected-delivered)
+    terms=result_at(job,'term-candidates.json',[])
+    missing=[row['name'] for row in terms if row.get('status')=='candidate' and repair_fields(row)]
+    if missing:
+        gaps['terms']=missing
+    translated=result_at(job,'translation-initial.json',{})
+    if translated.get('unresolved_source_ids') or translated.get('counts',{}).get('unresolved'):
+        gaps['translation']=translated.get('unresolved_source_ids') or ['missing_translation']
+    return gaps
+
+
 async def wait_translation(root,job):
     path=job/'translation-initial.json'
     expires=time()+3600
-    while not path.is_file():
+    while True:
         queue=root/'translation-queue.json'
+        queued=read(queue) if queue.is_file() else {}
+        ready=result_at(job,'translation-ready.json',{})
+        if path.is_file() and (queued.get('state')!='running' or ready.get('batch_at')==queued.get('at')):
+            return read(path)
         outside=time()>=expires
         settled=queue.is_file() and read(queue).get('state')=='done'
         if outside or settled:
             return {**EMPTY_TEXT,'issues':[{'reason':'这篇没有收到译文产物，正文和其他附件仍可阅读。'}]}
         await asyncio.sleep(0.4)
-    return read(path)
 
 
 async def replayable(timings,sample,node,path,task):
@@ -136,8 +164,9 @@ async def finish_batch(root,providers,timing,sample_sources=None,*,write_result=
         final_file=job/'run.json'
         if final_file.is_file():
             previous=read(final_file)
-            if previous.get('format_status')!='partial' and not refresh_translation:
+            if previous.get('format_status')!='partial' and not refresh_translation and not attachment_gaps(job):
                 return previous
+            (job/'generated'/'formatted.json').unlink(missing_ok=True)
         card=read(root_sample/'task-card.json')
         known_terms=result_at(root_sample,'reader-context.json',{}).get('existing_terms',[])
         baseline=read(root/'upstream07'/name/'run.json')
@@ -250,8 +279,13 @@ async def finish_batch(root,providers,timing,sample_sources=None,*,write_result=
             async def fix_term_references(stage,payload):
                 return await providers.ask(name,stage,payload,
                         prompt=providers.prompts[stage]+terminology.STANDALONE_REPAIR)
-            rows=await replayable(timing,name,'step_13_standalone_term_repair',side/'terminology-standalone.json',
-                       lambda:terminology.repair_context_references(rows,fix_term_references))
+            repaired=side/'terminology-standalone.json'
+            rows=result_at(side,repaired.name,rows)
+            from reader_term_quality import repair_fields
+            if any(row.get('status')=='candidate' and repair_fields(row) for row in rows):
+                rows=await timing.run(name,'step_13_standalone_term_repair',
+                                     terminology.repair_context_references(rows,fix_term_references))
+                write(repaired,rows)
             rows,edits=await format_artifact(rows,('attachments','terms'))
             patches_ready.extend(edits)
             write(job/'term-candidates.json',rows)
@@ -370,6 +404,10 @@ async def finish_batch(root,providers,timing,sample_sources=None,*,write_result=
                 'translation':translated['counts'],'p2':dict(totals),'p2_scope':cq['scope_counts'],
                 'visual_translations':dict(visual_counts),
                 'terms':len(attachments['terms']),'exercises':len(attachments['questions']),
+                'practice_part_coverage':{
+                    'total':len(s['parts']),
+                    'covered':len({q.get('part_id') for q in attachments['questions']} & {p['part_id'] for p in s['parts']}),
+                    'percentage':f"{len({q.get('part_id') for q in attachments['questions']} & {p['part_id'] for p in s['parts']})/len(s['parts'])*100:.2f}" if s['parts'] else '100.00'},
                 'reading_route_items':len(attachments['guidance'].get('reading_flow',[])),
                 'recaps':len(attachments['guidance'].get('part_recaps',[])),
                 'format_status':final.get('format_status','complete'),

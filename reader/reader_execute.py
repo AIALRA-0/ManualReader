@@ -181,6 +181,8 @@ def normalize_terms(value,payload):
 def invoke_writer(folder,prompt,images,executable,system_override=None,allow_image_generation=True,research=True,request_limit=None,original_tool=None):
     """记录真实输入、模型输出、检索和用量；不读取维护聊天或连接凭证。"""
     from reader_worker import runtime_usage,external_tool_usage
+    # Windows 的文本管道会转换换行；先统一输入，避免 CRLF 被写成 CRCRLF 后无法核对本轮任务。
+    prompt=prompt.replace('\r\n','\n')
     folder=Path(folder);folder.mkdir(exist_ok=True,parents=True);target=folder/'final.txt';events=folder/'events.jsonl'
     if events.exists():raise ValueError('本次调用已有日志，请读取原任务，不重复生成')
     system=section_body(TERM_NAME_CORRECTION, 1) if WRITER_ROLE.get()=='term_repair' else WRITER_INSTRUCTIONS
@@ -608,13 +610,13 @@ def _execute(bridge,out,include_answered=False,reader_context=None,*,observe_cal
         from reader_step01_client import answer_file_ids
         material_round.select(answer_file_ids(payloads.values(),material_round.start['manifest']))
     prepare_seconds=time.perf_counter()-clock;results=[];errors=[]
-    with ThreadPoolExecutor(max_workers=max(1,min(2,len(run['groups'])))) as pool:
+    with ThreadPoolExecutor(max_workers=max(1,len(run['groups']))) as pool:
         futures={pool.submit(run_group,bridge,out,g,payloads[g['id']],reference,executable,material_round):g['id'] for g in run['groups']}
         for future in as_completed(futures):
             try:results.append(future.result())
             except Exception as error:errors.append({'group_id':futures[future],'message':str(error)})
     term_names=repair_term_names(bridge,out,set(run['question_ids']),executable) if not errors else {'state':'waiting_for_answers'}
-    coordinator={'kind':'local_script','model':None,'started_at':began,'completed_at':stamp(),'total_seconds':round(time.perf_counter()-clock,3),'script_cpu_seconds':round(time.process_time()-cpu,3),'prepare_seconds':round(prepare_seconds,3),'parallel_groups':min(2,len(run['groups'])),'usage':{'input_tokens':0,'cached_input_tokens':0,'cache_write_input_tokens':0,'output_tokens':0,'reasoning_output_tokens':0,'model_calls':0},'scope':'这里只记录本地脚本和并行写作窗口，0 token不包含Codex读取、启动、等待和最终汇报；Codex整轮由caller另记，完整费用须等待整轮日志结算'}
+    coordinator={'kind':'local_script','model':None,'started_at':began,'completed_at':stamp(),'total_seconds':round(time.perf_counter()-clock,3),'script_cpu_seconds':round(time.process_time()-cpu,3),'prepare_seconds':round(prepare_seconds,3),'parallel_groups':len(run['groups']),'usage':{'input_tokens':0,'cached_input_tokens':0,'cache_write_input_tokens':0,'output_tokens':0,'reasoning_output_tokens':0,'model_calls':0},'scope':'这里只记录本地脚本和并行写作窗口，0 token不包含Codex读取、启动、等待和最终汇报；Codex整轮由caller另记，完整费用须等待整轮日志结算'}
     bridge.request('/api/runs/'+bridge.run_id+'/events',{'type':'coordinator','coordinator':coordinator})
     report={'run':bridge.request('/api/runs/'+bridge.run_id),'coordinator':coordinator,'groups':results,'term_names':term_names,'issues':errors};save(out/'measured-run.json',report)
     if errors:raise RuntimeError('部分组需要处理，已完成结果和准确原因见 measured-run.json；没有启动模型修复循环')

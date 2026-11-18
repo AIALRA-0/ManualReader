@@ -61,7 +61,8 @@ window.ReaderInlinePractice={create(ctx){
 
  function paint(){
   if(!ctx.state()||!ctx.material())return;const placement=ctx.state().inline_practice;if(!placement)return;
-  for(const [pid,ids]of Object.entries(placement.lesson||{})){const article=[...document.querySelectorAll('#explanation article[data-passage-id]')].find(n=>n.dataset.passageId===pid);if(article)attach(article,ids,pid)}
+  const articles=new Map([...document.querySelectorAll('#explanation article[data-passage-id]')].map(n=>[n.dataset.passageId,n]));
+  for(const [pid,ids]of Object.entries(placement.lesson||{})){const article=articles.get(pid);if(article)attach(article,ids,pid)}
   for(const [qid,parts]of Object.entries(placement.answers||{})){
    const card=document.getElementById(qid),body=card?.querySelector(':scope > .answer-section > .question-answer');if(!body||body.dataset.hydrated!=='true')continue;
    const q=ctx.state().rounds.flatMap(r=>r.questions).find(q=>q.id===qid);if(!q)continue;

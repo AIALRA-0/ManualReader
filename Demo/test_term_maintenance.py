@@ -1,4 +1,4 @@
-"""用隔离术语验证只补缺段、最多两路并行，以及恢复时不重复调用模型。"""
+"""用隔离术语验证只补缺段、独立组同时执行，以及恢复时不重复调用模型。"""
 from pathlib import Path
 from unittest.mock import patch
 import copy,json,sys,tempfile,threading,time,unittest
@@ -25,11 +25,11 @@ class TermMaintenanceTests(unittest.TestCase):
                     self.assert_repair=data['repair_only'];known={t['id']:t for t in self.state['terms']}
                     for proposal in data['updates']:revise_term(known[proposal['term_id']],{**proposal,'action':'revise'},lambda:'test')
                     return {'updated':len(data['updates'])}
-        bridge=Bridge();before=copy.deepcopy(bridge.state);calls=[];active=0;maximum=0;lock=threading.Lock()
+        bridge=Bridge();before=copy.deepcopy(bridge.state);calls=[];active=0;maximum=0;lock=threading.Lock();barrier=threading.Barrier(3)
         def writer(folder,prompt,images,executable,**kwargs):
             nonlocal active,maximum
             with lock:active+=1;maximum=max(maximum,active);calls.append(folder.name)
-            time.sleep(.03)
+            barrier.wait(timeout=5)
             payload=json.loads(prompt.rsplit('\n',1)[1]);terms=[{'term_id':t['term_id'],'professional_definition':None,'intuitive_explanation':INTUITION}for t in payload['terms']]
             raw=json.dumps({'terms':terms,'used_sources':[]});(folder/'final.txt').write_text(raw,'utf8')
             (folder/'usage.json').write_text(json.dumps({'usage':{'input_tokens':100,'cached_input_tokens':40,'output_tokens':20,'model_calls':1},'usage_complete':True}),'utf8')
@@ -37,7 +37,7 @@ class TermMaintenanceTests(unittest.TestCase):
             return raw,{},None
         with tempfile.TemporaryDirectory()as tmp,patch('reader_execute.invoke_writer',side_effect=writer),patch('reader_source_cache.for_bridge',return_value=None):
             first=maintain(bridge,tmp,executable='synthetic')
-            self.assertEqual(len(calls),3);self.assertLessEqual(maximum,2);self.assertEqual(first['updated'],20)
+            self.assertEqual(len(calls),3);self.assertEqual(maximum,3);self.assertEqual(first['updated'],20)
             self.assertEqual(first['writer_usage']['input_tokens'],300);self.assertEqual(first['new_writer_usage']['input_tokens'],300)
             second=maintain(bridge,tmp,executable='synthetic');self.assertEqual(len(calls),3)
             self.assertEqual(second['writer_usage']['input_tokens'],300);self.assertEqual(second['new_writer_usage']['input_tokens'],0)

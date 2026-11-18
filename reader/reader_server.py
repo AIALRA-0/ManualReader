@@ -185,6 +185,8 @@ def save_result(state,rid,data,actor='reader',*,finish=True):
     for name,raw in original_names:
         item=next((t for t in state['terms'] if canonical_term(t['name']).casefold()==name.casefold()),None)
         if item and raw and raw!=name and raw not in item.setdefault('source_names',[]):item['source_names'].append(raw)
+    __import__('reader_practice_upgrade').associate_terms(
+        state,question_ids={answer['question_id'] for answer in prepared.get('answers',[])})
     if finish:
         node=learning_payload(material(),workspace().read(),state)['selected_id']
         if node:wait_for_user(state,node,core.stamp)
@@ -491,8 +493,8 @@ def agent_guide():
     guide.update(teaching_context(material(),workspace().read(),core.read_state()))
     guide['question_pool_rule']='GET /api/work 和 POST /api/runs 汇总当前项目全部已保存且需要回答的问题，包括首次提问和追问。问题没有回答、回答已删除，或回答只对应旧问题版本时，都重新进入待答池；只有删除问题本身才退出。按本次 question_version 写回，旧版本任务不能覆盖新问题。草稿只计数，不作为正式问题处理；include_answered=true 只扩大返回范围，不改变 pending 的含义。用户明确要求重答时，用 POST /api/runs 提交 question_ids=[原问题编号]，已经有效回答的问题另加 include_answered=true；不要因此准备全部已答问题'
     guide['question_deletion']={'preview':'POST /api/questions/{question_id}/deletion-preview','preview_body':{'target':'question 或 answer'},'confirm':'POST /api/questions/{question_id}/deletion-confirm','confirm_body':{'confirmation_id':'预览返回的原值','expected_version':'预览返回的 question_version','expected_text':'预览中的问题原话','confirmed':True},'rule':'用户要求删除后，先读取预览，Agent 自行再次核对项目、原编号、问题文字及受影响的追问，再单独提交确认；不能一拿到预览就盲目自动确认。确认5分钟内有效，仅供同一连接使用一次；问题、回答或追问变化后需要重新预览。删除问题保留回答、笔记和练习历史；删除回答会把原问题送回待答池。不要用清空问题输入块代替删除确认'}
-    guide['fast_answer_path']={'start':'POST /api/runs','client_command':'reader_bridge.py daily --out <本轮空目录>','read_group':'GET /api/runs/{run_id}/groups/{group_id}','save':'POST /api/runs/{run_id}/groups/{group_id}/result','statistics':'GET /api/runs',**writer_profile('answer'),'coordinator':writer_profile('coordinator'),'parallel_groups':2,'rule':'用户手动运行 daily。客户端读取问题、附上本轮需要的原图，启动最多两路写作者，逐组写回并等待本轮结束。独立会话只读统计并汇报一次，实际用量计入整轮。网页不调用模型。'}
-    guide['steps'].insert(0,'用户要求回答问题时，你运行 reader_bridge.py daily --out <本轮空目录>\n客户端准备材料、启动最多两路写作者、等待并写回，再用独立的普通服务会话读统计并汇报一次，最后结算整轮\n开发、验收和部署分别统计')
+    guide['fast_answer_path']={'start':'POST /api/runs','client_command':'reader_bridge.py daily --out <本轮空目录>','read_group':'GET /api/runs/{run_id}/groups/{group_id}','save':'POST /api/runs/{run_id}/groups/{group_id}/result','statistics':'GET /api/runs',**writer_profile('answer'),'coordinator':writer_profile('coordinator'),'parallel_groups':None,'rule':'用户手动运行 daily。客户端读取问题、附上本轮需要的原图，同时启动本轮独立写作组，逐组写回并等待本轮结束。独立会话只读统计并汇报一次，实际用量计入整轮。网页不调用模型。'}
+    guide['steps'].insert(0,'用户要求回答问题时，你运行 reader_bridge.py daily --out <本轮空目录>\n客户端准备材料、同时启动本轮独立写作组、等待并写回，再用独立的普通服务会话读统计并汇报一次，最后结算整轮\n开发、验收和部署分别统计')
     guide['endpoints'].update(runs='GET /api/runs',start_run='POST /api/runs')
     guide['accounting_contract']={'script':'coordinator只表示本地脚本，不能称为完整主调度0 token','codex':'整轮耗时从读取和启动算到最终汇报结束。启动、等待和写回由本地程序处理，汇报用量来自实际的模型回执，单独计入整轮。','parent_model_rule':'daily 用 writer_profiles.coordinator 指定的模型和普通服务档，开启全新会话汇报一次。写作者与汇报会话分别核对实际用量，开发对话另外统计。','complete':'complete_usage和complete_estimated_token_cost_usd只在主对话结束且已采集时返回，未采集留空；同轮开发和其他工作原样计入，不猜测分摊，重叠时间不相加'}
     guide['media_contract']={'rule':'只要图能让读者更容易理解、比较或记住，就在对应的讲解或回答旁配图。拿不准时先画简图。不同理解点可以各配一幅，写作时发现的新机会也要补图。已有原图或截图能讲清时先读取再引用，也可用 coordinate_figures、Mermaid 或图像工具绘图。需要逐项对照时用 Markdown 表格。流程图默认纵排，确实要并排对照时在图内用 %% reader-layout: horizontal。','files':'POST /api/content/files','generated_assets':'生成真实文件后登记 path、alt、question_ids 和 after_part_id。客户端在对应段保存图片，并记录图像调用；账单未返回时不估算该工具的实际费用。','verification':'teach 和 daily 共用分析的 visuals 与写作的 visual_checks，核对已规划的图和表放在正文对应位置。可以用一张多联图展示相邻步骤，视频或交互链接可放在对应静态图旁。'}

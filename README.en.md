@@ -133,6 +133,8 @@ Each independent resource keeps its number and a nearby expandable note describi
 
 Terms reuse the existing dictionary where possible, then cover relevant concepts from the task card and prose. Clicking a term locates its use. Exercises retain native grading and explanations instead of reducing every task to multiple choice.
 
+All four chapter modes and daily answers place at least one reading question at the end of each actual Part. Existing questions and attempts are preserved. Terms retain professional and intuitive explanations with links back to answers; recovery fills missing items while reusing prose and successfully handled translations.
+
 <div align="center">
 
 <img src="docs/assets/readme/next/terms.png" width="570" alt="Actual term panel with professional and intuitive explanations">

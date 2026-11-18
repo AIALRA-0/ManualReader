@@ -268,6 +268,10 @@ class Gate:
                     r.close();self.close_connection=True
                 except Exception as e:
                     receipt.update(phase='transport_error',error_type=type(e).__name__,message=str(e))
+                    with outer.lock:
+                        if not any(row is receipt for row in outer.receipts):
+                            outer.receipts.append(receipt)
+                    outer.persist()
                     try:
                         if not receipt.get('status'):self.send_error(502,'Reader transport unavailable')
                         self.close_connection=True

@@ -132,3 +132,37 @@ def install_missing(material, state, explanation_id, additions, stamp):
     node_ids=explanation.get('learning_node_ids') or [explanation_id]
     return append_assets(state,{'terms':[],'quizzes':rows},node_ids[0],explanation_id,
                          explanation['passage_ids'],stamp,exclusive_owner=True)
+
+
+def answer_coverage(material, state):
+    """按实际回答 Part 核对阅读题和已有术语的双向关联，不创建或重写回答。"""
+    from reader_questions import has_current_answer,answer_body
+    from reader_generation import part_id
+    from reader_term_quality import term_matcher
+    placements=practice_placements(state,material)['answers']
+    match=term_matcher(state.get('terms',[]))
+    answers=[]
+    mentioned=linked=0
+    for round_ in state.get('rounds',[]):
+        for question in round_.get('questions',[]):
+            if not has_current_answer(question):
+                continue
+            parts=question.get('answer_parts') or [{'id':'__answer__','markdown':answer_body(question['answer'],{})}]
+            rows=[]
+            for index,part in enumerate(parts):
+                body=part.get('markdown') or '\n\n'.join(part.get(k,'') for k in ('direct_answer','explanation'))
+                if body.strip():
+                    pid=part_id(part,index)
+                    rows.append({'part_id':pid,'quiz_ids':placements.get(question['id'],{}).get(pid,[]),
+                                 'markdown':body})
+            terms=match(question['text']+'\n\n'+'\n\n'.join(p['markdown'] for p in rows))
+            missing=[t['id'] for t in terms if t['id'] not in question.get('term_ids',[]) or
+                     question['id'] not in t.get('question_ids',[])]
+            mentioned+=len(terms);linked+=len(terms)-len(missing)
+            answers.append({'question_id':question['id'],'parts':rows,'missing_term_ids':missing})
+    total=sum(len(a['parts']) for a in answers)
+    covered=sum(bool(p['quiz_ids']) for a in answers for p in a['parts'])
+    return {'answers':answers,'total':total,'covered':covered,
+            'percentage':f'{covered/total*100:.2f}' if total else '100.00',
+            'terms':{'mentioned':mentioned,'linked':linked,
+                     'percentage':f'{linked/mentioned*100:.2f}' if mentioned else '100.00'}}

@@ -112,7 +112,7 @@ def source_literal_retention(unit):
     if (unit.get("kind") == "heading" and _PRODUCT_HEADING.fullmatch(text)):
         return "product_label"
     cells = [line.strip() for line in text.splitlines() if line.strip()]
-    if (unit.get("position", {}).get("type") == "pdf_page" and len(cells) >= 5
+    if ((unit.get("position") or {}).get("type") == "pdf_page" and len(cells) >= 5
             and re.fullmatch(r"[A-Z][A-Z0-9-]{2,24}", cells[0])
             and all(_NUMERIC_CELL.fullmatch(cell) for cell in cells[1:])):
         return "numeric_table_column"
@@ -266,15 +266,38 @@ def _translation_reply(raw: dict, batch: dict) -> dict[str, dict]:
 
 
 async def translate(root: Path, sample: str, source: dict, ask,
-                    catalog: TranslationCatalog | None = None, on_partial=None) -> dict:
+                    catalog: TranslationCatalog | None = None, on_partial=None, *, existing=None) -> dict:
     units = source_units(source)
     catalog = catalog or build_translation_catalog([source])
     needed = {_key(u) for u in units if u["relation"] == "translated"}
+    found = {}
+    by_id={u['source_id']:u for u in units}
+    for group in _objects((existing or {}).get('groups')):
+        for row in _objects(group.get('segments')):
+            unit=by_id.get(row.get('source_id'))
+            if (unit and row.get('source_version')==unit['source_version'] and
+                    row.get('original_sha256')==unit['original_sha256'] and
+                    row.get('status') in ('complete','uncertain') and _str(row.get('text')).strip()):
+                found[_key(unit)]={**row,'translation_group_id':group.get('translation_group_id','')}
+    for row in _objects((existing or {}).get('links')):
+        unit=by_id.get(row.get('source_id'))
+        if (unit and row.get('source_version')==unit['source_version'] and
+                row.get('status') in ('complete','uncertain') and row.get('translation_id') and
+                row.get('relation') in ('identity','preserved_math','preserved_code')):
+            found[_key(unit)]={**row,'text':unit['text']}
+    for key,row in found.items():
+        if row['status']=='complete':
+            catalog.historical.setdefault(key,row)
     tasks = {}
     for key in sorted(needed):
         payload = catalog.by_source.get(key)
         if payload:
-            tasks.setdefault(_hash(payload), payload)
+            pending=[u for u in payload['units'] if
+                     (payload['file_id'],u['source_id'],payload['source_version'],u['original_sha256']) not in found and
+                     not catalog.historical.get((payload['file_id'],u['source_id'],payload['source_version'],u['original_sha256']))]
+            if pending:
+                scoped={**payload,'units':pending}
+                tasks.setdefault(_hash(scoped),scoped)
 
     async def lookup(payload: dict):
         response, failure = await _request(ask, "B1", payload)
@@ -298,7 +321,6 @@ async def translate(root: Path, sample: str, source: dict, ask,
                     f"rejected_response_relation:{declarations[sid]}") for sid in missing}
         return translated, missing, detail
 
-    found = {}
     issues = []
     for done in asyncio.as_completed(lookup(d) for d in tasks.values()):
         translated,missing,failure=await done

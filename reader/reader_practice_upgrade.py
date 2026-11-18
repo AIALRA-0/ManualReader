@@ -137,7 +137,7 @@ def reconcile(state, material):
     return owners,chosen
 
 
-def associate_terms(state, *, excluded=()):
+def associate_terms(state, *, excluded=(), question_ids=None):
     """把正文中唯一匹配的术语挂回原问题；已有不同关联留给有来源证据的修复。"""
     terms=state.get('terms',[])
     mentions=term_matcher(terms)
@@ -148,6 +148,8 @@ def associate_terms(state, *, excluded=()):
     count=0
     for row in state['rounds']:
         for question in row['questions']:
+            if question_ids is not None and question['id'] not in question_ids:
+                continue
             if not has_current_answer(question):
                 continue
             body='\n\n'.join(part.get('markdown','') for part in question.get('answer_parts',[]))

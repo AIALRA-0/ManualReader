@@ -80,9 +80,9 @@ def maintain(bridge,out,executable=None):
             value=json.loads(raw);changes=updates(batch,value);save(planned,changes)
             if cache:save(job/'source-cache.json',remember(cache,job,value))
         result=bridge.request('/api/terms',{'repair_only':True,'updates':changes});result['updated_now']=result['updated'];save(receipt,result);return {**result,'model_invoked_now':invoked,'job':job.name}
-    # 同项目共用来源缓存，逐组保留原始输出；最多两位写作者，完成一组就写回一组。
+    # 独立组同时启动，共用来源缓存；每组完成后单独写回，不等待其他组。
     started=time.perf_counter();batches=[rows[i:i+8]for i in range(0,len(rows),8)]
-    with ThreadPoolExecutor(max_workers=2)as pool:
+    with ThreadPoolExecutor(max_workers=max(1,len(batches)))as pool:
         results=[f.result()for f in as_completed([pool.submit(run,i+1,b)for i,b in enumerate(batches)])]
     summary={'material_id':source['material_id'],'groups':len(batches),'updated':sum(r.get('updated_now',0)for r in results),'previously_saved':sum(r.get('updated',0)for r in results if r.get('already_saved')),'seconds':round(time.perf_counter()-started,3),'writer_profile':__import__('reader_writer_profiles').writer_profile('answer'),'caller_usage':'当前触发对话的读取、等待和汇报用量另外登记，不能写成零'}
     records=[json.loads(path.read_text('utf8'))for path in folder.glob('terms-*/usage.json')]

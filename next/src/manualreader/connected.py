@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import shutil
 from time import time
+from concurrent.futures import ThreadPoolExecutor
 
 from .artifacts import read_json as read, write_json as write
 from .stages.step06.pipeline import JointJobs
@@ -17,13 +18,7 @@ from .stages.finish.content import build_translation_catalog, translate
 from .transport import executable
 
 
-def prepare(root, packet, card, context):
-    sample = 'chapter'
-    folder = root / 'inputs' / sample
-    folder.mkdir(parents=True, exist_ok=True)
-    first = root / 'chapter.md'
-    for name in ('task-card.json', 'writing-policies.json', 'chapter.md'):
-        shutil.copy2(root / name, folder / name)
+def source_snapshot(root,packet,card):
     lifecycle = read(root / 'planner' / 'step01-start.json')
     catalog = {row['file_id']: row for row in lifecycle['manifest']['files']}
     selected = {sid for item in card['material_plan'] for sid in item['source_ids']}
@@ -53,6 +48,36 @@ def prepare(root, packet, card, context):
                                for item in card['material_plan']},
               'snapshot_sha256': sha256(json.dumps(packet['file_signatures'], sort_keys=True).encode()).hexdigest(),
               'saved_chapters': []}
+    return source
+
+
+def start_translation(root,packet,card,context):
+    """原件就绪就开始翻译；本线程不等待正文，也不写 Reader 项目或学习状态。"""
+    source=source_snapshot(root,packet,card)
+    async def translate_early():
+        providers,timing=Provider(root),Timings()
+        try:
+            result=await timing.run('chapter','B1',translate(root,'chapter',source,providers.scope('chapter'),
+                build_translation_catalog([source],glossary=context.get('existing_terms',[]))))
+            if result is None:
+                result={'groups':[],'links':[],'counts':{},'issues':[{'reason':'translation_request_failed'}]}
+            write(root/'jobs/chapter/translation-initial.json',result)
+            return result
+        finally:persist(root,'early-translation',providers,timing)
+    pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='reader-translation')
+    future=pool.submit(lambda:asyncio.run(translate_early()))
+    future.add_done_callback(lambda _:pool.shutdown(wait=False))
+    return future
+
+
+def prepare(root, packet, card, context):
+    sample = 'chapter'
+    folder = root / 'inputs' / sample
+    folder.mkdir(parents=True, exist_ok=True)
+    first = root / 'chapter.md'
+    for name in ('task-card.json', 'writing-policies.json', 'chapter.md'):
+        shutil.copy2(root / name, folder / name)
+    source=source_snapshot(root,packet,card)
     references = []
     for row in (root / 'media').glob('*.png'):
         sha = sha256(row.read_bytes()).hexdigest()
@@ -100,7 +125,7 @@ def upstream(root, sample):
     shutil.copytree(root / 'fusion' / 'jobs' / sample, root / 'upstream07' / sample, dirs_exist_ok=True)
 
 
-def run(root, packet, card, context):
+def run(root, packet, card, context, *, early_translation=None):
     root = Path(root)
     began=time()
     write(root/'connected-run.json',{'project_id':card['project']['id'],'mode':context['mode'],
@@ -109,12 +134,17 @@ def run(root, packet, card, context):
     async def finish():
         providers, timing = Provider(root, sol=40, ds=12, vision=12), Timings()
         async def translate_sources():
-            result=await translate(root,sample,source,providers.scope(sample),build_translation_catalog([source]))
+            if early_translation is not None:
+                return await asyncio.wrap_future(early_translation)
+            result=await translate(root,sample,source,providers.scope(sample),
+                                   build_translation_catalog([source],glossary=context.get('existing_terms',[])))
             write(root/'jobs'/sample/'translation-initial.json',result)
+            return result
         translations = asyncio.create_task(translate_sources())
         try:
             await asyncio.to_thread(upstream, root, sample)
-            result = await finish_batch(root, providers, timing, {sample: source})
+            result = await finish_batch(root, providers, timing, {sample: source},
+                                        translation_task=translations,refresh_translation=True)
             if result['failures']:
                 raise RuntimeError(str(result['failures']))
             return result

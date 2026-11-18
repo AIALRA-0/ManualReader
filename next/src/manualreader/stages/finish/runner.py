@@ -62,20 +62,24 @@ class Timings:
 
 
 async def translation_batch(root,providers,timing):
-    from .content import build_translation_catalog,translate
+    from .content import build_translation_catalog,translate,translation_processing
     catalog_inputs=sources(root)
     catalog=build_translation_catalog(catalog_inputs.values())
-    write(root/'translation-queue.json',{'state':'running','at':time(),'samples':list(catalog_inputs),
+    batch_at=time()
+    write(root/'translation-queue.json',{'state':'running','at':batch_at,'samples':list(catalog_inputs),
                                         'unique_foreign_sources':len(catalog.by_source)})
     async def sample(name,source):
         job=root/'jobs'/name
-        if (job/'translation-initial.json').is_file():
+        previous=read(job/'translation-initial.json') if (job/'translation-initial.json').is_file() else None
+        if previous and not translation_processing(source,previous.get('links',[]))['failed_source_ids']:
+            write(job/'translation-ready.json',{'batch_at':batch_at})
             return
-        translated=await timing.run(name,'B1',translate(root,name,source,providers.scope(name),catalog))
+        translated=await timing.run(name,'B1',translate(root,name,source,providers.scope(name),catalog,existing=previous))
         if translated is None:
             translated={'groups':[],'links':[],'unresolved_source_ids':[],
                         'counts':{},'issues':['B1 作业失败，详见阶段日志']}
         write(job/'translation-initial.json',translated)
+        write(job/'translation-ready.json',{'batch_at':batch_at})
         print('B1',name,translated.get('counts'),flush=True)
 
     await asyncio.gather(*(sample(name,source) for name,source in catalog_inputs.items()))

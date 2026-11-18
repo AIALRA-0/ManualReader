@@ -366,6 +366,11 @@ def run(bridge, out, reader_context=None, *, plan_only=False):
                    'original_material': sources,
                    'boundary_context': [row for row in packet['sources'] if row['id'] not in selected]}
         save(out / 'writer-input.json', payload)
+        terms = bridge.request('/api/terms').get('terms', [])
+        context = {'mode': prepared['mode'], 'existing_terms': terms}
+        finish = load_runtime(bridge, out)
+        from manualreader.connected import start_translation
+        translations = start_translation(out, packet, card, context)
         folder = out / 'writer'
         folder.mkdir()
         executable = codex_executable()
@@ -389,7 +394,6 @@ def run(bridge, out, reader_context=None, *, plan_only=False):
         save(out/'metrics/step02.json', planned)
         save(out/'metrics/step04.json', usage)
         report['media'] = media_summary(body, assets, issues)
-        terms = bridge.request('/api/terms').get('terms', [])
         neighbors = {}
         if card.get('previous', {}).get('title'):
             neighbors['previous'] = card['previous']
@@ -397,9 +401,8 @@ def run(bridge, out, reader_context=None, *, plan_only=False):
         at = next((i for i, node in enumerate(outline) if node['id'] == card['chapter']['node_id']), None)
         if at is not None and at + 1 < len(outline):
             neighbors['next'] = {key: outline[at + 1].get(key) for key in ('id', 'number', 'title')}
-        context = {'mode': prepared['mode'], 'existing_terms': terms, 'adjacent_chapters': neighbors}
-        finish = load_runtime(bridge, out)
-        report['postprocess'] = finish(out, packet, card, context)
+        context['adjacent_chapters'] = neighbors
+        report['postprocess'] = finish(out, packet, card, context, early_translation=translations)
         body = (out / 'jobs/chapter/body.final.md').read_text('utf8')
         for match in re.finditer(r'!\[[^\]]*\]\((?:assets|media)/([a-f0-9]{64}\.png)\)',body):
             name = match[1]

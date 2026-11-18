@@ -186,7 +186,7 @@ def work_packet(material, state, round_id=None, include_answered=False, *, quest
     packet['reading_context'] = learning_payload(
         material, {'learning_outline':material.get('learning',{}).get('nodes')
                    if material.get('learning',{}).get('scope_active') else None}, state)['context']
-    packet['dispatch']={'mode':'reader_local_pipeline','max_parallel':2,**writer_profile('answer'),'groups':[{'id':'writer-'+str(i+1),'question_ids':ids} for i,ids in enumerate(packet['groups'])],'input_rule':'用当前客户端的 daily 命令处理已保存的问题。每组先分析怎样讲，再把分析结果和本组相关原文交给写作者。','writeback':'客户端收到一组结果后逐题写回，并分别记录分析与写作用量。'}
+    packet['dispatch']={'mode':'reader_local_pipeline',**writer_profile('answer'),'groups':[{'id':'writer-'+str(i+1),'question_ids':ids} for i,ids in enumerate(packet['groups'])],'input_rule':'用当前客户端的 daily 命令处理已保存的问题。每组先分析怎样讲，再把分析结果和本组相关原文交给写作者。','writeback':'客户端收到一组结果后逐题写回，并分别记录分析与写作用量。'}
     return annotate_questions(packet)
 
 

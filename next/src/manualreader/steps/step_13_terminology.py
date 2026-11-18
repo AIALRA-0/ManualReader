@@ -1,6 +1,7 @@
 """Prepare terminology independently of the chapter guidance."""
 
 import re
+import asyncio
 
 from manualreader.stages.finish.content import _objects, _request, _strings
 from manualreader.artifacts import read_json as read
@@ -132,7 +133,7 @@ def bind(result, structure):
 
 async def repair_context_references(rows, ask):
     try:
-        from reader_term_quality import INDEPENDENCE, inspect
+        from reader_term_quality import repair_fields, inspect, MINIMUMS
     except ImportError:
         return rows
     selected=[]
@@ -140,21 +141,34 @@ async def repair_context_references(rows, ask):
         if row.get('status')!='candidate':
             continue
         fields={field:row.get(field,'') for field in ('professional_definition','intuitive_explanation')}
-        if any(INDEPENDENCE.search(value) for value in fields.values()):
-            selected.append({**{k:row[k] for k in ('name','aliases','source_ids','block_ids','part_ids')},**fields})
+        needed=repair_fields(fields)
+        if needed:
+            selected.append({**{k:row.get(k,[]) for k in ('name','aliases','source_ids','block_ids','part_ids')},
+                             **fields,'write_fields':needed})
     if not selected:
         return rows
-    reply,_=await _request(ask,'F2',{'mode':'repair_standalone_definitions','terms_to_repair':selected})
-    original={t['name']:t for t in selected}
-    accepted={}
-    for term in _objects(reply.get('terms')):
-        before=original.get(term.get('name'))
-        if before is None:
-            continue
-        fields={field:term[field] if INDEPENDENCE.search(before[field]) else before[field]
-                for field in ('professional_definition','intuitive_explanation')}
-        if inspect(fields)['passed']:
-            accepted[term['name']]=fields
+    async def group(batch):
+        remaining={t['name']:t for t in batch}
+        accepted={}
+        for attempt in range(3):
+            if not remaining:
+                break
+            reply,_=await _request(ask,'F2',{'mode':'repair_standalone_definitions',
+                       'terms_to_repair':list(remaining.values()),'minimums':MINIMUMS,
+                       'missing_fields_attempt':attempt})
+            for term in _objects(reply.get('terms')):
+                before=remaining.get(term.get('name'))
+                if before is None:
+                    continue
+                fields={field:term.get(field,'') if field in before['write_fields'] else before[field]
+                        for field in MINIMUMS}
+                if inspect(fields)['passed']:
+                    accepted[term['name']]=fields
+                    remaining.pop(term['name'])
+        return accepted
+    batches=[selected[i:i+8] for i in range(0,len(selected),8)]
+    results=await asyncio.gather(*(group(batch) for batch in batches))
+    accepted={name:fields for result in results for name,fields in result.items()}
     revised=[]
     for row in rows:
         if fields:=accepted.get(row['name']):
@@ -168,5 +182,7 @@ STANDALONE_REPAIR = (
     '\n本次使用 repair_standalone_definitions，只修复 terms_to_repair 列出的正式词条。'
     '保留原有定义、条件与直观解释中的事实。把「本章」「本图」等依赖前文的指代改为完整名称、已知电路或条件。'
     '已有合格段落原样复制，两个段落各自独立可读。返回原词名和原编号，禁止扩写新结论。'
+    '只补 write_fields 标出的字段；补足必要的机制、条件和例子，使专业定义至少80、直观解释至少100个非空白字符。'
+    '不用重复或无依据的新事实凑长度。'
     '这次不重新识别术语，planned_term_reviews 和 unresolved_terms 返回空数组。'
 ).encode()
