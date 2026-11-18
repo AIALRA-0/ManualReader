@@ -181,9 +181,13 @@ function createReaderMediaPins(pane){
   viewport.tabIndex=0;
   viewport.setAttribute('aria-label',item.label+'，滚轮缩放，拖动查看，Home 恢复居中');
   const transform=el('div','reader-pinned-image-transform');
-  const toolbar=el('div','reader-pinned-image-tools');
+  const resetButton=button('fit','恢复置顶图片居中',()=>{
+   reset();
+   viewport.focus({preventScroll:true});
+  });
+  resetButton.classList.add('reader-pinned-image-reset');
   viewport.append(transform);
-  view.append(viewport,toolbar);
+  view.append(viewport,resetButton);
   view.classList.add('has-pinned-image');
   const copy=ReaderMediaView.mountCopy(item.snapshot,transform);
   for(const image of copy.matches('img')?[copy]:copy.querySelectorAll('img'))image.draggable=false;
@@ -192,6 +196,7 @@ function createReaderMediaPins(pane){
   const paint=()=>{
    transform.style.transform=`translate3d(${position.x}px,${position.y}px,0) scale(${position.scale})`;
    viewport.dataset.zoom=String(position.scale);
+   resetButton.hidden=Math.abs(position.scale-1)<.001&&Math.hypot(position.x,position.y)<.5;
   };
   const zoom=(factor,x=0,y=0)=>{
    const next=Math.max(.25,Math.min(8,position.scale*factor)),ratio=next/position.scale;
@@ -201,8 +206,6 @@ function createReaderMediaPins(pane){
    paint();
   };
   const reset=()=>{Object.assign(position,{scale:1,x:0,y:0});paint()};
-  toolbar.append(button('minus','缩小置顶图片',()=>zoom(1/1.2)),button('plus','放大置顶图片',()=>zoom(1.2)),
-   button('fit','恢复置顶图片居中',reset),button('fullscreen','单独放大查看',()=>ReaderMediaView.open(item.snapshot,item.label+' '+item.name)));
   viewport.addEventListener('wheel',event=>{
    event.preventDefault();
    if(!event.deltaY)return;
