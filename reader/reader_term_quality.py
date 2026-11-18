@@ -84,6 +84,25 @@ def audit(terms):
     return {"version":"terms-two-paragraph-v1","minimums":dict(MINIMUMS),
             "needs_revision":sum(bool(row["repair_fields"])for row in entries),"entries":entries}
 
+_UNIT_NAMES = {
+    'A': {'安培', '安', 'ampere', 'amperes', 'amp'},
+    'C': {'库仑', 'coulomb', 'coulombs'},
+    'F': {'法拉', 'farad', 'farads'},
+    'H': {'亨利', '亨', 'henry', 'henries'},
+    'J': {'焦耳', '焦', 'joule', 'joules'},
+    'K': {'开尔文', '开氏温标', 'kelvin', 'kelvins'},
+    'N': {'牛顿', '牛', 'newton', 'newtons'},
+    'S': {'西门子', 'siemens'},
+    'T': {'特斯拉', 'tesla', 'teslas'},
+    'V': {'伏特', '伏', 'volt', 'volts'},
+    'W': {'瓦特', '瓦', 'watt', 'watts'},
+    'g': {'克', 'gram', 'grams'},
+    'm': {'米', '公尺', 'metre', 'metres', 'meter', 'meters'},
+    's': {'秒', 'second', 'seconds'},
+    'Ω': {'欧姆', '欧', 'ohm', 'ohms'},
+}
+
+
 def term_labels(item):
     """取登记全称、缩写和明确别名，供查找正文和核对复用。"""
     import re
@@ -93,13 +112,17 @@ def term_labels(item):
     if bilingual:
         prefix, english = bilingual.groups()
         labels.update((prefix, english))
-        abbreviated = re.fullmatch(r'([A-Za-z][A-Za-z0-9.+/-]*(?:[ -][A-Za-z0-9.+/-]+)*)\s+([\u3400-\u9fff].*)', prefix.strip())
-        if abbreviated:
-            labels.update(abbreviated.groups())
+    prefix = bilingual.group(1) if bilingual else name
+    abbreviated = re.fullmatch(r'([A-Za-z][A-Za-z0-9.+/-]*(?:[ -][A-Za-z0-9.+/-]+)*)\s+([\u3400-\u9fff].*)', prefix.strip())
+    if abbreviated:
+        labels.update(abbreviated.groups())
     for label in tuple(labels):
         if '或' in label and re.fullmatch(r'[\u3400-\u9fff]{2,}(?:或[\u3400-\u9fff]{2,})+',label):
             labels.update(label.split('或'))
-    return {label.strip() for label in labels if len(label.strip()) > 1}
+    labels = {label.strip() for label in labels}
+    names = {label.casefold() for label in labels}
+    return {label for label in labels
+            if len(label) > 1 or bool(_UNIT_NAMES.get(unicodedata.normalize('NFKC',label),set()) & names)}
 
 def term_pattern(label):
     label=unicodedata.normalize('NFKC',label).casefold()
@@ -108,9 +131,19 @@ def term_pattern(label):
     return re.compile(left+re.escape(label)+right)
 
 
-def term_prose(markdown):
+def term_prose(markdown, *, preserve_case=False):
     prose=re.sub(r'\]\([^\n)]*\)|https?://\S+', '', markdown)
-    return unicodedata.normalize('NFKC',prose).casefold()
+    normalized=unicodedata.normalize('NFKC',prose)
+    return normalized if preserve_case else normalized.casefold()
+
+
+def _unit_pattern(symbol):
+    token=rf'(?<![A-Za-z_]){re.escape(symbol)}(?![A-Za-z0-9_])'
+    names='|'.join(sorted(map(re.escape, _UNIT_NAMES[symbol]),key=len,reverse=True))
+    return re.compile(
+        rf'(?:\d\s*|\bunit\s+(?:symbol\s+)?(?:is\s+)?|单位\s*[为是：:]?\s*)`?{token}`?'
+        rf'|{token}`?\s*(?:(?:是|表示|指|即|[（(:：])\s*|stands\s+for\s+)(?i:{names})'
+    )
 
 
 def term_matcher(terms):
@@ -120,19 +153,22 @@ def term_matcher(terms):
         if term.get('duplicate_of'):
             continue
         for label in term_labels(term):
-            key = unicodedata.normalize('NFKC', label).casefold()
+            normalized=unicodedata.normalize('NFKC',label)
+            key=normalized if normalized in _UNIT_NAMES else normalized.casefold()
             labels.setdefault(key, {})[term['id']] = term
     patterns = []
     for label, candidates in labels.items():
         if len(candidates) != 1:
             continue
-        patterns.append((term_pattern(label), candidates))
+        unit=label in _UNIT_NAMES
+        patterns.append((_unit_pattern(label) if unit else term_pattern(label), candidates, unit))
 
     def find(markdown):
-        prose = term_prose(markdown)
+        cased=term_prose(markdown,preserve_case=True)
+        prose=cased.casefold()
         matches = {}
-        for pattern, candidates in patterns:
-            if pattern.search(prose):
+        for pattern, candidates, unit in patterns:
+            if pattern.search(cased if unit else prose):
                 matches.update(candidates)
         return list(matches.values())
     return find

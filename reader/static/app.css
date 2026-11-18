@@ -352,9 +352,17 @@ select[data-reader-native-select]{position:absolute!important;width:1px!importan
 @media(max-width:1100px){.reading-column .pane-head>.reader-select{flex-basis:54px;min-width:54px;max-width:54px}.pane-actions{gap:8px}.pane-head .explanation-tools .reader-select-trigger{font-size:16px}.reading-column .pane-head .pane-actions .pdf-tools{max-width:calc(100vw - 176px)}}
 
 #reading-location,.reading-column .pane-head .explanation-tools{display:none!important}
-.reading-column .pane-head .pane-actions .pdf-tools{gap:8px}.pdf-tools .zoom-value{display:inline-flex;align-items:center;gap:2px;flex:none}.pdf-tools .zoom-value>span{line-height:1}.reading-column [data-pane=original]{container-type:inline-size;container-name:reader-original}
+.reading-column .pane-head .pane-actions .pdf-tools{gap:8px}.pdf-tools .zoom-value{display:inline-flex;align-items:center;gap:2px;flex:none}.pdf-tools .zoom-value>span{line-height:1}.reading-column [data-pane=original]{container-type:inline-size;container-name:reader-original reader-pane}
+.reading-column :is([data-pane=translation],[data-pane=explanation]){container-type:inline-size;container-name:reader-pane}
 @container reader-original (max-width:520px){.pdf-tools #zoom-out,.pdf-tools #zoom-in{display:none}}
 @media(max-width:1100px){.pane-actions[data-pane-actions=original] .icon-btn{width:24px!important;min-width:24px!important;height:24px!important;min-height:24px!important}.reading-column .pane-head .pane-actions .pdf-tools{gap:8px;max-width:none}}
+@container reader-pane (max-width:300px){
+ .reading-column .pane[data-pane]>.pane-head{display:grid!important;grid-template-columns:auto minmax(0,1fr);height:auto;flex:none;gap:2px 4px;padding:2px 6px}
+ .reading-column .pane-head>.reader-select{grid-column:1;grid-row:1}
+ .reading-column .pane-head>.project-file-tabs{grid-column:2;grid-row:1}
+ .reading-column .pane-head>.pane-actions{grid-column:1/-1;grid-row:2;justify-content:flex-start;margin:0;max-width:100%;overflow-x:auto;scrollbar-width:thin}
+ .reading-column .pane-head .pane-actions .pdf-tools{flex:none;width:max-content;max-width:none;overflow:visible}
+}
 
 /* 问答连续显示正文，术语只保留定义与直观解释。 */
 .answer-origin{margin:12px 0 8px}.answer-origin p{margin:0 0 8px}

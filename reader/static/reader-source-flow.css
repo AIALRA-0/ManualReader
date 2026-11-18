@@ -17,6 +17,7 @@
 .reader-group-figure{padding:0!important;border:0!important;border-radius:0}
 .reader-figure-name{margin:6px 0 10px;text-align:center;font-size:12px;color:var(--muted)}
 .reader-figure-fragments[hidden]{display:none!important}
+.reader-figure-translation{cursor:pointer}
 .reader-source-crop{display:block;width:min(88%,1200px);height:auto;max-height:420px;object-fit:contain;margin:0 auto 8px;cursor:zoom-in}
 .reader-group-figure>article .chinese,.reader-group-figure>article .english{font-size:inherit}
 .reader-figure-labels{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;font-size:14px;line-height:1.8}

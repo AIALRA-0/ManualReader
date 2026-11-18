@@ -228,7 +228,9 @@ class Workspace:
             if status in ('translated','needs_review') and row.get('evidence'):
                 valid=[x for x in labels if visual_label_ready(x) and not x.get('preserve')]
                 label_text=(row.get('translation_markdown') if complete else '') or '\n\n'.join(x['original']+'：'+x['translation'] for x in valid)
-                if label_text and not p.get('zh'):p['zh']=label_text
+                caption=p.get('zh') or ''
+                if label_text and label_text not in caption:
+                    p['zh']='\n\n'.join(part for part in (caption,label_text) if part)
             if complete:p['visual_translation_source_ids']=list(sources)
 
     def add_file(self,data):

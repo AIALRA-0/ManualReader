@@ -7,6 +7,7 @@ window.ReaderUI=(()=>{
  paths.tag='M3 3h8l10 10-8 8L3 11V3zM7 7h.01';
  paths['message-plus']='M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM8 10h8m-4-4v8';
  paths.pagefit='M5 2h14v20H5zM2 12h20M8 9l-3 3 3 3m8-6 3 3-3 3';
+ paths.fit='M3 5v14m18-14v14M6 12h12M9 9l-3 3 3 3m6-6 3 3-3 3';
  paths.stop='M6 6h12v12H6z';
  paths.mic='M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 5v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8';
  paths.layout='M3 3h18v18H3zM11 3v18M11 12h10';

@@ -394,35 +394,67 @@ def layout_translation(translated, reading_groups, source_rows):
     return arranged
 
 
-def native_visual(folder, source_rows, resources):
+def native_visual(folder, source_rows, resources, source=None):
     from reader_translation import visual_signature
     value=optional(folder,'translation-visuals.json',[])
     candidates=records(value,'translations','images','groups','items')
+    image_kinds={'image','visual','page_image','figure','scan'}
     asset_to_source=defaultdict(list)
     for sid,row in source_rows.items():
-        if row.get('asset_sha'):
+        if row.get('kind') in image_kinds and row.get('asset_sha'):
             asset_to_source[row['asset_sha']].append(sid)
+    # Older imports keep their Reader image ID and locators. Use the attachment
+    # recorded for that exact source when the Reader row has no image hash.
+    snapshot_images=defaultdict(set)
+    source=source or {}
+    for row in source.get('sources',[]):
+        sid=row.get('source_id')
+        original=source_rows.get(sid,{})
+        if (row.get('kind') not in image_kinds or original.get('kind') not in image_kinds
+                or not (original.get('src') or original.get('refs'))
+                or original.get('file_id','primary')!=row.get('file_id')):
+            continue
+        for asset_id in row.get('asset_refs',[]):
+            asset=source.get('assets',{}).get(asset_id,{})
+            sha=asset.get('sha256')
+            if (sha and asset.get('kind') in image_kinds | {'vector'}
+                    and asset.get('file_id')==row['file_id']
+                    and original.get('asset_sha') in (None,'',sha)):
+                snapshot_images[sha].add(sid)
     actual={r['resource_id']:r for r in resources if r.get('resource_id')}
     by_source=defaultdict(list)
+    fingerprints=defaultdict(set)
     for item in candidates:
         rid=item.get('resource_id')
         sid=item.get('image_source_id') or item.get('source_id')
         digest=item.get('image_fingerprint') or item.get('media_sha256') or item.get('asset_sha256') or actual.get(rid,{}).get('media_sha256')
-        for sid in ([sid] if sid in source_rows else asset_to_source.get(digest,[])):
-            if source_rows[sid].get('kind') not in ('image','visual','page_image','figure','scan'):
+        matches=asset_to_source.get(digest,[])
+        inferred=snapshot_images.get(digest,set())
+        if sid in source_rows:
+            current=source_rows[sid].get('asset_sha')
+            consistent=(not current or not digest or current==digest) and (not inferred or sid in inferred)
+            matches=[sid] if consistent else []
+        elif not matches and len(inferred)==1:
+            matches=list(inferred)
+        for sid in matches:
+            if source_rows[sid].get('kind') not in image_kinds:
                 continue
             for label in item.get('labels') or [item]:
                 original=label.get('original') or label.get('original_text') or label.get('raw_content')
                 translation=label.get('translation') or label.get('translated') or label.get('translated_text')
                 if isinstance(original,str) and original.strip() and isinstance(translation,str) and translation.strip():
                     by_source[sid].append({'original':original,'translation':translation})
+                    if digest:
+                        fingerprints[sid].add(digest)
     result=[]
     for sid,labels in by_source.items():
         p=source_rows[sid]
         result.append({'image_id':sid,'original_signature':visual_signature(p),'status':'needs_review',
                        'unreadable':['尚未核实这张图的全部文字'],
                        'labels':list({(x['original'],x['translation']):x for x in labels}.values()),
-                       'evidence':{'asset_sha256':p.get('asset_sha'),'method':'按已定位的图中文字投影'}})
+                       'evidence':{'asset_sha256':p.get('asset_sha'),
+                                   'matched_asset_sha256s':sorted(fingerprints[sid]),
+                                   'method':'按已定位的图中文字投影'}})
     return result
 
 
@@ -538,7 +570,7 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
     native_groups=native_translation(folder,source_rows)
     from reader_translation import save_groups, save_visuals
     translated=save_groups(destination,material,native_groups,list(source_rows),partial=True) if native_groups else {'saved':0}
-    native_visuals=native_visual(folder,source_rows,structure['resources'])
+    native_visuals=native_visual(folder,source_rows,structure['resources'],source)
     visual_receipt=save_visuals(destination,material,native_visuals) if native_visuals else {'saved':0}
     groups=records(optional(folder,'reading-groups.json',[]),'groups','reading_groups')
     kinds={'image':'figure','visual':'figure','page_image':'figure','formula':'equation','list_item':'list'}
