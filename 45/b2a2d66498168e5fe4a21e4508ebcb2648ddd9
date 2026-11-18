@@ -1,0 +1,20 @@
+reader_next_teach.py
+  s_1c46d58ed67333::t_2a77dcccae5cc5 232
+  s_1c46d58ed67333::t_82162dcb626218 105-106,233
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "45b2a2d66498168e5fe4a21e4508ebcb2648ddd9",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": null
+    }
+  }
+}
