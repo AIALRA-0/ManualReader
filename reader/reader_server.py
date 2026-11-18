@@ -628,7 +628,7 @@ class Handler(core.Handler):
         try:
             if path in ('/','/reader-main.js'):return self.reader_main(path)
             if path in ('/settings','/statistics','/quality-review'):return self.file(STATIC/(path[1:]+'.html'),'text/html; charset=utf-8')
-            if path=='/reader-project-tree.js':return self.file(STATIC/'reader-project-tree.js')
+            if path in ('/reader-project-tree.js','/reader-question-drafts.js'):return self.file(STATIC/path[1:])
             if path=='/reader-project-files.js':return self.file(STATIC/'reader-project-files.js')
             if path=='/reader-project-files.css':return self.file(STATIC/'reader-project-files.css')
             if path=='/reader-inline-practice.js':return self.file(STATIC/'reader-inline-practice.js')

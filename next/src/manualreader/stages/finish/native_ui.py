@@ -49,11 +49,10 @@ def install(static, legacy):
         """}attachInlineQuestions(node);sourceFlow?.reflow(node);linkTerms(node);node.scrollTop=scroll;
  }
 """)
-    app=substitute(app,r'sourceFlow\?\.activate\(pageId\);const highlights',
-        """sourceFlow?.activate(pageId);
-   window.ReaderPostprocessPreview?.attachPdfQuestions($('pdf-page'),pageId,material,attachInlineQuestions,
+    app=substitute(app,r"const highlights=\$\('pdf-highlights'\);",
+        """window.ReaderPostprocessPreview?.attachPdfQuestions($('pdf-page'),pageId,material,attachInlineQuestions,
      (input,ids,excerpt)=>{const question=inputBlock(input);if(!question.value.trim()){question.source_refs=ids;question.source_excerpt=excerpt}});
-   const highlights""")
+   const highlights=$('pdf-highlights');""")
     app=substitute(app,r"const value=await api\('/api/coverage\?summary=true'\);",
         """const [value,next]=await Promise.all([api('/api/coverage?summary=true'),
           (docId.startsWith('next-final-')||material.explanations?.some(e=>e.id.startsWith('next-chapter-')))?api('/api/postprocess-preview').catch(()=>null):null]);
@@ -233,7 +232,8 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
   });
   return ()=>{
    const left=grid.getBoundingClientRect().left;
-   rails.forEach((rail,i)=>{rail.style.left=(cells[i].getBoundingClientRect().right-left)+'px'});
+   const positions=rails.map((_,i)=>cells[i].getBoundingClientRect().right-left);
+   rails.forEach((rail,i)=>{rail.style.left=positions[i]+'px'});
   };
  }
  function layout(){""")
@@ -322,10 +322,6 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
       }
     }
     ctx.rich(text,ReaderMarkdown.equationSource(displayText));""")
-    source_flow=substitute(source_flow,r"slot\.append\(pdf\);active=id",
-        "slot.insertBefore(pdf,slot.querySelector(':scope > .reader-pdf-questions'));active=id")
-    source_flow=substitute(source_flow,r"row\.style\.height=\(info\.height\*value\+24\)\+'px';",
-        "row.style.minHeight=(info.height*value+24)+'px';")
     source_flow=substitute(source_flow,r"text=ids.map\(id=>source\(id\)\?\.zh\|\|source\(id\)\?\.en\|\|''\)",
         "text=ids.map(id=>{const p=source(id);return (root.id==='original-reading'?p?.en||p?.zh:p?.zh||p?.en)||''})")
     page.write_text(source_flow,'utf8')

@@ -52,7 +52,9 @@
       .replace(/^\$\$([\s\S]*)\$\$$/, '$1').replace(/^\$([^$\n]+)\$$/, '$1');
     text=literalSet(text)||text;
     // 文字命令里的原字符保持原样，只规范数学部分的 Unicode 运算符
-    return text.split(/(\\(?:text|texttt|textrm|mathrm|operatorname)\{[^{}]*\})/g).map((part, index) => index % 2 ? part : part
+    return text.split(/(\\(?:text|texttt|textrm|mathrm|operatorname)\{[^{}]*\})/g).map((part, index) => index % 2 ? part.replace(/^(\\(?:text|texttt|textrm)\{)([^{}]*∆[^{}]*)\}$/,(_,start,inner)=>
+        inner.split('∆').map(piece=>piece?start+piece+'}':'').join('\\Delta ')) : part
+      .replace(/∆/g,'\\Delta ')
       .replace(/[∘→↦←↔∈∉⊂⊆⊃⊇∩∪⋃⋂−≤≥≠≈×÷≃≅≡]/g, char => unicode[char])
       .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹⁻⁺ᵃᵇᶜᵈᵉᶠᵍʰⁱʲᵏˡᵐⁿᵒᵖʳˢᵗᵘᵛʷˣʸᶻ]+/g, value => '^{'+[...value].map(char => superscripts[char]).join('')+'}')
       .replace(/[₀₁₂₃₄₅₆₇₈₉₋₊]+/g, value => '_{'+[...value].map(char=>char==='₋'?'-':char==='₊'?'+':'₀₁₂₃₄₅₆₇₈₉'.indexOf(char)).join('')+'}')
