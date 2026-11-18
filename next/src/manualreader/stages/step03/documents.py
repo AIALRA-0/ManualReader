@@ -15,6 +15,7 @@ from bs4 import BeautifulSoup
 
 from ..step02.html_view import html_document
 from .media import original_text, unavailable, visual
+from ...source_formats import OFFICE_VECTORS, WORD, decode_text, html_soup, legacy_word, office_vector_png, word_tables, word_text
 
 
 IMAGES={'.png','.jpg','.jpeg','.webp','.bmp','.gif','.tif','.tiff'}
@@ -39,7 +40,7 @@ def native_structure(asset,structure):
 
 def parse_table(node):
     rows=[]
-    for tr in node.find_all('tr'):
+    for tr in (row for row in node.find_all('tr') if row.find_parent('table') is node):
         cells=[]
         for element in tr.find_all(['th','td'],recursive=False):
             try:
@@ -56,7 +57,7 @@ def parse_table(node):
 
 
 def read_html(raw,cache,related):
-    page=BeautifulSoup(raw,'html.parser')
+    page=html_soup(raw)
     images=list(page.find_all('img'))
     options=[(str(t.get('src') or t.get('data-src') or ''),t.get('alt','')) for t in images]
     for i,tag in enumerate(images):
@@ -64,9 +65,9 @@ def read_html(raw,cache,related):
     # Keep the existing DOM numbering without letting the old projection read image paths.
     with TemporaryDirectory(prefix='mr03-dom-') as temp:
         p=Path(temp)/'snapshot.html'
-        p.write_text(str(page),encoding='utf8')
+        p.write_bytes(page.encode('utf-8'))
         rows=html_document(p,'step03',Path(temp))['passages']
-    table_nodes=iter(page.find_all('table'))
+    table_nodes=page.find_all('table')
     assets=[]
     for r in rows:
         n=int(r['source_ids'][0][3:])
@@ -90,8 +91,11 @@ def read_html(raw,cache,related):
                 assets.append(unavailable('image',point,str(error),alt=alt))
         else:
             a=original_text(r['kind'],point,r['raw_text'])
+            if r.get('role'):
+                a.update(role=r['role'],translatable=r.get('translatable',True))
             if r['kind']=='table':
-                node=next(table_nodes,None)
+                ordinal=r.get('table_index',-1)
+                node=table_nodes[ordinal] if 0<=ordinal<len(table_nodes) else None
                 try:
                     if node is not None:
                         a=native_structure(a,parse_table(node))
@@ -114,7 +118,7 @@ def second(value):
 
 
 def subtitles(raw,suffix):
-    text=raw.decode('utf-8-sig')
+    text, _, _ = decode_text(raw)
     if suffix=='.json':
         contents=json.loads(text)
         if isinstance(contents,dict):
@@ -215,6 +219,18 @@ def office_table(element):
 def read_office(z,files,suffix,cache):
     assets=[]
     names={f.filename for f in files}
+    rendered={}
+
+    def embedded(member,location,**evidence):
+        extension=PurePosixPath(member).suffix.lower()
+        if extension in IMAGES:
+            return visual(cache,'image',location,z.read(member),**evidence)
+        if extension in OFFICE_VECTORS:
+            if member not in rendered:
+                rendered[member]=office_vector_png(z.read(member),extension)
+            if rendered[member]:
+                return visual(cache,'image',location,rendered[member],origin='office_vector_preview',**evidence)
+        return unavailable('image',location,'当前无法读取这种 Office 媒体',**evidence)
     if suffix=='.docx':
         main=xml(z,'word/document.xml')
         body=next(nodes(main,'body'))
@@ -222,13 +238,25 @@ def read_office(z,files,suffix,cache):
             point=loc('document_paragraph',i,member='word/document.xml',element=tag(node))
             txt=' '.join(t.text for t in nodes(node,'t') if t.text)
             if tag(node)=='tbl':
-                assets.append(native_structure(original_text('table',point,txt),{'rows':office_table(node)}))
+                if node.tag==WORD+'tbl':
+                    tables=word_tables(node)
+                    structure={'rows':tables[0]['cells'],'nested_tables':tables[1:],'header_rows':tables[0]['header_rows']}
+                else:
+                    structure={'rows':office_table(node)}
+                assets.append(native_structure(original_text('table',point,txt),structure))
             elif txt:
                 assets.append(original_text('text',point,txt))
             for embed in nodes(node,'blip'):
                 rel=attr_local(embed,'embed')
                 if rel:
                     assets.append(original_text('media_reference',point,rel))
+        for member in ('word/footnotes.xml','word/endnotes.xml'):
+            if member not in names:
+                continue
+            for i,node in enumerate(xml(z,member),1):
+                text=word_text(node)
+                if text.strip() and not node.get(WORD+'type'):
+                    assets.append(original_text('text',loc('office_member',i,member=member,note_id=node.get(WORD+'id')),text))
     if suffix=='.pptx':
         slides=sorted((int(m[1]),f) for f in names if (m:=re.fullmatch(r'ppt/slides/slide(\d+)\.xml',f)))
         for number,name in slides:
@@ -267,10 +295,8 @@ def read_office(z,files,suffix,cache):
         prefix=member.split('/')[0]
         if prefix not in ('word','ppt','xl'):
             continue
-        if '/media/' in member and PurePosixPath(member).suffix.lower() in IMAGES:
-            assets.append(visual(cache,'image',loc('office_member',ordinal,member=member),z.read(member)))
-        elif '/media/' in member:
-            assets.append(unavailable('image',loc('office_member',ordinal,member=member),'当前无法解码这种 Office 媒体格式'))
+        if '/media/' in member:
+            assets.append(embedded(member,loc('office_member',ordinal,member=member)))
         elif '/_rels/' in member and member.endswith('.rels'):
             for relation in xml(z,member):
                 if relation.get('TargetMode')=='External':
@@ -281,14 +307,23 @@ def read_office(z,files,suffix,cache):
                     directory=member.rsplit('/_rels/',1)[0]
                     target=posixpath.normpath(posixpath.join(directory,relative))
                     location=loc('office_member',ordinal,member=member,relationship=relation.get('Id'))
-                    if target in names and PurePosixPath(target).suffix.lower() in IMAGES:
-                        assets.append(visual(cache,'image',location,z.read(target),target_member=target))
+                    if target in names and '/media/' in target:
+                        assets.append(embedded(target,location,target_member=target))
                     else:
                         assets.append(unavailable('image',location,'对应的同包图像不可用'))
     return {'type':'office','assets':assets,'layout_rendered':False}
 
 
-def parse_document(raw,suffix,cache,related):
+def parse_document(raw,suffix,cache,related,encoding=None):
+    if suffix=='.doc':
+        from .cache import digest
+        with legacy_word(raw) as file:
+            converted=file.read_bytes()
+            report=parse_document(converted,'.docx',cache,related)
+        for item in report['assets']:
+            item['locator']['coordinate_space']='converted_docx'
+            item['locator']['converted_sha256']=digest(converted)
+        return {**report,'converted_carrier':cache.blob(converted)}
     if suffix in IMAGES:
         return {'type':'image','assets':[visual(cache,'image',loc('image',1),raw)]}
     if suffix in ('.html','.htm'):
@@ -313,14 +348,11 @@ def parse_document(raw,suffix,cache,related):
                 else:
                     a.append(original_text('archive_member',where,f.filename,bytes=f.file_size))
             return {'type':'archive','assets':a}
-    text=raw.decode('utf-8-sig')
-    if '\0' in text:
-        raise ValueError('文件含二进制数据，无法作为文本解析')
+    text, codec, offset=decode_text(raw,encoding)
     lines=text.splitlines(keepends=True)
     values=[]
-    offset=3 if raw.startswith(b'\xef\xbb\xbf') else 0
     for number,line in enumerate(lines,1):
-        end=offset+len(line.encode('utf8'))
+        end=offset+len(line.encode(codec))
         values.append(original_text('code' if suffix in CODE else 'text',
                       loc('text_line',number,byte_start=offset,byte_end=end),line))
         offset=end
@@ -331,4 +363,4 @@ def parse_document(raw,suffix,cache,related):
             point=loc('text_line',start,end=end,char_start=match.start(),char_end=match.end())
             # Native TeX is an original transcription, not a verification of mathematical meaning.
             values.append(original_text('formula',point,match[0],encoding='native_tex'))
-    return {'type':'text','assets':values}
+    return {'type':'text','encoding':codec,'assets':values}

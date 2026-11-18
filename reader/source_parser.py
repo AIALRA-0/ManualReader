@@ -2,8 +2,16 @@
 from pathlib import Path
 from collections import Counter
 import ast,base64,hashlib,json,re,shutil,statistics,unicodedata,copy
+import sys
+from importlib.util import find_spec
 from reader_translation import apply_sentence_alignment,translation_flags
 from bs4 import BeautifulSoup,Tag,NavigableString
+
+if find_spec('manualreader') is None:
+    sys.path.append(str(Path(__file__).resolve().parents[1]/'next/src'))
+
+from manualreader.source_formats import (OFFICE_VECTORS, WORD, OfficeConversionUnavailable, decode_text,
+                                        html_soup, legacy_word, office_vector_png, word_tables, word_text, word_xml)
 
 def normal(text):return re.sub(r'\s+',' ',unicodedata.normalize('NFKC',str(text or ''))).strip()
 
@@ -239,9 +247,16 @@ def _asset(blob,extension,output):
     (folder/name).write_bytes(blob)
     return '/asset/'+name
 
+
+def _office_image(raw,extension,output):
+    if extension in OFFICE_VECTORS:
+        pixels=office_vector_png(raw,extension)
+        return _asset(pixels,'.png',output) if pixels else ''
+    return _asset(raw,extension,output)
+
 def _html(path,identity,output,base_url=None,resource_root=None):
     from urllib.parse import urljoin
-    soup=BeautifulSoup(path.read_text('utf8',errors='replace'),'html.parser');doc=Document(identity,soup.title.get_text(' ',strip=True) if soup.title else path.stem,path,'html')
+    soup=html_soup(path.read_bytes());doc=Document(identity,soup.title.get_text(' ',strip=True) if soup.title else path.stem,path,'html')
     if base_url:
         base=soup.find('base',href=True);base_url=urljoin(base_url,base['href']) if base else base_url
     skipped={'script','style','noscript','template','svg','head'};atomic=0
@@ -286,7 +301,17 @@ def _html(path,identity,output,base_url=None,resource_root=None):
                 return
             atomic+=1
             if node.name=='table':
-                rows=[[inline(cell).strip() for cell in tr.find_all(['td','th'],recursive=False)] for tr in node.find_all('tr')];text='\n'.join(' | '.join(r) for r in rows);doc.add(text,'table',atoms=[f'dom{atomic}'],rows=rows,header_rows=[i for i,tr in enumerate(node.find_all('tr')) if tr.find('th')])
+                from manualreader.stages.step03.documents import parse_table
+                native_rows=[tr for tr in node.find_all('tr') if tr.find_parent('table') is node]
+                rows=[[inline(cell).strip() for cell in tr.find_all(['td','th'],recursive=False)] for tr in native_rows]
+                try:
+                    table=parse_table(node)
+                except ValueError:
+                    table={}
+                text='\n'.join(' | '.join(r) for r in rows)
+                doc.add(text,'table',atoms=[f'dom{atomic}'],rows=rows,table_cells=table.get('rows'),
+                        table_caption=table.get('caption'),header_rows=[i for i,tr in enumerate(native_rows)
+                        if tr.find('th',recursive=False) and not tr.find('td',recursive=False)])
             elif node.name=='pre':doc.add(node.get_text(),'code',atoms=[f'dom{atomic}'],language='text')
             else:doc.add(inline(node),'list' if node.name=='li' else 'equation' if node.name=='math' else 'paragraph',atoms=[f'dom{atomic}'])
             for img in node.find_all('img'):visit(img)
@@ -397,13 +422,96 @@ def _render_slides(path, source, identity, output):
         # 原件与对象仍可阅读；转换错误作为解析事实保存，避免吞掉原材料。
         return _slide_previews(source,identity,output),'structured: '+str(error)[:200]
 
+def _word_table(doc,node,atom):
+    structures=word_tables(node)
+    root=structures[0]
+    rows=[[cell['text'] for cell in row] for row in root['cells']]
+    # Keep the root table anchor and attach nested cells through their native parent positions.
+    doc.add('\n'.join(' | '.join(row) for row in rows),'table',atoms=[atom],rows=rows,table_cells=root['cells'],
+            header_rows=root['header_rows'],nested_tables=structures[1:],
+            office_locator={'member':'word/document.xml','element':int(atom[4:])+1})
+    for nested in structures[1:]:
+        rows=[[cell['text'] for cell in row] for row in nested['cells']]
+        if any(cell.strip() for row in rows for cell in row):
+            doc.add('\n'.join(' | '.join(row) for row in rows),'table',rows=rows,table_cells=nested['cells'],
+                    header_rows=nested['header_rows'],atoms=[f'{atom}.table{nested["id"]}'],
+                    office_locator={'member':'word/document.xml','element':int(atom[4:])+1,
+                                    'table':nested['id'],'parent_cell':nested['parent']})
+
+
+def _word_extra_parts(doc,path,output):
+    import posixpath
+    from manualreader.stages.step03.documents import checked_zip
+
+    archive,files=checked_zip(path.read_bytes())
+    names={file.filename for file in files}
+    with archive:
+        for member in ('word/footnotes.xml','word/endnotes.xml'):
+            if member not in names:
+                continue
+            for node in word_xml(archive.read(member)):
+                text=word_text(node)
+                if text.strip() and not node.get(WORD+'type'):
+                    number=node.get(WORD+'id')
+                    doc.add(text,'paragraph',atoms=[f'{Path(member).stem}.{number}'],
+                            office_locator={'member':member,'note_id':number})
+        for member in sorted(names):
+            if not re.fullmatch(r'word/(?:header|footer)\d+\.xml',member):
+                continue
+            name=Path(member).stem
+            root=word_xml(archive.read(member))
+            text=word_text(root)
+            if text.strip():
+                doc.add(text,'paragraph',atoms=[name],role='page_furniture',translatable=False,
+                        office_locator={'member':member})
+            relname=f'word/_rels/{name}.xml.rels'
+            if relname not in names:
+                continue
+            references={value for node in root.iter() for key,value in node.attrib.items()
+                        if key.startswith('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}')}
+            for relation in word_xml(archive.read(relname)):
+                rid=relation.get('Id')
+                if rid not in references or relation.get('TargetMode')=='External' or not relation.get('Type','').endswith('/image'):
+                    continue
+                target=posixpath.normpath(posixpath.join('word',relation.get('Target','')))
+                extension=Path(target).suffix.lower()
+                if target not in names or not target.startswith('word/media/') or extension not in IMAGE_EXTENSIONS|OFFICE_VECTORS:
+                    continue
+                src=_office_image(archive.read(target),extension,output)
+                doc.add('','image' if src else 'visual',atoms=[f'{name}.{rid}'],src=src,
+                        alt='Word 页眉或页脚图片',translatable=False,office_locator={'member':member,'relationship':rid})
+
+
+def _word_without_lxml(doc,path):
+    from manualreader.stages.step03.documents import checked_zip
+    archive,_=checked_zip(path.read_bytes())
+    with archive:
+        member='word/document.xml'
+        body=word_xml(archive.read(member)).find(WORD+'body')
+        for i,node in enumerate(body):
+            atom=f'word{i}'
+            if node.tag==WORD+'tbl':
+                _word_table(doc,node,atom)
+            elif node.tag==WORD+'p':
+                style=node.find(WORD+'pPr/'+WORD+'pStyle')
+                name=style.get(WORD+'val','') if style is not None else ''
+                heading=name.casefold()=='title' or bool(re.fullmatch(r'Heading\d',name,re.I))
+                doc.add(word_text(node),'heading' if heading else 'paragraph',
+                        int(name[-1]) if heading and name[-1].isdigit() else 1,atoms=[atom])
+
+
 def _office(path,identity,output):
     doc=Document(identity,path.stem,path,path.suffix[1:])
     if path.suffix.lower()=='.docx':
         from docx import Document as WordDocument
         from docx.text.paragraph import Paragraph
-        from docx.table import Table
-        source=WordDocument(path)
+        from lxml.etree import XMLSyntaxError
+        try:
+            source=WordDocument(path)
+        except XMLSyntaxError:
+            _word_without_lxml(doc,path)
+            _word_extra_parts(doc,path,output)
+            return doc.finish()
         for i,node in enumerate(source.element.body):
             if node.tag.endswith('}p'):
                 p=Paragraph(node,source);style=p.style.name if p.style else '';head=re.search(r'Heading\s*(\d)',style,re.I);is_title=style=='Title'
@@ -411,11 +519,12 @@ def _office(path,identity,output):
                 formatted=''.join(('**'+run.text+'**' if run.bold else '*'+run.text+'*' if run.italic else run.text) for run in p.runs)
                 doc.add(formatted or p.text,'heading' if head or is_title else 'paragraph',int(head[1]) if head else 1 if is_title else 0,atoms=[f'word{i}'])
                 for n,image in enumerate(node.xpath('.//*[local-name()="blip"]')):
-                    relation=image.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed');part=source.part.related_parts.get(relation);src=_asset(part.blob,Path(part.partname).suffix,output) if part else ''
-                    doc.add('','image',atoms=[f'word{i}.image{n}'],src=src,alt='文档图片',translatable=False)
+                    relation=image.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed');part=source.part.related_parts.get(relation);src=_office_image(part.blob,Path(part.partname).suffix.lower(),output) if part else ''
+                    doc.add('','image' if src else 'visual',atoms=[f'word{i}.image{n}'],src=src,alt='文档图片',translatable=False)
                 for n,formula in enumerate(node.xpath('.//*[local-name()="oMath"]')):doc.add(''.join(formula.itertext()),'equation',atoms=[f'word{i}.equation{n}'])
             elif node.tag.endswith('}tbl'):
-                rows=[[c.text for c in row.cells] for row in Table(node,source).rows];doc.add('\n'.join(' | '.join(row) for row in rows),'table',atoms=[f'word{i}'],rows=rows)
+                _word_table(doc,node,f'word{i}')
+        _word_extra_parts(doc,path,output)
     else:
         from pptx import Presentation
         source=Presentation(path)
@@ -433,6 +542,29 @@ def _office(path,identity,output):
                 else:doc.add('','visual',atoms=[atom],alt=shape.name or '幻灯片图形',translatable=False,refs=position(shape))
     return doc.finish()
 
+
+def _spreadsheet(path,identity,output):
+    from manualreader.stages.step03.documents import parse_document
+    from manualreader.stages.step03.cache import Cache
+    source=parse_document(path.read_bytes(),'.xlsx',Cache(Path(output)/'xlsx-carriers'),None)
+    doc=Document(identity,path.stem,path,'xlsx')
+    for asset in source['assets']:
+        if asset['kind']!='sheet':
+            continue
+        number=asset['locator']['number']
+        member=asset['locator']['member']
+        doc.add(asset['structure'].get('name') or f'工作表 {number}','heading',1,atoms=[f'sheet{number}'],
+                office_locator={'member':member,'sheet':number})
+        cells=asset['structure']['cells']
+        for start in range(0,len(cells),100):
+            batch=cells[start:start+100]
+            rows=[['单元格','值','公式'],*[[c.get('address') or '',c.get('cached_value') or '',
+                    ('`='+c['formula']+'`') if c.get('formula') else ''] for c in batch]]
+            doc.add('\n'.join(' | '.join(row) for row in rows),'table',rows=rows,header_rows=[0],
+                    atoms=[f'sheet{number}.{c["address"]}' for c in batch if c.get('address')],
+                    office_locator={'member':member,'sheet':number,'cells':[c['address'] for c in batch]})
+    return doc.finish()
+
 CODE_EXTENSIONS={'.py','.pyi','.js','.jsx','.mjs','.cjs','.ts','.tsx','.sv','.svh','.v','.vh','.vhd','.vhdl','.c','.cpp','.cc','.cxx','.h','.hpp','.java','.kt','.kts','.go','.rs','.rb','.php','.swift','.scala','.sh','.bash','.zsh','.ps1','.bat','.cmd','.sql','.r','.R','.m','.lua','.pl','.ex','.exs','.erl','.clj','.cs','.fs','.dart','.vue','.svelte','.css','.scss','.sass','.less','.json','.jsonl','.yaml','.yml','.toml','.ini','.cfg','.conf','.xml','.xsd','.gradle','.cmake','.tex'}
 IMAGE_EXTENSIONS={'.png','.jpg','.jpeg','.webp','.gif','.svg'}
 IGNORED_DIRECTORIES={'.git','node_modules','__pycache__','.venv','venv'}
@@ -445,6 +577,9 @@ def _locate(document,relative):
         unit.setdefault('path',relative)
         location={'path':relative,'source_unit_ids':list(unit.get('source_ids',[]))}
         if unit.get('line_start') is not None:location.update(line_start=unit['line_start'],line_end=unit['line_end'])
+        if 'byte_start' in unit:location.update(byte_start=unit['byte_start'],byte_end=unit['byte_end'])
+        if unit.get('office_locator'):location.update(unit['office_locator'])
+        if unit.get('time_seconds'):location.update(start_seconds=unit['time_seconds'][0],end_seconds=unit['time_seconds'][1])
         if unit.get('refs'):location['refs']=unit['refs']
         if document['kind']=='html':location['dom_units']=list(unit.get('source_ids',[]))
         unit['source_location']=location
@@ -501,14 +636,14 @@ def _directory(path,identity,output):
     return doc.finish()
 
 
-def parse(path,identity=None,output=None,*,source_path=None,source_url=None,resource_root=None):
+def parse(path,identity=None,output=None,*,source_path=None,source_url=None,resource_root=None,encoding=None):
     path=Path(path).resolve();identity=identity or 'doc-'+re.sub(r'[^A-Za-z0-9_-]','-',path.stem)[:60];output=Path(output or path.parent/(path.stem+'-assets'))
     if path.is_dir():return attach_reading_segments(_directory(path,identity,output))
-    document=_parse_file(path,identity,output,source_url,resource_root)
+    document=_parse_file(path,identity,output,source_url,resource_root,encoding)
     return attach_reading_segments(_locate(document,source_path or path.name))
 
 
-def _parse_file(path,identity,output,source_url=None,resource_root=None):
+def _parse_file(path,identity,output,source_url=None,resource_root=None,encoding=None):
     ext=path.suffix.lower()
     if ext in IMAGE_EXTENSIONS:
         doc=Document(identity,path.stem,path,'image');src=_asset(path.read_bytes(),ext,output)
@@ -521,12 +656,37 @@ def _parse_file(path,identity,output,source_url=None,resource_root=None):
     if ext in ('.html','.htm'):return _html(path,identity,output,source_url,resource_root)
     if ext in ('.md','.markdown'):return _markdown(path,identity,output,resource_root)
     if ext in ('.docx','.pptx'):return _office(path,identity,output)
+    if ext=='.xlsx':return _spreadsheet(path,identity,output)
     raw=path.read_bytes();code=ext in CODE_EXTENSIONS or path.name.lower() in ('dockerfile','makefile','cmakelists.txt','justfile')
+    if ext=='.doc':
+        try:
+            with legacy_word(raw) as converted:
+                content=converted.read_bytes()
+                parsed=_office(converted,identity,output)
+                carrier=_asset(content,'.docx',output)
+                for unit in parsed['passages']:
+                    unit.setdefault('office_locator',{})['coordinate_space']='converted_docx'
+                    unit['office_locator']['converted_sha256']=hashlib.sha256(content).hexdigest()
+                parsed.update(kind='doc',title=path.stem,source=str(path),converted_docx=carrier)
+                return parsed
+        except OfficeConversionUnavailable:
+            pass
+    if ext in ('.vtt','.srt'):
+        from manualreader.stages.step03.documents import subtitles
+        try:
+            result=subtitles(raw,ext)
+        except (UnicodeError,ValueError):
+            result=None
+        if result and result['assets'] and all(cue.get('status') in ('available','empty') for cue in result['assets']):
+            doc=Document(identity,path.stem,path,'text')
+            for cue in result['assets']:
+                point=cue['locator'];number=point['number']
+                doc.add(cue['text'],'paragraph',atoms=[f'sid{number}'],time_seconds=point['time'])
+            return doc.finish()
     try:
-        text=raw.decode('utf-8-sig')
-        if '\x00' in text:raise UnicodeError('文件包含二进制字节')
+        text, codec, bom=decode_text(raw,encoding)
     except UnicodeError:
         doc=Document(identity,path.name,path,'binary');doc.add('','visual',alt='二进制文件：'+path.name,translatable=False);return doc.finish()
-    doc=Document(identity,path.name,path,'code' if code else 'text')
-    count=max(1,len(text.splitlines()));doc.add(text,'code' if code else 'paragraph',atoms=[f'line{i+1}' for i in range(count)],language=ext[1:],line_start=1,line_end=count)
+    doc=Document(identity,path.name,path,'code' if code else 'text');doc.data['source_encoding']=codec
+    count=max(1,len(text.splitlines()));doc.add(text,'code' if code else 'paragraph',atoms=[f'line{i+1}' for i in range(count)],language=ext[1:],line_start=1,line_end=count,byte_start=bom,byte_end=len(raw))
     return doc.finish()

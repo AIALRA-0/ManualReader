@@ -161,8 +161,11 @@ window.ReaderSourceFlow={create(ctx){
   ctx.rich(text,ReaderMarkdown.equationSource(value));
  }
  function coherent(root,group,members,wrapper){
-  const segments=group.translation_segments;if(root.dataset.language==='en'||!Array.isArray(segments)||!segments.length)return;
-  const ids=new Set(members.map(n=>n.dataset.passageId)),covered=segments.flatMap(s=>s.source_ids||[]);if(new Set(covered).size!==ids.size||covered.some(id=>!ids.has(id))||new Set(segments.map(s=>s.id)).size!==segments.length||segments.some(s=>!s.text?.trim()||!s.source_ids?.length))return;
+  const saved=group.translation_segments;if(root.id==='original-reading'||root.dataset.language==='en'||!Array.isArray(saved)||!saved.length)return;
+  const ids=new Set(members.map(n=>n.dataset.passageId)),known=new Set(group.passage_ids);
+  if(new Set(saved.map(s=>s.id)).size!==saved.length||saved.some(s=>!s.text?.trim()||!s.source_ids?.length||s.source_ids.some(id=>!known.has(id))))return;
+  const segments=saved.filter(s=>s.source_ids.some(id=>ids.has(id)));
+  const covered=new Set(segments.flatMap(s=>s.source_ids));if([...ids].some(id=>!covered.has(id)))return;
   wrapper.classList.add('reader-coherent-group');wrapper.classList.remove('reader-continuation');const fragments=el('div','reader-coherent-fragments');
   for(const member of members)fragments.append(member);for(const child of [...wrapper.children])if(!child.classList.contains('reader-source-crop'))child.remove();wrapper.append(fragments);
   // 句子锚点仍各自保留，但连续句子组成一个阅读段落和一个提问入口。
@@ -179,7 +182,7 @@ window.ReaderSourceFlow={create(ctx){
   }
   const newParts=el('div');newParts.id=root.id;
 
-  for(const block of blocks){const segment=block.parts[0],sourceIds=[...new Set(block.parts.flatMap(s=>s.source_ids))],article=el('article','passage reader-coherent-segment'),chinese=el('div','chinese'),text=el('div','reading-segment');article.dataset.passageId=sourceIds[0];article.dataset.passageIds=JSON.stringify(sourceIds);text.dataset.segmentId='translation-'+group.id+'-'+segment.id;text.dataset.sourceExcerpt=block.parts.map(s=>s.text).join(['table','equation'].includes(block.role)?'\n':' ');text.dataset.sourceIds=JSON.stringify(sourceIds);text.dataset.sentenceIds=JSON.stringify(block.parts.flatMap(s=>s.sentence_ids||[]));
+  for(const block of blocks){const segment=block.parts[0],sourceIds=[...new Set(block.parts.flatMap(s=>s.source_ids))],article=el('article','passage reader-coherent-segment'),chinese=el('div','chinese'),text=el('div','reading-segment');article.dataset.passageId=sourceIds.find(id=>ids.has(id));article.dataset.passageIds=JSON.stringify(sourceIds);text.dataset.segmentId='translation-'+group.id+'-'+segment.id;text.dataset.sourceExcerpt=block.parts.map(s=>s.text).join(['table','equation'].includes(block.role)?'\n':' ');text.dataset.sourceIds=JSON.stringify(sourceIds);text.dataset.sentenceIds=JSON.stringify(block.parts.flatMap(s=>s.sentence_ids||[]));
    const inline=block.parts.length>1&&block.role==='paragraph'&&block.parts.every(s=>!/[\r\n]|^\s*(?:#{1,6}\s|[-*+>]\s|\d+[.)]\s|`{3}|~{3}|-{3}|\*{3})/.test(s.text));
    if(inline){const paragraph=el('p');for(const part of block.parts){const span=el('span','reader-coherent-sentence');span.dataset.sourceIds=JSON.stringify(part.source_ids);span.dataset.translationSegment=part.id;span.dataset.sentenceIds=JSON.stringify(part.sentence_ids||[]);ctx.rich(span,ReaderUI.prose(part.text));paragraph.append(span,document.createTextNode(' '))}text.append(paragraph)}else{let displayText=text.dataset.sourceExcerpt;if(block.role==='heading'&&!/^\s*#{1,6}\s/.test(displayText))displayText='#'.repeat(Math.max(1,Math.min(6,Number(segment.level)||2)))+' '+displayText;if(block.role==='list_item'&&!/^\s*(?:[-*+] |\d+[.)] )/.test(displayText))displayText=(segment.list_order?segment.list_order+'. ':'- ')+displayText;if(block.role==='table'&&ctx.table)text.append(ctx.table(source(sourceIds[0])||{},displayText));
     else if(block.role==='equation')translatedEquation(text,displayText,sourceIds);

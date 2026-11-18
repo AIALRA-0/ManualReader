@@ -142,14 +142,19 @@
   const parsed=ReaderMarkdown.tableRows(text);
   const rows=p.rows&&text===p.en?p.rows:parsed?.rows;
   if(!rows?.length)return rich(wrap,text);
+  const structured=Array.isArray(p.table_cells)&&p.table_cells.length===rows.length&&p.table_cells.every((row,i)=>row.length===rows[i].length)?p.table_cells:null;
   table.dataset.markdownRaw=text;
   const headers=parsed?.header?[0]:p.header_rows??(rows.length>1?[0]:[]);
   const head=el('thead'),body=el('tbody');
   rows.forEach((cells,index)=>{
    const tr=el('tr'),header=headers.includes(index);
    for(const [column,cell] of cells.entries()){
-    const td=el(header?'th':'td');
-    if(header)td.scope='col';
+    const native=structured?.[index]?.[column];
+    if(native?.continue)continue;
+    const th=native?.header??header,td=el(th?'th':'td');
+    if(th)td.scope=native?.scope||'col';
+    if(native?.colspan>1)td.colSpan=native.colspan;
+    if(native?.rowspan>1)td.rowSpan=native.rowspan;
     if(parsed?.columns[column])td.align=parsed.columns[column];
     rich(td,cell.trim());
     tr.append(td);
@@ -505,11 +510,11 @@ window.inlinePracticeUI=ReaderInlinePractice.create({state:()=>state,material:()
  function renderLibrary(){libraryManager.render()}
  async function loadLibrary(){libraryEntries=await libraryManager.refresh();return libraryEntries}
  $('library-toggle').onclick=()=>{renderLibrary();$('library-dialog').showModal();$('library-toggle').setAttribute('aria-expanded','true');loadLibrary().catch(e=>status(e.message))};$('library-dialog').addEventListener('close',()=>$('library-toggle').setAttribute('aria-expanded','false'));$('tree-search').oninput=renderLibrary;
- function updateImport(){const file=$('import-file').files[0],url=$('import-url').value.trim();$('start-import').disabled=!$('import-project').value||!(file||url)}
+ function updateImport(){const file=$('import-file').files[0],url=$('import-url').value.trim();$('start-import').disabled=!$('import-project').value||!(file||url);$('import-encoding-field').hidden=!/\.(?:txt|text|log|csv|tsv)$/i.test(file?.name||'')}
  $('library-import').onclick=()=>{$('import-project').replaceChildren();const empty=el('option',null,'先选择项目');empty.value='';$('import-project').append(empty);for(const row of libraryEntries){const option=el('option',null,row.title);option.value=row.id;$('import-project').append(option)}$('import-project').value=docId||'';$('import-status').textContent=libraryEntries.length?'':'先在材料树新建项目，再导入材料';updateImport();$('library-dialog').close();$('import-dialog').showModal()};
- $('choose-import').onclick=()=>$('import-file').click();$('import-file').onchange=()=>{const file=$('import-file').files[0];$('import-file-name').textContent=file?.name||'尚未选择材料';$('import-file-name').title=file?.name||'';if(file)$('import-url').value='';updateImport();$('import-status').textContent=''};$('import-project').onchange=updateImport;$('import-url').oninput=()=>{if($('import-url').value.trim()){$('import-file').value='';$('import-file-name').textContent='尚未选择材料'}updateImport()};
+ $('choose-import').onclick=()=>$('import-file').click();$('import-file').onchange=()=>{const file=$('import-file').files[0];$('import-file-name').textContent=file?.name||'尚未选择材料';$('import-file-name').title=file?.name||'';$('import-encoding').value='';if(file)$('import-url').value='';updateImport();$('import-status').textContent=''};$('import-project').onchange=updateImport;$('import-url').oninput=()=>{if($('import-url').value.trim()){$('import-file').value='';$('import-file-name').textContent='尚未选择材料'}updateImport()};
  const importUI=ReaderImports.create({api,status,material:()=>docId,open:async(identity,file)=>{await loadLibrary();if(identity!==docId)await loadDocument(identity);else await refresh(true);if(file)await contentUI.openFile(file)}});
- $('start-import').onclick=async()=>{const file=$('import-file').files[0],url=$('import-url').value.trim(),identity=$('import-project').value;if(!identity||!file&&!url)return;$('start-import').disabled=true;$('import-dialog').close();status('正在上传，完成后会在后台解析');try{let payload;if(file){const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));payload={filename:file.name,content_base64:btoa(binary)}}else payload={[$('import-link-kind').value]:url};payload.outline_mode=$('import-auto-outline')?.checked===false?'agent':'auto';await importUI.submit(identity,payload);status('已加入后台导入，可以继续阅读')}catch(error){status('材料尚未导入：'+error.message)}finally{updateImport()}};
+ $('start-import').onclick=async()=>{const file=$('import-file').files[0],url=$('import-url').value.trim(),identity=$('import-project').value;if(!identity||!file&&!url)return;$('start-import').disabled=true;$('import-dialog').close();status('正在上传，完成后会在后台解析');try{let payload;if(file){const encoding=$('import-encoding-field').hidden?'':$('import-encoding').value;const bytes=new Uint8Array(await file.arrayBuffer());let binary='';for(let i=0;i<bytes.length;i+=32768)binary+=String.fromCharCode(...bytes.subarray(i,i+32768));payload={filename:file.name,content_base64:btoa(binary),...(encoding?{encoding}:{})}}else payload={[$('import-link-kind').value]:url};payload.outline_mode=$('import-auto-outline')?.checked===false?'agent':'auto';await importUI.submit(identity,payload);status('已加入后台导入，可以继续阅读')}catch(error){status('材料尚未导入：'+error.message)}finally{updateImport()}};
  let coverageKey='',coverageBusy=false,coveragePending=false,lastCoverage=null;
  function coverageSignature(){return docId+':'+material?.material_revision+':'+JSON.stringify(state?.rounds.flatMap(r=>r.questions.map(q=>[q.id,q.answer_revision||q.answer_version,q.deleted_at,q.answer_deleted_at,q.answer_outdated]))||[])}
  function paintCoverage(value){if(!value)return;const percent=ReaderUI.coveragePercent,read=state.reading_progress?.overall?.percent??0,target=document.querySelector('.document-title small'),identity=docId;target.textContent='已读 '+read+'% · 译文 '+percent(value.overall.translation)+' · 讲解 '+percent(value.overall.explanation);target.title='按保存的原文、译文、讲解关联和手动已读记录自动计算；点击查看详细统计';target.classList.add('coverage-summary');target.onclick=()=>window.open('/statistics?material='+encodeURIComponent(identity),'_blank','noopener')}

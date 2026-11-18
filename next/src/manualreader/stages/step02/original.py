@@ -49,6 +49,11 @@ def seconds(value):
 
 
 def view(raw, suffix):
+    if suffix == '.doc':
+        from ...source_formats import legacy_word
+        with legacy_word(raw) as converted:
+            kind, rows = view(converted.read_bytes(), '.docx')
+        return kind, [{**row,'coordinate_space':'converted_docx'} for row in rows]
     if suffix == '.pdf':
         import fitz
         with fitz.open(stream=raw, filetype='pdf') as doc:
@@ -87,7 +92,8 @@ def view(raw, suffix):
             return 'subtitle_sid', [{'n': int(x['sid']), 'text': str(x['content']),
                                      'time': [float(x['from']), float(x['to'])]} for x in rows]
     if suffix in ('.srt', '.vtt'):
-        text = raw.decode('utf-8-sig')
+        from ...source_formats import decode_text
+        text, _, _ = decode_text(raw)
         matches = list(re.finditer(r'(?m)^((?:\d+:)?\d{2}:\d{2}[,.]\d{3})\s*-->\s*((?:\d+:)?\d{2}:\d{2}[,.]\d{3})[^\n]*\n((?:[^\r\n][^\r\n]*(?:\r?\n|$))+)', text))
         if matches:
             return 'subtitle_sid', [{'n': i, 'text': m[3].strip(), 'time': [seconds(m[1]), seconds(m[2])]}
@@ -104,9 +110,10 @@ def view(raw, suffix):
                 if z.getinfo(part).file_size > MAX_FILE:
                     raise ValueError('access_blocked: Word 正文超过读取上限')
                 root = ET.fromstring(z.read(part))
-                rows = [''.join(t.text or '' for t in p.iter() if t.tag.endswith('}t'))
-                        for p in root.iter() if p.tag.endswith('}p')]
-                return 'document_paragraph', [{'n': i, 'text': t} for i, t in enumerate(rows, 1)]
+                rows = [{'n':i,'text':''.join(t.text or '' for t in p.iter() if t.tag.endswith('}t')),
+                         'has_image_reference':any(t.tag.endswith(('}blip','}imagedata')) for t in p.iter())}
+                        for i,p in enumerate((p for p in root.iter() if p.tag.endswith('}p')),1)]
+                return 'document_paragraph', rows
             pattern = r'ppt/slides/slide(\d+)\.xml' if suffix == '.pptx' else r'xl/worksheets/sheet(\d+)\.xml'
             rows = []
             for name in z.namelist():
@@ -119,8 +126,9 @@ def view(raw, suffix):
             return 'archive_member', [{'n': i, 'text': f.filename, 'size': f.file_size}
                                       for i, f in enumerate((f for f in z.infolist() if not f.is_dir()), 1)]
     try:
-        text = raw.decode('utf-8-sig')
-    except UnicodeDecodeError as error:
+        from ...source_formats import decode_text
+        text, _, _ = decode_text(raw)
+    except UnicodeError as error:
         raise ValueError('access_blocked: 暂无此原件格式的只读视图') from error
     if '\x00' in text:
         raise ValueError('access_blocked: 暂无此原件格式的只读视图')

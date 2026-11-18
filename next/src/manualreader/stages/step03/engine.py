@@ -20,6 +20,7 @@ from .pdf import CONTINUED, page_job
 
 
 REVISION='step03-source-v4'
+DOCUMENT_REVISION='step03-document-v5'
 
 
 class VersionChanged(ValueError):
@@ -226,7 +227,7 @@ class Engine:
             except (ValueError,OSError):
                 continue
         key=[project.identity,entry['content_sha256'],suffix,entry['relative_path'],deps_key,
-             sorted((k,recorded[k]) for k in safe_attachments),selected,REVISION]
+             sorted((k,recorded[k]) for k in safe_attachments),selected,REVISION if suffix=='.pdf' else DOCUMENT_REVISION]
         def related(ref,dom_id):
             data=deps.get(ref)
             if isinstance(data,bytes):

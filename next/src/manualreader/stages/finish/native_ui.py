@@ -273,8 +273,6 @@ a.reader-term-located{animation:reader-term-location 2.8s ease-out}
     source_flow=page.read_text('utf8')
     source_flow=substitute(source_flow,r'\.question-composer,img,\.reader-source-crop',
                           '.question-composer,.reader-route-node,img,.reader-source-crop')
-    source_flow=substitute(source_flow,r"if\(root.dataset.language==='en'\|\|!Array.isArray\(segments\)",
-        "if(root.id==='original-reading'||root.dataset.language==='en'||!Array.isArray(segments)")
     source_flow=substitute(source_flow,r"const bundled=group.matches",
         "const bundled=root.id==='original-reading'||group.matches")
     source_flow=substitute(source_flow,r'JSON\.stringify\(\[url,box\]\)',

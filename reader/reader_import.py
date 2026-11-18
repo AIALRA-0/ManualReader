@@ -5,6 +5,7 @@ from urllib.request import Request, build_opener, HTTPRedirectHandler
 import base64, hashlib, io, ipaddress, json, mimetypes, re, shutil, socket, stat, tempfile, zipfile
 
 from source_parser import parse, audit
+from manualreader.source_formats import text_encoding
 
 
 MAX_FILE_BYTES=40_000_000
@@ -174,7 +175,7 @@ def _web_body_ready(document):
 
 
 def _guard_document(path):
-    if path.suffix.lower() in ('.docx','.pptx'):
+    if path.suffix.lower() in ('.docx','.pptx','.xlsx'):
         archive,members=archive_members(path.read_bytes());archive.close()
     if path.suffix.lower()=='.pdf':
         import fitz
@@ -232,7 +233,13 @@ class SourceImporter:
             name=relative_name(data.get('filename'));raw=decode_file(data.get('content_base64'));archive=archive or Path(name).suffix.lower()=='.zip'
         snapshot=data.get('snapshot_html')
         if snapshot is not None and (not isinstance(snapshot,str) or len(snapshot.encode('utf8'))>MAX_FILE_BYTES):raise ValueError('浏览器 HTML 快照需要是最多 40 MB 的文字')
-        fingerprint=hashlib.sha256((kind+(':'+outline_mode if outline_mode!='auto' else '')).encode()+b'\0'+name.encode()+b'\0'+(source_url or '').encode()+b'\0'+raw+b'\0'+(snapshot or '').encode('utf8')).hexdigest()
+        encoding=text_encoding(data.get('encoding'))
+        if encoding and (archive or directory or Path(name).suffix.lower() not in ('.txt','.text','.log','.csv','.tsv')):
+            raise ValueError('只有单个纯文本文件可以指定编码')
+        input_bytes=(kind+(':'+outline_mode if outline_mode!='auto' else '')).encode()+b'\0'+name.encode()+b'\0'+(source_url or '').encode()+b'\0'+raw+b'\0'+(snapshot or '').encode('utf8')
+        if encoding:
+            input_bytes+=b'\0encoding='+encoding.encode('ascii')
+        fingerprint=hashlib.sha256(input_bytes).hexdigest()
         identity=data.get('file_id') or 'file-'+fingerprint[:20]
         if not isinstance(identity,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,70}',identity) or identity=='primary':raise ValueError('新增文件编号需要使用字母、数字、下划线或连字符，且不能使用 primary')
         old=next((row for row in value['files'] if row['id']==identity),None)
@@ -258,7 +265,7 @@ class SourceImporter:
                 files=document.get('source_files',[]);pending=list(document.get('pending',[]))
             else:
                 path=source/name;path.parent.mkdir(parents=True,exist_ok=True);path.write_bytes(raw);_guard_document(path)
-                document=parse(path,identity,folder/'assets',source_path=name,source_url=final_url)
+                document=parse(path,identity,folder/'assets',source_path=name,source_url=final_url,encoding=encoding)
                 pending=[];files=[{'path':name,'kind':document['kind'],'status':'parsed','passages':len(document['passages']),'coverage':document['coverage']}]
                 if document['kind']=='html' and (snapshot is not None or not _web_body_ready(document)) and kind=='url':
                     snapshot=data.get('snapshot_html')

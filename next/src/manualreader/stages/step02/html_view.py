@@ -3,6 +3,7 @@ import base64
 import re
 import unicodedata
 from bs4 import BeautifulSoup, Tag, NavigableString
+from ...source_formats import html_soup
 
 def normal(text):
     return re.sub(r'\s+', ' ', unicodedata.normalize('NFKC', str(text or ''))).strip()
@@ -21,10 +22,11 @@ def _asset(blob, extension, output):
 
 def html_document(path,identity,output,base_url=None,resource_root=None):
     from urllib.parse import urljoin
-    soup=BeautifulSoup(path.read_text('utf8',errors='replace'),'html.parser');doc=Document(identity,soup.title.get_text(' ',strip=True) if soup.title else path.stem,path,'html')
+    soup=html_soup(path.read_bytes());doc=Document(identity,soup.title.get_text(' ',strip=True) if soup.title else path.stem,path,'html')
     if base_url:
         base=soup.find('base',href=True);base_url=urljoin(base_url,base['href']) if base else base_url
     skipped={'script','style','noscript','template','svg','head'};atomic=0
+    tables={id(table):i for i,table in enumerate(soup.find_all('table'))}
     def inline(node):
         if isinstance(node,NavigableString):return str(node)
         if not isinstance(node,Tag):return ''
@@ -66,7 +68,11 @@ def html_document(path,identity,output,base_url=None,resource_root=None):
                 return
             atomic+=1
             if node.name=='table':
-                rows=[[inline(cell).strip() for cell in tr.find_all(['td','th'],recursive=False)] for tr in node.find_all('tr')];text='\n'.join(' | '.join(r) for r in rows);doc.add(text,'table',atoms=[f'dom{atomic}'],rows=rows,header_rows=[i for i,tr in enumerate(node.find_all('tr')) if tr.find('th')])
+                native_rows=[r for r in node.find_all('tr') if r.find_parent('table') is node]
+                rows=[[inline(cell).strip() for cell in tr.find_all(['td','th'],recursive=False)] for tr in native_rows]
+                text='\n'.join(' | '.join(r) for r in rows)
+                doc.add(text,'table',atoms=[f'dom{atomic}'],rows=rows,table_index=tables[id(node)],
+                        header_rows=[i for i,tr in enumerate(native_rows) if tr.find('th')])
             elif node.name=='pre':doc.add(node.get_text(),'code',atoms=[f'dom{atomic}'],language='text')
             else:doc.add(inline(node),'list' if node.name=='li' else 'equation' if node.name=='math' else 'paragraph',atoms=[f'dom{atomic}'])
             for img in node.find_all('img'):visit(img)
