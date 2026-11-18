@@ -1,0 +1,62 @@
+next/src/manualreader/stages/finish/provider.py
+  s_1c46d58ed67333::t_96539d3b6d3701 236-239,260-261,276
+  s_1c46d58ed67333::t_d3969eea4f4749 356,358
+  s_1c46d58ed67333::t_8071525737abc4 357
+  s_1c46d58ed67333::t_9c4995a75bed0a 207-209,216-217,225-229,231,233,241-242,255,259,262-264,283-284
+  s_1c46d58ed67333::t_616fa4defc0f71 21,273,352-355,359-361,420,425-426
+  s_1c46d58ed67333::t_0ca155ecfa0f78 58-60,201,291-292,300-303,362,389,397-399,404,407-408,418-419,421-422,427,429-430
+docs/next-deployment.md
+  s_1c46d58ed67333::t_7ce3501c48d97e 30-31
+  s_1c46d58ed67333::t_f9a5cabbded691 28-29
+next/src/manualreader/stages/finish/runner.py
+  s_1c46d58ed67333::t_a053cb154994cf 11,66,68-75,81,85-86,88-93,116
+next/tools/test_20step_ds_faults.py
+  s_1c46d58ed67333::t_726546cbd1d7e4 14,19
+next/src/manualreader/stages/finish/kfs_slots.py
+  s_1c46d58ed67333::t_4f512d5357c50d 37-38,42
+  s_1c46d58ed67333::t_d35775c1abe679 1-3,5-17,20-36,39-41,43,45-48,52-58,62-65,68-71,76-93,95-98,100-102,108-115,120-123,125-127,130,132-134,136-139,141,151,153-156,159-160,162-164,166-167
+  s_1c46d58ed67333::t_1713caa35204b5 44,49-50,66-67,72-75,128-129,140,148,150,157-158
+  s_1c46d58ed67333::t_3ef377f8b854c8 19,51,124,131,135,142-147,149,152,161
+  s_1c46d58ed67333::t_b94a003a5c133e 4,18,59-61,94,99,103-107,116-119,165
+next/tests/test_finish_content.py
+  s_1c46d58ed67333::t_538b860f8c1c7e 110-162
+  s_1c46d58ed67333::t_3eb64db8166eba 163-179
+next/tests/test_final_stability.py
+  s_1c46d58ed67333::t_46b8d9c7008434 169,172-175,198
+next/src/manualreader/stages/finish/content.py
+  s_1c46d58ed67333::t_dbac77b0f4c5c5 300,344,369
+  s_1c46d58ed67333::t_21fa2e1b3ca13f 345,348-349
+  s_1c46d58ed67333::t_3e4b5bc8b660ba 183-185,187-188,198-199,202-212,223-226,235-239,241,243,276,289,293-299,301-302,342-343,346,364-366,403-404,426
+  s_1c46d58ed67333::t_a30169a6b05e41 379,381,388-391,393-402
+  s_1c46d58ed67333::t_f75c64c609a891 66,337,339-341,347,350-363,367
+  s_1c46d58ed67333::t_28f9ef40682491 16,377-378,380,382-387,392
+next/tests/test_kfs_slots.py
+  s_1c46d58ed67333::t_cddcfe25e94d6f 1-62
+  s_1c46d58ed67333::t_c7d285ea066fe3 63-64,78-97
+  s_1c46d58ed67333::t_82ddfc271dc96a 65-77
+next/tools/run_whiteboard.py
+  s_1c46d58ed67333::t_04ceb865a49ea5 529
+next/src/manualreader/connected.py
+  s_1c46d58ed67333::t_809febe6953909 17,60-61,134,138-139
+reader/static/reader-media-pins.js
+  s_1c46d58ed67333::t_bdbeb3e9f7c95a 350-359
+reader/static/reader-source-flow.css
+  s_1c46d58ed67333::t_1c7120e5c73c9d 57
+  s_1c46d58ed67333::t_d3d540d3e0d813 20,58,63
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "0d7c578558af06dbeb441107a1b0e3042a7e6ce4",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
