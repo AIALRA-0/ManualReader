@@ -55,6 +55,8 @@ def validate_outline(data,material,excluded=None,defer_unassigned=False):
               'legacy_section_ids':list(dict.fromkeys(legacy)),'source_label':str(row.get('source_label',''))[:200]}
         if row.get('title_provisional') is True and not explanations and not legacy:
             item['title_provisional']=True
+        if row.get('generation_mode') in ('NORMAL','INTRO','FINALE'):
+            item['generation_mode']=row['generation_mode']
         dependencies=row.get('depends_on',[])
         if not isinstance(dependencies,list) or any(d not in known for d in dependencies):raise ValueError('前置章节必须已经出现在当前章节之前')
         item['depends_on']=list(dict.fromkeys(dependencies))

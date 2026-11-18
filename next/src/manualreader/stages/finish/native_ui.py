@@ -40,7 +40,7 @@ def install(static, legacy):
         """units=window.ReaderPostprocessPreview?.questionUnits(article,units)??units;
    for(const unit of units){const copy=unit.cloneNode(true);""")
     app=substitute(app,r'!p\.progress_exempt\|\|p\.inline_questions',
-        "!p.progress_exempt||p.inline_questions||(docId.startsWith('next-final-')&&/^postprocess-preview--(?:block-|source-extra-)/.test(p.id))")
+        "!p.progress_exempt||p.inline_questions||(/^(?:postprocess-preview|next-chapter-[a-f0-9]{20})--(?:block-|source-extra-)/.test(p.id))")
     app=substitute(app,r'function pendingTranslation\(\)\{return document\.createDocumentFragment\(\)\}',
         "function pendingTranslation(){return el('span','reader-translation-pending','待翻译')}")
     # 资源详解和回答追问共用同一条折叠栏，仍分别保留各自的内容。
@@ -62,14 +62,14 @@ def install(static, legacy):
    const highlights""")
     app=substitute(app,r"const value=await api\('/api/coverage\?summary=true'\);",
         """const [value,next]=await Promise.all([api('/api/coverage?summary=true'),
-          docId.startsWith('next-final-')?api('/api/postprocess-preview').catch(()=>null):null]);
+          (docId.startsWith('next-final-')||material.explanations?.some(e=>e.id.startsWith('next-chapter-')))?api('/api/postprocess-preview').catch(()=>null):null]);
         if(next){value.nextTranslation=next.translation_processing;value.nextExplanation=next.source_coverage}""")
     app=substitute(app,r"target\.textContent='已读 '\+read\+'% · 译文 '.*?target\.title='[^']+';",
         """const t=value.nextTranslation,e=value.nextExplanation;
         const ratio=(done,total)=>total?(100*done/total).toFixed(2)+'%':'—';
         target.textContent='已读 '+percent(state.reading_progress?.overall??{percent:read})+
           ' · 译文处理 '+(t?ratio(t.processed,t.total):percent(value.overall.translation))+
-          ' · 讲解关联 '+(e?ratio(e.direct_semantic_count,e.total):percent(value.overall.explanation));
+          ' · 讲解关联 '+(value.directory_association?value.directory_association.percent.toFixed(2)+'%':e?ratio(e.direct_semantic_count,e.total):percent(value.overall.explanation));
         target.title=t&&e
           ? '译文处理 '+t.processed+'/'+t.total+'，实际翻译 '+t.translated+'，原样保留 '+t.preserved+
             '，待核 '+t.uncertain+'，未完成 '+t.failed_source_ids.length+

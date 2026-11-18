@@ -650,64 +650,9 @@ def build_lesson_prompt(payload):
 
 
 def teach(bridge, out, reader_context=None, *, plan_only=False):
-    from reader_v21 import run
+    from reader_next_teach import run
 
     return run(bridge, out, reader_context, plan_only=plan_only)
-
-
-def _teach_legacy(bridge,out,reader_context=None,research_file=None):
-    """用户手动触发当前章；复用问答的模型调用和校验，不自动翻到下一章。"""
-    began=stamp();clock=time.perf_counter();out=Path(out).resolve();out.mkdir(parents=True,exist_ok=True)
-    if(out/'lesson-report.json').exists()or(out/'writer/events.jsonl').exists():raise ValueError('本轮目录已有任务，请读取原稿和保存记录，不重复生成')
-    bridge.prepare(out,lesson=True,observe=False,reader_context=reader_context)
-    packet=json.loads((out/'work.json').read_text('utf8'));node=packet['learning_node'];missing=packet.get('translation_queue',{}).get('current_source_ids',[])
-    if packet.get('writing',{}).get('version')!=WRITING_VERSION:raise ValueError('网站与本机的讲解规则版本不同，请先下载 guide.client_files 的当前客户端；尚未调用模型，已有内容不变')
-    if not packet.get('registered_terms'):
-        packet['result_contract']['terms']=[{k:v for k,v in t.items()if k!='term_id'}for t in packet['result_contract']['terms']]
-    if missing:
-        result={'state':'translations_required','missing_source_ids':missing,'next_action':'按原编号补齐本章非中文译文，再继续当前任务','model_calls':0};save(out/'lesson-report.json',result);return result
-    if node.get('status')=='ready'and node.get('explanation_ids'):
-        result={'state':'already_prepared','learning_node_id':node['id'],'explanation_ids':node['explanation_ids'],'next_action':'沿用已有讲解，处理本章问题；用户手动勾选完成后才能进入下一章','model_calls':0};save(out/'lesson-report.json',result);return result
-    executable=codex_executable()
-    if not executable:raise ValueError('请先安装并登录本地 Codex，网页不自行调用模型')
-    folder=out/'writer';folder.mkdir();images=source_images(bridge,packet,folder)
-    if research_file:
-        research=json.loads(Path(research_file).read_text('utf8'))
-        if not isinstance(research,dict)or not isinstance(research.get('notes'),list):raise ValueError('检索资料使用含notes列表的JSON，每项提供text和url')
-        for row in research['notes']:
-            if not isinstance(row,dict)or not isinstance(row.get('text'),str)or not isinstance(row.get('url'),str)or not row['url'].startswith(('https://','http://')):raise ValueError('每条检索补充都需要事实与实际来源网址')
-        packet['researched_context']=research
-    packet['writing_tool_policy']='直接使用随输入提供的原文、原图和规则，不为这些已有材料枚举工具或重读文件；必要事实缺失时可搜索并打开来源，用户要求配图时沿用原图或实际工具生成的图片，不编造地址；资料足够后直接成稿'
-    packet['source_groups']=__import__('reader_generation').source_groups(packet['sources'])
-    cache=__import__('reader_source_cache').for_bridge(bridge)
-    packed,aliases=__import__('reader_writer_input').compact_packet(packet);save(folder/'source-aliases.json',aliases)
-    source_rows=[s for s in packet['sources']if s.get('content_kind')!='explanation']
-    def validate(raw):
-        value=__import__('reader_writer_input').restore_output(json.loads(re.sub(r'^```(?:json)?\s*|\s*```$','',raw.strip())),aliases)
-        value['writing_version']=WRITING_VERSION
-        value=normalize_output(value,sources=source_rows,lesson=True,required_source_ids=[s['id']for s in source_rows],
-                               reading_context=packet.get('reading_context'),registered_terms=packet.get('registered_terms',[]))
-        value.update(learning_node_id=node['id'],lesson_task_id=packet['lesson_task_id'],writing_version=WRITING_VERSION)
-        value['explanation'].setdefault('id','lesson-'+node['id']);value['explanation'].setdefault('title',node['title'])
-        return value
-    role_token=WRITER_ROLE.set('lesson')
-    try:
-        packed,analysis_usage=analyze_task(folder,packed,executable)
-        packed=__import__('reader_source_cache').augment(packed,cache)
-        save(folder/'output-schema.json',__import__('reader_writer_schema').output_schema(packed))
-        result,usage,session=checked_writing(folder,build_lesson_prompt(packed),images,executable,
-                                             with_analysis_evidence(validate,packed),task=packed)
-        usage=combined_stage_usage(analysis_usage,usage)
-    finally:WRITER_ROLE.reset(role_token)
-    save(folder/'source-cache.json',__import__('reader_source_cache').remember(cache,folder,result))
-    publish_coordinate_figures(bridge,result)
-    asset_issues=store_generated_assets(bridge,result,folder,session,supplement_session=usage.get('supplement_session_id'))
-    changes=normalize_terms(result,packet);save(out/'script-processing.json',{'term_id_changes':changes,'generated_asset_issues':asset_issues,'body_changed':bool(result.get('generated_assets'))})
-    save(out/'lesson-checked.json',result)
-    if asset_issues:raise ValueError('这节讲解的图尚未保存：'+'；'.join(asset_issues))
-    receipt=bridge.apply(out/'lesson-checked.json',out)
-    report={'state':'complete'if receipt.get('complete')else'needs_completion','learning_node_id':node['id'],'started_at':began,'seconds':round(time.perf_counter()-clock,3),'usage':usage,'receipt':receipt,'review_agents':0,'automatic_navigation':False}
-    save(out/'lesson-report.json',report);return report
 
 
 def process_running(pid):

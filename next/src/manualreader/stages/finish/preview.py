@@ -426,7 +426,7 @@ def native_visual(folder, source_rows, resources):
     return result
 
 
-def save_preview_terms(state,terms,chapter_id,passage_ids,stamp):
+def save_preview_terms(state,terms,chapter_id,passage_ids,stamp,*,explanation_id=EXPLANATION):
     from reader_term_quality import validate_asset_term
     from reader_teaching import append_assets
 
@@ -448,12 +448,12 @@ def save_preview_terms(state,terms,chapter_id,passage_ids,stamp):
             existing=validate_asset_term(row,state['terms'])
             if existing:
                 row={'name':existing['name'],'term_id':existing['id']}
-            receipt=append_assets(state,{'terms':[row],'quizzes':[]},chapter_id,EXPLANATION,passage_ids,stamp)
+            receipt=append_assets(state,{'terms':[row],'quizzes':[]},chapter_id,explanation_id,passage_ids,stamp)
             if not receipt['saved']['terms']:
                 raise ValueError(next(iter(receipt['issues']),'原生词库没有保存该词'))
             identity=receipt['saved']['terms'][0]
             item=next(t for t in state['terms'] if t['id']==identity)
-            refs=[EXPLANATION+'--'+bid for bid in term.get('block_ids',[]) if EXPLANATION+'--'+bid in passage_ids]
+            refs=[explanation_id+'--'+bid for bid in term.get('block_ids',[]) if explanation_id+'--'+bid in passage_ids]
             item['related_passage_ids']=list(dict.fromkeys([*item.get('related_passage_ids',[]),*refs]))
             if item['related_passage_ids']:
                 item.setdefault('passage_id',item['related_passage_ids'][0])
@@ -464,7 +464,7 @@ def save_preview_terms(state,terms,chapter_id,passage_ids,stamp):
 
 
 
-def project_native(root, sample, server, backend, original_projects, *, destination_library=None):
+def project_native(root, sample, server, backend, original_projects, *, destination_library=None, existing_identity=None):
     if not SAMPLE.fullmatch(sample):
         raise ValueError('预览任务编号无效')
     inputs=root/'inputs'/sample
@@ -474,9 +474,14 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
     card=read(inputs/'task-card.json')
     digest_file=folder/'body.final.md'
     structure=read(folder/'part-blocks.json')
-    pid='next-final-'+sample
+    pid=existing_identity or 'next-final-'+sample
     destination=(destination_library if destination_library is not None else server/'library')/pid
+    chapter=card.get('chapter') or {}
+    explanation_id=('next-chapter-'+sha256(str(chapter.get('node_id')).encode()).hexdigest()[:20]
+                    if existing_identity else EXPLANATION)
     side=destination/'postprocess-preview'
+    if existing_identity:
+        side=side/explanation_id
     body_sha=digest(digest_file)
     built=side/'chapter.md'
     manifest=side/'manifest.json'
@@ -484,26 +489,42 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
                'translation-visuals.json','resource-explanations.json','chapter-guidance.json',
                'term-candidates.json','quiz-candidates.json','block-source-links.json','part-blocks.json',
                'source-gap-recovery.json','run.json')
-    signature=sha256((PROJECTION_VERSION+''.join(digest(folder/name) for name in artifacts if (folder/name).is_file())).encode()).hexdigest()
+    inputs_signature=''.join(digest(inputs/name) for name in (
+        'source-index.json','task-card.json','reader-context.json','step04-run.json') if (inputs/name).is_file())
+    signature=sha256((PROJECTION_VERSION+inputs_signature+''.join(digest(folder/name) for name in artifacts if (folder/name).is_file())).encode()).hexdigest()
     if manifest.is_file():
         existing=read(manifest)
         if (existing.get('projection_signature')==signature and existing.get('body_sha256')==body_sha
                 and built.is_file() and digest(built)==body_sha):
             return {**existing['projection_receipt'],'reused_projection':True}
     title=(card.get('chapter') or {}).get('title') or (card.get('question') or {}).get('text') or sample
-    files=file_config(source,card,original_projects,run['project_id'])
-    file_rows,source_rows=source_documents(root,destination,pid,source,files)
-    chapter=card.get('chapter') or {}
+    if existing_identity:
+        current_material=backend.material(pid)
+        current_work=backend.workspace(pid).read()
+        file_rows=current_work['files']
+        available={row['id']:row for row in current_material['passages'] if not row.get('explanation_id')}
+        source_rows={row['source_id']:available[row['source_id']] for row in source['sources']
+                     if row['source_id'] in available}
+        if len(source_rows)!=len(source['sources']):
+            raise ValueError('Next 成品引用了当前项目中不存在的来源编号')
+        if any(source_rows[row['source_id']].get('file_id','primary')!=row['file_id']
+               for row in source['sources']):
+            raise ValueError('Next 成品中的原文编号与文件归属不一致')
+        files={row['id']:row for row in current_material['reading_files']}
+    else:
+        files=file_config(source,card,original_projects,run['project_id'])
+        file_rows,source_rows=source_documents(root,destination,pid,source,files)
     chapter_id=render_id(chapter.get('node_id') or ('preview-'+run['mode'].lower()))
     initial={'id':pid,'title':(card.get('project') or {}).get('name') or title,'source':'','kind':'text','pages':{},'passages':[],'outline':[],
              'inventory':[],'translation_status':'pending','schema_version':2}
-    write(destination/'material.json',initial)
+    if not existing_identity:
+        write(destination/'material.json',initial)
     work=backend.workspace(pid)
     with work.lock:
         if not work.path.exists():
             work.write({'revision':0,'files':file_rows,'explanations':[],'presentation':{},
                         'planning_mode':'none','learning_outline':[]})
-        else:
+        elif not existing_identity:
             existing_work=work.read()
             managed=set(optional(side,'manifest.json',{}).get('original_files',{}))
             managed.update(row['id'] for row in file_rows)
@@ -531,7 +552,12 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
             overrides.append({'id':group.get('group_id') or ids[0],'passage_ids':ids,
                               'kind':kind if kind in ('paragraph','list','figure','table','heading','code','markdown','equation') else 'paragraph'})
     if overrides:
-        write(destination/'reading-layout-overrides.json',{'revision':1,'groups':overrides})
+        current_layout=optional(destination,'reading-layout-overrides.json',{})
+        covered=set(source_rows)
+        others=[group for group in current_layout.get('groups',[])
+                if not covered.intersection(group.get('passage_ids',[]))] if existing_identity else []
+        write(destination/'reading-layout-overrides.json',
+              {'revision':current_layout.get('revision',0)+1,'groups':others+overrides})
     edges=records(optional(folder,'block-source-links.json',structure.get('source_edges',[])),'links','source_edges','edges')
     repairs=optional(folder,'source-gap-recovery.json',{})
     repairs=repairs.get('items',[]) if repairs.get('body_sha256')==body_sha else []
@@ -662,19 +688,21 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
         raise ValueError('成品没有可供阅读的讲解片段')
     all_links=list({r['passage_id']:r for b in blocks for r in b.get('source_ranges',[])}.values())
     source_links=all_links[:300]
-    payload={'id':EXPLANATION,'title':str(title)[:300],'writing_version':PREVIEW_WRITING_VERSION,'blocks':blocks,
+    payload={'id':explanation_id,'title':str(title)[:300],'writing_version':PREVIEW_WRITING_VERSION,'blocks':blocks,
              'source_links':source_links,'narrative':{'flow':routes,'ending_kind':ending_kind}}
+    if existing_identity:
+        payload.update(delivery_status='preview',generation_mode=run['mode'])
     current=work.read()
-    previous=next((x for x in current['explanations'] if x['id']==EXPLANATION),None)
+    previous=next((x for x in current['explanations'] if x['id']==explanation_id),None)
     if previous:
         payload['expected_version']=previous['version']
     material=backend.material(pid)
     state=backend.core.read_state()
     used={r['passage_id'] for r in state['rounds']} | set(state['read_passages'])
     node={'id':chapter_id,'title':str(title)[:300],'parent_id':None,'number':str(chapter.get('number') or '0'),
-          'source_links':all_links,'explanation_ids':[EXPLANATION]}
+          'source_links':all_links,'explanation_ids':[explanation_id]}
     current=work.read()
-    if current.get('learning_outline')!=[node] or current.get('planning_mode')!='none':
+    if not existing_identity and (current.get('learning_outline')!=[node] or current.get('planning_mode')!='none'):
         current.update(learning_outline=[node],planning_mode='none')
         work.write(current)
     payload['learning_node_id']=chapter_id
@@ -683,7 +711,8 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
         backend.core.mutate(lambda current:current.update(learning_node_id=chapter_id))
     material=backend.material(pid)
     work.present({'layout':'three','columns':[['original'],['translation'],['explanation']],
-                  'file_id':file_rows[0]['id'] if file_rows else None,'explanation_id':EXPLANATION},material)
+                  'file_id':(current.get('presentation') or {}).get('file_id') or (file_rows[0]['id'] if file_rows else None),
+                  'explanation_id':explanation_id},material)
     terms=[]
     for term in records(optional(folder,'term-candidates.json',[]),'terms','candidates','items'):
         name=term.get('term') or term.get('name')
@@ -712,14 +741,15 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
         def install_assets(state):
             known={t['id'] for t in state['terms']}
             state['terms'].extend(t for t in context.get('existing_terms',[]) if t.get('id') not in known)
-            term_receipt.update(save_preview_terms(state,terms,chapter_id,lesson['passage_ids'],backend.core.stamp))
+            term_receipt.update(save_preview_terms(state,terms,chapter_id,lesson['passage_ids'],backend.core.stamp,
+                                                  explanation_id=explanation_id))
             if adapted:
                 from reader_contract import current_quizzes
                 prior=[row for row in current_quizzes(state['quizzes'])
                        if (row.get('placement') or {}).get('kind')=='lesson'
-                       and (row.get('placement') or {}).get('explanation_id')==EXPLANATION]
+                       and (row.get('placement') or {}).get('explanation_id')==explanation_id]
                 response=append_assets(state,{'terms':[],'quizzes':adapted},
-                                       chapter_id,EXPLANATION,lesson['passage_ids'],backend.core.stamp)
+                                       chapter_id,explanation_id,lesson['passage_ids'],backend.core.stamp)
                 saved=set(response['saved']['quizzes'])
                 if len(saved)==len(adapted):
                     for old in prior:
@@ -729,7 +759,8 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
         backend.core.mutate(install_assets)
     first=next((b['id'] for b in blocks if not b.get('progress_exempt')),blocks[0]['id'])
     coverage=structure.get('coverage',{})
-    receipt={'sample_id':sample,'material_id':pid,'body_sha256':body_sha,
+    receipt={'sample_id':sample,'material_id':pid,'explanation_id':explanation_id,
+             'learning_node_id':chapter_id,'body_sha256':body_sha,
              'blocks':len(blocks),'source_units':len(source_rows),'translation_groups':translated['saved'],
              'resources':sum(len(items) for items in shown.values()),'quizzes':len(adapted),
              'terms':len(term_receipt['saved']),'term_receipt':term_receipt,'quiz_issues':quiz_issues,
@@ -747,7 +778,9 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
     processing,statistics=coverage_statistics(
         source,records(optional(folder,'source-translation-links.json',[]),'links'),
         edges,chapter_id,title,files,translation_processing,navigation)
-    write(side/'manifest.json',{'sample_id':sample,'projection_signature':signature,'projection_receipt':receipt,
+    write(side/'manifest.json',{'sample_id':sample,'explanation_id':explanation_id,
+          'connected_run_id':root.name if existing_identity else None,
+          'chapter_id':chapter_id,'projection_signature':signature,'projection_receipt':receipt,
           'direct_sources_by_block':{render_id(bid):[sid for sid,kind in members.items() if kind=='direct_semantic']
                                      for bid,members in by_block.items()},'status':'preview_ready','quality_status':'partial'
           if any(item['status']=='needs_review' for rows in shown.values() for item in rows) else 'available',
@@ -763,5 +796,6 @@ def project_native(root, sample, server, backend, original_projects, *, destinat
                                  for kind in ('direct_semantic','navigation_only')),
           'block_ids':{row['block_id']:render_id(row['block_id']) for row in structure['blocks']},
           'read_only_source_versions':source['source_files'],
-          'original_files':{r['id']:r['stored_name'] for r in file_rows if r.get('stored_name')}})
+          'original_files':{r['id']:r['stored_name'] for r in file_rows
+                            if r.get('stored_name') and r['id'] in source['source_files']}})
     return receipt

@@ -172,13 +172,15 @@ def _metric(done, total, unit, *, empty='not_required', label=None):
 
 
 class _Index:
-    def __init__(self, material):
+    def __init__(self, material, *, include_auxiliary=False):
         self.sources = {}
         self.sentences = defaultdict(list)
         self.atoms = defaultdict(list)
         self.duplicate_ids = set()
         for row in material.get('passages', []):
-            if not _eligible(row) or not isinstance(row.get('id'), str):
+            navigable = (row.get('content_kind') != 'explanation' and not row.get('historical')
+                         and not row.get('duplicate_of'))
+            if not (navigable if include_auxiliary else _eligible(row)) or not isinstance(row.get('id'), str):
                 continue
             pid = row['id']
             if pid in self.sources:
@@ -267,7 +269,8 @@ def validate_source_mapping(material, value):
     """校验与正文一起提交的来源映射；调用方负责把返回值与正文一起保存。"""
     if not isinstance(value, dict):
         raise ValueError('正文与来源映射需要使用同一个对象提交')
-    index = _Index(material)
+    # 页码和空白也有真实位置，可以关联导航，但不计作实质讲解覆盖。
+    index = _Index(material, include_auxiliary=True)
     result = {}
     if 'explained_source_ids' in value:
         ids = value['explained_source_ids']

@@ -50,13 +50,17 @@ def stage01(backend):
 
 
 def read_draft(backend):
-    if not backend.mid().startswith('next-final-'):
-        raise ValueError('只能在隔离 Reader 中保存')
     folder=backend.mpath().parent
-    manifest=optional(folder/'postprocess-preview','manifest.json',{})
     work=backend.workspace()
     state=work.read()
-    draft=next((row for row in state['explanations'] if row['id']==EXPLANATION),None)
+    selected=backend.core.read_state().get('learning_node_id')
+    node=next((row for row in state.get('learning_outline',[]) if row['id']==selected),{})
+    identity=next((value for value in node.get('explanation_ids',[])
+                   if (folder/'postprocess-preview'/value/'manifest.json').is_file()),EXPLANATION)
+    side=folder/'postprocess-preview'
+    if identity!=EXPLANATION:side=side/identity
+    manifest=optional(side,'manifest.json',{})
+    draft=next((row for row in state['explanations'] if row['id']==identity),None)
     if not draft or manifest.get('status')!='preview_ready':
         raise ValueError('找不到可用于模拟保存的隔离草稿')
     return manifest,work,state,draft
@@ -152,10 +156,14 @@ def commit(backend,data,*,publish=False):
         if (not pending or pending['project_id']!=backend.mid() or pending['commit_id']!=data.get('commit_id')
                 or pending.get('publication',False)!=publish):
             raise ValueError('保存预览编号与当前项目不符')
-        if stable_hash(draft)!=pending['draft_sha256'] or stable_hash(manifest)!=pending['manifest_sha256']:
-            raise ValueError('草稿在确认前发生变化，请重新核对')
         key=pending['commit_id']
         receipt=records.get('next_save_receipts',{}).get(key)
+        comparison=draft
+        if (publish and receipt and receipt['status']=='applied' and draft.get('delivery_status')=='published'
+                and stable_hash(draft)!=pending['draft_sha256']):
+            comparison={**draft,'delivery_status':'preview'}
+        if stable_hash(comparison)!=pending['draft_sha256'] or stable_hash(manifest)!=pending['manifest_sha256']:
+            raise ValueError('草稿在确认前发生变化，请重新核对')
         if receipt and receipt['status']=='applied':
             return {**receipt,'replayed':True}
         step=stage01(backend)
@@ -180,8 +188,8 @@ def commit(backend,data,*,publish=False):
                 saved=work.explain(request,backend.material())
             evidence,proposals=coverage_evidence(backend,manifest,draft,finalized)
             current_assets=backend.core.read_state()
-            native_assets={'terms':[r['id'] for r in current_assets['terms'] if EXPLANATION in r.get('explanation_ids',[])],
-                           'quizzes':[r['id'] for r in current_assets['quizzes'] if EXPLANATION in r.get('explanation_ids',[])],
+            native_assets={'terms':[r['id'] for r in current_assets['terms'] if draft['id'] in r.get('explanation_ids',[])],
+                           'quizzes':[r['id'] for r in current_assets['quizzes'] if draft['id'] in r.get('explanation_ids',[])],
                            'resources':deepcopy(manifest.get('resources',{}))}
             receipt={**pending,'status':'saved','isolation':'local_publication' if publish else 'local_simulation',
                      'explanation_id':saved['id'],'explanation_version':saved['version'],
@@ -206,4 +214,10 @@ def commit(backend,data,*,publish=False):
                 if publish:
                     s['next_current_delivery']=key
             backend.core.mutate(finalize)
+            if publish:
+                latest=work.read()
+                saved=next(row for row in latest['explanations'] if row['id']==draft['id'])
+                if saved.get('delivery_status')!='published':
+                    saved['delivery_status']='published'
+                    work.write(latest,latest['revision'])
         return {**receipt,'progress':progress,'replayed':False}

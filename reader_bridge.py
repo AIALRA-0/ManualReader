@@ -293,7 +293,6 @@ if __name__=='__main__':
     for name in ('run','run-compact','daily','teach'):
         run=sub.add_parser(name);run.add_argument('--out',required=True);run.add_argument('--include-answered',action='store_true');run.add_argument('--reader-feedback-file')
     sub.choices['teach'].add_argument('--plan-only',action='store_true',help='只核对当前章节并生成任务卡')
-    sub.choices['teach'].add_argument('--legacy-plan',action='store_true',help='仅在旧服务上按原方式生成任务卡')
     planning=sub.add_parser('plan',help='只生成写作任务卡')
     planning.add_argument('--mode',choices=('NORMAL','INTRO','FINALE','ANSWER'),required=True)
     planning.add_argument('--question',action='append',default=[])
@@ -313,7 +312,7 @@ if __name__=='__main__':
         result=__import__('reader_term_maintenance').maintain(bridge,args.out)
     elif args.action=='resume-writeback':
         result=__import__('reader_execute').resume_writeback(bridge,args.out)
-    elif args.action=='plan' or args.action=='teach' and args.plan_only and not args.legacy_plan:
+    elif args.action=='plan':
         from reader_step02_client import plan
         from pathlib import Path
         mode=getattr(args,'mode','NORMAL')

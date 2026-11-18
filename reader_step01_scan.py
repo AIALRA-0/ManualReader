@@ -18,7 +18,7 @@ SUPPORTED = IMAGES | OFFICE | PAGED | TEXT | {
 CHUNK_BYTES = 1024 * 1024
 DEFAULT_IO = max(1, min(os.cpu_count() or 2, 10))
 SYSTEM_DIRS = {'.git', '.reader', '.reader-cache', '.reader-preview', '__pycache__'}
-ROOT_OUTPUTS = {'讲解草稿', 'file-previews', 'reading-workspace', 'reading-files', 'runs'}
+ROOT_OUTPUTS = {'explanations', '讲解草稿', 'file-previews', 'reading-workspace', 'reading-files', 'runs'}
 
 
 def stamp():
@@ -115,7 +115,7 @@ class Scanner:
         exclusions.update(relative(item) for item in config.get('derived_paths', []))
         # An independently registered original takes precedence over an extracted-copy exclusion.
         archives = {p for p in exclusions if not any(x == p or x.startswith(p + '/') for x in registered_paths)}
-        roots = {relative(p, empty=True) for p in config.get('material_roots', ['sources'])}
+        roots = {relative(p, empty=True) for p in config.get('material_roots', ['source', 'sources'])}
         roots = {p for p in roots if not any(p != other and (not other or p.startswith(other + '/')) for other in roots)}
         findings, unsupported, errors, excluded, names = {}, set(), {}, set(), set()
 
@@ -160,7 +160,7 @@ class Scanner:
             try:
                 visit(inside(root, name) if name else root, name)
             except FileNotFoundError:
-                if name != 'sources' or 'material_roots' in config:
+                if name not in ('source','sources') or 'material_roots' in config:
                     errors[name] = 'material_root_missing'
             except OSError as error:
                 errors[name] = str(error) if error.errno is None else type(error).__name__

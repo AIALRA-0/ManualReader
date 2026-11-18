@@ -31,12 +31,29 @@ def server_handler(backend, script, run=None, *, production_runs=None):
         def next_project(self):
             material=backend.mid()
             sample=material.removeprefix('next-final-')
-            return sample!=material and SAMPLE.fullmatch(sample) and self.project_available(material)
+            return self.project_available(material) and (
+                sample!=material and SAMPLE.fullmatch(sample)
+                or (backend.mpath().parent/'postprocess-preview').is_dir())
+
+        def next_preview_folder(self):
+            root=backend.mpath().parent/'postprocess-preview'
+            query=parse_qs(urlsplit(self.path).query)
+            identity=query.get('explanation',[None])[0]
+            work=backend.workspace().read_snapshot()
+            ids={row['id'] for row in work['explanations']}
+            if identity is None:
+                selected=backend.core.read_state().get('learning_node_id')
+                node=next((row for row in work.get('learning_outline',[]) if row['id']==selected),{})
+                identity=next((value for value in node.get('explanation_ids',[]) if (root/value/'manifest.json').is_file()),None)
+            return root/identity if identity in ids and (root/identity/'manifest.json').is_file() else root
 
         def next_run_root(self):
             if production_runs is None:
                 return run
             material=backend.mid()
+            manifest=optional(self.next_preview_folder(),'manifest.json',{})
+            if re.fullmatch(r'next-preview-[a-f0-9]{24}',manifest.get('connected_run_id') or ''):
+                return backend.mpath().parent/'next-runs'/manifest['connected_run_id']
             return production_runs/material if self.next_project() else None
 
         def do_GET(self):
@@ -86,7 +103,7 @@ def server_handler(backend, script, run=None, *, production_runs=None):
                     return
                 if not self.next_project():
                     return self.send_error(404)
-                folder=backend.mpath().parent/'postprocess-preview'
+                folder=self.next_preview_folder()
                 if path=='/api/postprocess-preview':
                     document=optional(folder,'manifest.json',None)
                     if document is None:
@@ -104,7 +121,7 @@ def server_handler(backend, script, run=None, *, production_runs=None):
                 name=path.removeprefix('/postprocess-preview-asset/')
                 if not re.fullmatch(r'[a-f0-9]{64}\.(?:png|jpe?g|webp|gif|svg)',name):
                     return self.send_error(404)
-                folder=(folder/'assets').resolve()
+                folder=(backend.mpath().parent/'postprocess-preview/assets').resolve()
                 target=(folder/name).resolve()
                 if not target.is_relative_to(folder) or not target.is_file():
                     return self.send_error(404)
@@ -117,7 +134,7 @@ def server_handler(backend, script, run=None, *, production_runs=None):
                 if not self.next_project():
                     return self.json({'error':'找不到这份隔离预览'},404)
                 sid=parse_qs(urlsplit(self.path).query).get('id',[None])[0]
-                folder=backend.mpath().parent/'postprocess-preview'
+                folder=self.next_preview_folder()
                 doc=optional(folder,'manifest.json',{})
                 matches=[item for items in doc.get('resources',{}).values() for item in items if item['resource_id']==sid]
                 return self.json(matches[0] if matches else {'error':'这份预览没有这个资源'},200 if matches else 404)
@@ -137,7 +154,7 @@ def server_handler(backend, script, run=None, *, production_runs=None):
                     else:
                         state=backend.core.read_state()
                         receipt=state.get('next_save_receipts',{}).get(state.get('next_current_delivery'),{})
-                        manifest=optional(backend.mpath().parent/'postprocess-preview','manifest.json',{})
+                        manifest=optional(self.next_preview_folder(),'manifest.json',{})
                         current=(receipt.get('status')=='applied' and
                                  receipt.get('progress_basis')==DELIVERY_PROGRESS_BASIS and
                                  receipt.get('manifest_sha256')==stable_hash(manifest))
@@ -148,6 +165,10 @@ def server_handler(backend, script, run=None, *, production_runs=None):
                             return self.json({'delivery':delivery})
                         data=next_run(review_root,material)
                         if data is not None:
+                            if delivery:
+                                for stage in data['stages']:
+                                    if stage['id']=='STEP-20':
+                                        stage.update(status='complete',events=1,ended_at=delivery['at'])
                             return self.json({**data,'delivery':delivery})
             return super().do_GET()
 

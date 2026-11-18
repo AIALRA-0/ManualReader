@@ -16,13 +16,13 @@ TEACHING_RULES=[CHAPTER_PLANNING,'你按本轮 writing.instructions 写讲解和
     '你通过 learning/outline/edit 沿用原 id 编辑目录，尚未讲解的单元可以增删改或移动，已讲单元可调整或重命名，保留节点及讲解归属\n原件中的登录、分享、评论和页尾可通过 learning/exclusions 排除，原件照常保留',
     '你先读 translation_queue 和当前范围的连续上下文，将所有非中文自然语言译成中文\n你用 /api/translations/groups 提交完整中文句组和原编号，按内容断句\n遇到图片时，你先看原图，再用 /api/translations/visuals 复用或补译标签，OCR 为空也要看图',
     '你保留标题、段落、列表、加粗、表格、图片和句级对应\n公式、代码本体、路径和标识符原样保留，非中文注释和说明照常翻译',
-    '当前范围译完后，你就可以开始讲解，中文原件可以直接读',
+    '章节使用当前 teach 自动准备模式，新项目先生成「0. 导读」，正式章节按原文顺序推进；中文原件可以直接读',
     '用户自己提出首次问题，你从项目问题池一次读取实际保存的问题，池里含译文、讲解和多轮追问中的问题，页面筛选只影响展示',
     '你按轮次累加术语和练习，保留旧条目和作答，回答与笔记沿用原编号',
-    '你用 /api/teaching/result 写回讲解、术语和练习，再处理本章提问，已读由用户自己勾选',
-    '你先读 /api/work?mode=lesson，写回时原样带上 lesson_task_id，页面换章也沿用这份稿件的归属\n收到 409 lesson_selection_changed 时，你保留原稿，按章节状态恢复\n401 或项目权限 403 按授权问题处理',
+    '章节首稿通过 /api/teaching/preview 挂到讲解栏，Markdown 文件是同一稿件的副本；回执区分阅读预览和正式交稿，已读由用户自己勾选',
+    '章节由 teach 读取 /api/work?mode=lesson-next，写作和挂接都绑定实际章节、来源编号及文件版本；401 或项目权限 403 按授权问题处理',
     '只有用户在页面勾选完成且 current_task.completion.can_advance 为 true，你才用 /api/learning/select 进入下一节',
-    '你按 writer_profiles 使用各角色的模型和推理档，普通服务最多两组并行\n你在同次写作里返回 plan、带稳定编号和小标题的讲解 parts、术语和声明 placement 的练习\n网页只保存问题，生成由用户手动触发',
+    '章节按实际模式使用已冻结的独立 Writer 提示词，直接生成自然 Markdown；问答按原生回答合同保存，生成由用户手动触发',
 ]
 
 def translation_queue(material,context):

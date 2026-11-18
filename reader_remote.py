@@ -17,9 +17,14 @@ def public_base():
 
 def digest(value):return hashlib.sha256(value.encode()).hexdigest()
 
-def project_capabilities():
+FILE_PERMISSIONS = ('create', 'write', 'delete')
+
+
+def project_capabilities(grant=None):
+    permissions={name:bool((grant or {}).get('files_'+name,False)) for name in FILE_PERMISSIONS}
     return {'read':True,'write':True,'mark_read':False,'write_user_notes':False,
-            'answer_exercises':False,'import':True,'manage':False}
+            'answer_exercises':False,'import':permissions['create'],'manage':False,
+            'project_files':{'read':True,**permissions}}
 
 
 class Pairings:
@@ -35,11 +40,16 @@ class Pairings:
             conn.execute('CREATE TABLE IF NOT EXISTS pairings (id TEXT PRIMARY KEY, owner TEXT NOT NULL, code_hash TEXT NOT NULL UNIQUE, token_hash TEXT NOT NULL UNIQUE, material_id TEXT, can_import INTEGER NOT NULL, can_manage INTEGER NOT NULL, created REAL NOT NULL, expires REAL NOT NULL, code_expires REAL NOT NULL, revoked INTEGER NOT NULL DEFAULT 0)')
             conn.execute('UPDATE pairings SET revoked=1 WHERE material_id IS NULL OR material_id=""')
             conn.execute('UPDATE pairings SET can_import=0,can_manage=0 WHERE material_id IS NOT NULL')
+            columns={row[1] for row in conn.execute('PRAGMA table_info(pairings)')}
+            for name in FILE_PERMISSIONS:
+                if 'files_'+name not in columns:
+                    conn.execute('ALTER TABLE pairings ADD COLUMN files_'+name+' INTEGER NOT NULL DEFAULT 0')
     def db(self):return sqlite3.connect(self.path,timeout=15,factory=RequestConnection)
     def token(self,identity):return 'mr_'+base64.urlsafe_b64encode(hmac.new(self.key,identity.encode(),hashlib.sha256).digest()).decode().rstrip('=')
     @staticmethod
     def public(row):return {**{k:row[k] for k in ['id','material_id','created','expires','code_expires','revoked']},
-                            'can_import':bool(row['material_id'] and not row['revoked']),
+                            'can_import':bool(row['material_id'] and not row['revoked'] and row['files_create']),
+                            'file_permissions':{'read':True,**{name:bool(row['files_'+name]) for name in FILE_PERMISSIONS}},
                             'can_manage':False,'permanent':row['expires']==0}
     def list(self,owner):
         with self.db() as conn:
@@ -51,14 +61,18 @@ class Pairings:
         material_id=data.get('material_id') or None
         if not isinstance(material_id,str) or not re.fullmatch(r'[A-Za-z0-9_-]{1,90}',material_id):raise ValueError('连接必须指定当前项目')
         identity='pair-'+uuid.uuid4().hex;code=secrets.token_urlsafe(24);now=time.time()
-        with self.db() as conn:conn.execute('INSERT INTO pairings VALUES(?,?,?,?,?,?,?,?,?,?,0)',(identity,owner,digest(code),digest(self.token(identity)),material_id,0,0,now,0 if hours==0 else now+hours*3600,now+600))
+        permissions=self.permissions(data.get('file_permissions',{}))
+        with self.db() as conn:
+            conn.execute('INSERT INTO pairings (id,owner,code_hash,token_hash,material_id,can_import,can_manage,created,expires,code_expires,revoked,files_create,files_write,files_delete) VALUES(?,?,?,?,?,?,?,?,?,?,0,?,?,?)',
+                         (identity,owner,digest(code),digest(self.token(identity)),material_id,0,0,now,0 if hours==0 else now+hours*3600,now+600,
+                          *(int(permissions[name]) for name in FILE_PERMISSIONS)))
         row=next(r for r in self.list(owner) if r['id']==identity)
         return {**row,'pairing_code':code,'exchange_url':ORIGIN+'/machine/v1/pair/exchange'}
     def exchange(self,code):
         with self.db() as conn:
             conn.row_factory=sqlite3.Row;row=conn.execute('SELECT * FROM pairings WHERE code_hash=?',(digest(code),)).fetchone()
         if not row or not row['material_id'] or row['revoked'] or row['code_expires']<=time.time() or row['expires']!=0 and row['expires']<=time.time():return None
-        return {'access_token':self.token(row['id']),'token_type':'Bearer','expires_at':row['expires'] or None,'api_base':ORIGIN+'/machine/v1','material_id':row['material_id'],'capabilities':project_capabilities(),'endpoints':{'guide':'/guide','progress':'/progress','work':'/work','import_source':'/content/import'}}
+        return {'access_token':self.token(row['id']),'token_type':'Bearer','expires_at':row['expires'] or None,'api_base':ORIGIN+'/machine/v1','material_id':row['material_id'],'capabilities':project_capabilities(dict(row)),'endpoints':{'guide':'/guide','progress':'/progress','work':'/work','import_source':'/content/import'}}
     def authorize(self,token):
         if not token.startswith('mr_') or len(token)>100:return None
         with self.db() as conn:
@@ -67,6 +81,20 @@ class Pairings:
     def revoke(self,owner,identity):
         with self.db() as conn:conn.execute('UPDATE pairings SET revoked=1 WHERE id=? AND owner=?',(identity,owner))
         return {'revoked':True}
+    @staticmethod
+    def permissions(value):
+        if not isinstance(value,dict) or set(value)-set(FILE_PERMISSIONS)-{'read'}:
+            raise ValueError('文件权限只接受新增、修改和删除三个选项')
+        if any(type(allowed) is not bool for allowed in value.values()):
+            raise ValueError('文件权限需要使用复选框的开关值')
+        return {name:value.get(name,False) for name in FILE_PERMISSIONS}
+    def update_permissions(self,owner,identity,data):
+        values=self.permissions(data.get('file_permissions'))
+        with self.db() as conn:
+            changed=conn.execute('UPDATE pairings SET files_create=?,files_write=?,files_delete=? WHERE id=? AND owner=? AND revoked=0',
+                                 (*(int(values[name]) for name in FILE_PERMISSIONS),identity,owner))
+            if changed.rowcount!=1:raise ValueError('这条连接已撤销或不属于当前用户')
+        return {'file_permissions':{'read':True,**values},'applies_immediately':True}
 
 STORE=None
 STORE_LOCK=threading.Lock()
@@ -101,9 +129,10 @@ class RemoteMixin:
                 # 连接地址可以适配机器接口，正式提示词按原样交给写作者。
                 data['writing']['instructions'] = writing_instructions
             data['headers']={'Authorization':'Bearer <access_token>','X-Reader-Material':getattr(self,'_grant_material',None) or self.headers.get('X-Reader-Material','')}
-            data['api_base']=public_base();data['capabilities']=project_capabilities()
-            data['project_scope']={'material_id':self._grant_material,'upload_project_files':True,
-                                   'import_project_files':True,'other_projects':False}
+            data['api_base']=public_base();data['capabilities']=project_capabilities(self._grant)
+            data['project_scope']={'material_id':self._grant_material,
+                                   'upload_project_files':bool(self._grant.get('files_create')),
+                                   'import_project_files':bool(self._grant.get('files_create')),'other_projects':False}
             for key in ('library','project','lecture'):data.get('endpoints',{}).pop(key,None)
         return super().json(data,status,cache_tag=cache_tag)
     def begin_remote(self,method):
@@ -140,7 +169,7 @@ class RemoteMixin:
             if mapped in ('/api/terms','/api/terms/audit','/api/quality-review','/api/quality-review/calls'):readable=True
             if mapped=='/api/learning/exclusions':readable=True
             if not grant['material_id'] and mapped in ('/api/library','/api/library/tree'):readable=True
-            writable=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',mapped)) or mapped in ('/api/reading/layout','/api/translations/groups','/api/translations/visuals') or mapped=='/api/import-jobs' or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',mapped)) or mapped in ('/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/learning/outline','/api/learning/outline/edit','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/content/files','/api/content/explanations','/api/content/presentation','/api/rounds','/api/terms','/api/translations','/api/focus','/api/history/back','/api/history/forward','/api/drafts') or bool(re.fullmatch(r'/api/rounds/[^/]+/(?:result|status|metrics)|/api/questions/[^/]+(?:/answer)?|/api/quizzes/[^/]+/options',mapped))
+            writable=bool(re.fullmatch(r'/api/questions/[^/]+/deletion-(?:preview|confirm)',mapped)) or mapped in ('/api/reading/layout','/api/translations/groups','/api/translations/visuals') or mapped=='/api/import-jobs' or bool(re.fullmatch(r'/api/import-jobs/import-[a-f0-9]{20}/retry',mapped)) or mapped in ('/api/content/explanations/format','/api/content/import','/api/questions/sync','/api/teaching/result','/api/teaching/prepare','/api/teaching/preview','/api/learning/outline','/api/learning/outline/edit','/api/learning/select','/api/content/normalize','/api/draft-batches','/api/question-batches','/api/content/files','/api/content/explanations','/api/content/presentation','/api/rounds','/api/terms','/api/translations','/api/focus','/api/history/back','/api/history/forward','/api/drafts') or bool(re.fullmatch(r'/api/rounds/[^/]+/(?:result|status|metrics)|/api/questions/[^/]+(?:/answer)?|/api/quizzes/[^/]+/options',mapped))
             if not grant['material_id'] and grant['can_import'] and mapped in ('/api/projects','/api/library/import','/api/lectures'):writable=True
             if not grant['material_id'] and grant['can_manage'] and (mapped in ('/api/settings','/api/folders','/api/library/clear-trash') or re.fullmatch(r'/api/library/(?:folder|material)/[^/]+/(?:rename|move|trash|restore)',mapped)):writable=True
             if mapped=='/api/runs' or re.fullmatch(r'/api/runs/run-[a-f0-9]{20}/(?:events|groups/[1-4]/result)',mapped):writable=True
@@ -158,15 +187,17 @@ class RemoteMixin:
             if path=='/api/session' and method=='GET':self.json({'pin':'','api_base':ORIGIN,'material_id':self.default_material_id(),'application':'codex-manual-reader','remote':True,'owner':owner});return True
             if path=='/api/pairings' and method=='GET':self.json({'connections':pairings().list(owner)});return True
             pairing_revoke=re.fullmatch(r'/api/pairings/([A-Za-z0-9_-]+)/revoke',path)
-            if method=='POST' and (path=='/api/pairings' or pairing_revoke):
+            pairing_permissions=re.fullmatch(r'/api/pairings/([A-Za-z0-9_-]+)/permissions',path)
+            if method=='POST' and (path=='/api/pairings' or pairing_revoke or pairing_permissions):
                 if not self.safe_origin():self.json({'error':'请求来源不正确'},403);return True
                 try:
                     size=int(self.headers.get('Content-Length','0'))
                     if not 0<=size<=8192:raise ValueError('配对请求过大')
                     data=json.loads(self.rfile.read(size) or b'{}')
                     if not isinstance(data,dict):raise ValueError('请提交 JSON 对象')
-                    if not pairing_revoke and not self.project_available(data.get('material_id')):raise ValueError('请选择当前仍存在的项目')
-                    self.json(pairings().issue(owner,data) if not pairing_revoke else pairings().revoke(owner,pairing_revoke[1]))
+                    if path=='/api/pairings' and not self.project_available(data.get('material_id')):raise ValueError('请选择当前仍存在的项目')
+                    if pairing_permissions:self.json(pairings().update_permissions(owner,pairing_permissions[1],data))
+                    else:self.json(pairings().issue(owner,data) if not pairing_revoke else pairings().revoke(owner,pairing_revoke[1]))
                 except (ValueError,TypeError):self.json({'error':'配对参数不正确，请检查范围和有效期'},400)
                 return True
         if method=='POST':
@@ -178,10 +209,25 @@ class RemoteMixin:
                 if not isinstance(data,dict):raise ValueError('请提交 JSON 对象')
                 if self._remote_machine and data.get('material_id') is not None and data['material_id']!=self._grant_material:
                     self.json({'error':'请求内容不属于本连接授权的项目'},403);return True
+                if self._remote_machine:
+                    operation=None
+                    if self._mapped_path=='/api/project-files/file':
+                        operation='write' if self.project_file_exists(data.get('path')) else 'create'
+                    elif self._mapped_path=='/api/project-files/action':
+                        operation={'mkdir':'create','create':'create','copy':'create','restore':'create',
+                                   'move':'write','trash':'delete'}.get(data.get('action'))
+                    elif self._mapped_path in ('/api/content/import','/api/content/files','/api/import-jobs','/api/teaching/preview'):
+                        operation='create'
+                    if operation and not self._grant.get('files_'+operation):
+                        self.json({'error':'这条连接尚未获得当前项目的文件'+{'create':'新增','write':'修改','delete':'删除'}[operation]+'权限，请在「连接 Codex」中勾选',
+                                   'code':'project_file_permission_required','permission':operation},403);return True
                 if self._mapped_path=='/api/library/import' and data.get('source_path'):raise ValueError('远程导入请上传文件内容，不能读取服务器路径')
                 self.rfile=io.BytesIO(body)
             except (ValueError,TypeError) as error:self.json({'error':str(error)},400);return True
         return False
+    def project_file_exists(self,path):
+        from reader_server import project_files
+        return project_files().target(path,False).exists()
     def do_GET(self):
         if not self.begin_remote('GET'):return super().do_GET()
     def do_POST(self):

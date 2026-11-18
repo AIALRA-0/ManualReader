@@ -69,7 +69,19 @@ window.ReaderSourceFlow={create(ctx){
  }
  function reveal(root,target){if(!target||!root||root.closest('[hidden]')||!target.getClientRects().length)return;const a=target.getBoundingClientRect(),v=root.getBoundingClientRect();if(a.top<v.bottom-24&&a.bottom>v.top+24)return;const reduced=matchMedia('(prefers-reduced-motion: reduce)').matches;root.scrollTo({top:Math.max(0,root.scrollTop+a.top-v.top-20),behavior:reduced?'instant':'smooth'})}
  async function linkSelection(target,origin='translation',{toggle=true}={}){
-  if(ui()?.isSelecting?.())return false;ctx.main?.();sync();const data=linkData(target);if(!data.ids.length&&!data.explanations.length)return false;
+  if(ui()?.isSelecting?.())return false;sync();const data=linkData(target);if(!data.ids.length&&!data.explanations.length)return false;
+  if(origin!=='original'&&ctx.openLinkedSource){
+   const primary=ui()?.getFile()?.id;
+   const other=data.ids.map(source).find(row=>row?.file_id&&row.file_id!==primary);
+   if(other){
+    const ref=other.refs?.[0],page=ref&&model().pages?.[ref.page_id]?.number;
+    if(await ctx.openLinkedSource(other.file_id,page?{page}:{})){
+     document.dispatchEvent(new CustomEvent('reader-source-linked',{detail:{source_ids:data.ids,origin,secondary_file:other.file_id}}));
+     return true;
+    }
+   }
+  }
+  ctx.main?.();
   const request=++linkRequest;let serial=++linkSerial;if(toggle&&linked?.key===data.key){linked=null;localRefs=null;clearLinked();if(active)ctx.paintRefs?.([]);return true}
   const exact=origin!=='original'&&data.ranges.length>0;
   if(exact)ctx.showOriginal?.();

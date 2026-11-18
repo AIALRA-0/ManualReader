@@ -32,6 +32,11 @@ assert full['writing']['analysis']['order']==['analysis','writing']
 assert 'reader_analysis.py' in bootstrap['client_files']
 from reader_task_prompts import OUTLINE_PLANNING
 assert OUTLINE_PLANNING in bootstrap['initial_action'] and OUTLINE_PLANNING in full['learning_scope']['planning']
+assert bootstrap['chapter_generation']['version']=='next-teach-v1'
+assert '0. 导读' in bootstrap['initial_action'] and '讲解栏' in bootstrap['initial_action']
+assert bootstrap['lesson_writeback']['preview'].startswith('POST /api/teaching/preview')
+assert 'reader_next_teach.py' in bootstrap['client_files'] and 'reader_step04_intro.txt' in bootstrap['client_files']
+assert 'reader_v21.py' not in bootstrap['client_files'] and 'reader_v21_prompts.py' not in bootstrap['client_files']
 assert 'connection_template' not in bootstrap and 'reader_task_prompts.py' in bootstrap['client_files']
 status,preview=request('/api/learning');assert status==200 and len(preview['nodes'])==2 and not preview['scope_active']
 status,_=request('/api/work?mode=lesson');assert status==400

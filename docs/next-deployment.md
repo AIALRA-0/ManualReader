@@ -6,7 +6,11 @@
 
 已配对的 Reader Agent 仍通过 `/machine/v1` 访问获授权的项目。配对在网页内创建，持有者只能操作该项目的授权接口。可以在网页撤销连接。Agent 配对不授予用户手动阅读完成权限。
 
-Agent 可用 `POST /machine/v1/content/import` 把项目里已有的文件登记为原件。请求传入项目相对路径 `project_path`，如有需要可用文件树返回的 `expected_modified` 核对版本。如果原件还在 Agent 的本机，可先用 `POST /machine/v1/project-files/file` 上传到当前项目。服务端检查项目编号和实际目录边界。
+Agent 默认可读取当前项目文件。用户在「连接 Codex」中分别勾选新增、修改、删除文件，已有连接下一次请求立即采用新的权限。撤销连接仍使整个令牌失效。这些权限只作用于该项目目录，不授予全局导入或其他项目的访问权。
+
+勾选新增权限后，Agent 可用 `POST /machine/v1/content/import` 把项目里已有的文件登记为原件。请求传入项目相对路径 `project_path`，如有需要可用文件树返回的 `expected_modified` 核对版本。如果原件还在 Agent 的本机，可先用 `POST /machine/v1/project-files/file` 上传到当前项目。服务端检查项目编号和实际目录边界。
+
+「在这台电脑的系统凭据库记住连接」会让连接说明要求客户端执行 `--remember connect`。客户端在运行它的电脑上保存项目令牌，Windows 使用凭据管理器，macOS 使用钥匙串，Linux 使用 Secret Service。勾选网页选项本身不会把令牌写进另一台电脑。用户仍可在网页撤销授权。
 
 ## 怎样生成一个新的项目
 
@@ -25,6 +29,18 @@ PYTHONPATH=next/src python next/tools/run_isolated_material.py \
 PYTHONPATH=next/src python -m manualreader.production --reader . project \
   --run <新的私有运行目录> --sample <本轮样本编号>
 ```
+
+## 官网连接怎样生成当前章节
+
+官网的连接说明和每轮 bootstrap 都指向当前 `reader_bridge.py teach`。新项目首次运行先登记「0. 导读」，然后使用冻结的 INTRO 规划及 Writer 提示词。已有讲解的项目继续处理当前章。
+
+`teach` 使用当前 Next 实现完成来源准备、宏观规划、一次主要 Writer 写作、来源映射、补充、融合、结构、翻译、资源详解、术语、练习、章节附件和最终装配。下游复用同一份任务卡、真实 Source ID 与原件版本。客户端从当前站点下载对应的冻结 Writer 提示词和运行包。最终成品直接挂到 Reader 讲解栏，运行质检读取本次实际回执。STEP-20 仍等待用户确认正式交稿，不自动勾选手动完成。
+
+项目文件目录中的 `explanations/0. 导读.md` 保存融合稿，`explanations/0. 导读.raw.md` 保存原样首稿。其余章节同样使用实际编号和正式标题，媒体保存在 `explanations/media/`。回执包含 `explanation_id`，并以 `formal_saved=false` 标明阅读预览。旧 V2.1 的文件预览生成入口已移到 Demo 归档，客户端下载清单只包含当前章节客户端及当前模式提示词。
+
+主原文由 Agent 通过 `POST /api/content/presentation` 的 `file_id` 选择，它展示当前章的核心材料。该操作保留现有布局与讲解。点击讲解中其他文件的真实来源时，对应原件在旁边的文件标签页打开。
+
+讲解关联按材料目录当前有效文件的百分比等权计算，保留两位小数。新项目默认使用 `source/`，已有 `sources/` 继续纳入。新增文件在登记和建立关联之前为零，未重新解析的修改版本也为零。删除文件退出分母，已登记文件通过文件操作移动时保留身份。`explanations/` 不计入材料集合。正式文件覆盖率与用户手动完成率继续分开保存。
 
 ## 服务怎样使用现有登录
 

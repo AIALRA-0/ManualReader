@@ -122,7 +122,7 @@
   ];
 
   function showRecaps(root, recaps, ctx) {
-    const body=root.querySelector('article[data-passage-id="postprocess-preview--framework-outro"] > .chinese.markdown-body');
+    const body=root.querySelector('article[data-passage-id$="--framework-outro"] > .chinese.markdown-body');
     if (!body || !recaps?.length || body.dataset.recapIcons) return;
     const list=el('ul','reader-recap-list');
     if (body.dataset.markdownSource) list.dataset.markdownRaw=body.dataset.markdownSource;
@@ -149,7 +149,7 @@
   }
 
   function attachPdfQuestions(pdf,pageId,material,attachInputs,bindInput) {
-    if (!pdf || !material?.id?.startsWith('next-final-')) return;
+    if (!pdf || !material?.id) return;
     const page=pdf.closest('.reader-source-page') || pdf.parentElement;
     let box=page.querySelector(':scope > .reader-pdf-questions');
     if (box?.dataset.pageId===pageId) return;
@@ -190,7 +190,7 @@
 
   function showStudy(root, doc, ctx) {
     if (doc.mode!=='INTRO' || !ctx.openStudy || root.querySelector('.reader-chapter-study')) return;
-    const start=root.querySelector('article[data-passage-id="postprocess-preview--framework-start-1"]');
+    const start=root.querySelector('article[data-passage-id$="--framework-start-1"]');
     if (!start) return;
     const links=el('nav','reader-chapter-study');
     for (const [tab,key,label] of [['terms','terms','术语表'],['practice','exercises','练习']]) {
@@ -204,7 +204,7 @@
   }
 
   async function showDelivery(root, material, doc, ctx, token) {
-    if (doc.mode!=='NORMAL' || !doc.delivery_receipt_sha256) return;
+    if (doc.mode==='ANSWER' || !doc.delivery_receipt_sha256) return;
     const base='/api/next-finish/delivery';
     const headers={'X-Reader-Material':material,'X-Reader-Finish':'isolated-test'};
     const state=await ctx.api(base,{headers}).catch(()=>null);
@@ -231,32 +231,33 @@
     root.append(panel);
   }
 
-  async function load(material,ctx) {
-    if (!manifests.has(material)) {
+  async function load(material,ctx,id) {
+    const key=material+'|'+id;
+    if (!manifests.has(key)) {
       const fetchManifest=(async()=>{
         for (const pause of [0,180,600]) {
           if (pause) await new Promise(resolve=>setTimeout(resolve,pause));
-          try { return await ctx.api('/api/postprocess-preview'); } catch {}
+          try { return await ctx.api('/api/postprocess-preview?explanation='+encodeURIComponent(id)); } catch {}
         }
-        manifests.delete(material);
+        manifests.delete(key);
         return null;
       })();
-      manifests.set(material,fetchManifest);
-      fetchManifest.finally(()=>{if(manifests.get(material)===fetchManifest)manifests.delete(material)});
+      manifests.set(key,fetchManifest);
+      fetchManifest.finally(()=>{if(manifests.get(key)===fetchManifest)manifests.delete(key)});
     }
-    return manifests.get(material);
+    return manifests.get(key);
   }
 
   async function attach(root,material,id,ctx) {
     const token={};
     generations.set(root,token);
-    if (id!=='postprocess-preview' || !material?.id) return;
-    const doc=await load(material.id,ctx);
+    if (!(id==='postprocess-preview'||/^next-chapter-[a-f0-9]{20}$/.test(id)) || !material?.id) return;
+    const doc=await load(material.id,ctx,id);
     await new Promise(requestAnimationFrame);
     if (!doc || generations.get(root)!==token) return;
     showRecaps(root,doc.chapter_recaps,ctx);
     showStudy(root,doc,ctx);
-    const nextReading=root.querySelector('article[data-passage-id="postprocess-preview--framework-next"] > .chinese');
+    const nextReading=root.querySelector('article[data-passage-id$="--framework-next"] > .chinese');
     if (nextReading && doc.next_reading && nextReading.dataset.markdownSource!==doc.next_reading) {
       nextReading.dataset.markdownSource=doc.next_reading;
       ctx.rich(nextReading,doc.next_reading);
@@ -308,7 +309,7 @@
       const occurrences=[...root?.querySelectorAll(selector)||[]].filter(link=>
         !link.closest('.reader-resource-details,.reader-inline-quiz,.inline-question'));
       if (root?.id!=='explanation') return occurrences;
-      const chapter=occurrences.filter(link=>link.closest('article[data-passage-id^="postprocess-preview--block-"]'));
+      const chapter=occurrences.filter(link=>link.closest('article[data-passage-id*="--block-"]'));
       return chapter.length?chapter:occurrences;
     }
     function targets() {

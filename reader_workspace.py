@@ -345,7 +345,7 @@ class Workspace:
              'blocks':clean,'passages':doc.data['passages'],'passage_ids':[p['id'] for p in doc.data['passages']], 'version':(old or {}).get('version',0)+1}
         new.update(validate_source_mapping(material,data))
         for key in ('plan','writing_version','framework_version','narrative','objectives','framing','evidence',
-                    'handoff_digest','handoff_layout','handoff_has_previous'):
+                    'handoff_digest','handoff_layout','handoff_has_previous','delivery_status','generation_mode','archive_path'):
             if key in data:new[key]=copy.deepcopy(data[key])
         if old and (set(used_passages or []) & set(old['passage_ids']))-set(new['passage_ids']):
             raise ValueError('已提问或已读的片段需要保留，请沿用该 blocks 编号修改')
@@ -383,19 +383,19 @@ class Workspace:
             return {'id':identity,'version':row['version'],'changed_blocks':changed,'content_changed':False,'assets_required':False}
 
     def present(self,data,material):
-        value=self.read();layout=data.get('layout')
+        value=self.read();previous=value.get('presentation',{});layout=data.get('layout',previous.get('layout','lesson'))
         if layout not in ('parallel','lesson','three','single','custom'):raise ValueError('请选择原译对照、阅读与讲解、三栏、单栏或自定义布局')
-        columns=data.get('columns')
+        columns=data.get('columns',previous.get('columns',[['original','translation'],['explanation']]))
         if not isinstance(columns,list) or not 1<=len(columns)<=3:raise ValueError('阅读区需要一至三栏')
         for column in columns:
             if not isinstance(column,list) or not 1<=len(column)<=2 or any(v not in ('original','translation','explanation') for v in column):raise ValueError('每栏可以展示一或两种内容')
         flat=[v for c in columns for v in c]
         if len(flat)!=len(set(flat)):raise ValueError('同一种内容只展示一次，避免多个窗口互相争夺位置')
-        file_id=data.get('file_id')
+        file_id=data.get('file_id',previous.get('file_id'))
         if file_id and file_id not in {f['id'] for f in material['reading_files']}:raise ValueError('要展示的原文文件不存在')
-        explanation_id=data.get('explanation_id')
+        explanation_id=data.get('explanation_id',previous.get('explanation_id'))
         if explanation_id and explanation_id not in {e['id'] for e in material['explanations']}:raise ValueError('要展示的讲解不存在')
-        ratios=data.get('ratios',[])
+        ratios=data.get('ratios',previous.get('ratios',[]))
         if not isinstance(ratios,list) or any(not isinstance(x,(float,int)) or not .15<=x<=.85 for x in ratios):raise ValueError('上下窗口比例需要在 0.15 至 0.85 之间')
         value['presentation']={'layout':layout,'columns':columns,'ratios':ratios,'file_id':file_id,'explanation_id':explanation_id}
         self.write(value,data.get('expected_revision'));return value['presentation']

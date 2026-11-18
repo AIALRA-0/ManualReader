@@ -3,6 +3,25 @@ window.ReaderRemoteUI={init(session,{post,api,current}){
  if(!session.remote)return;const el=ReaderUI.make,dialog=document.getElementById('connection-dialog'),textarea=document.getElementById('connection-text'),message=document.getElementById('copy-status'),copy=document.getElementById('copy-connect');
  dialog.querySelector('p').textContent='连接只授权当前项目，可随时撤销。把说明粘贴到自己的 Codex 对话即可接手';dialog.querySelector('label[for=connection-text]').textContent='给 Codex 的连接说明';
  const fields=el('div','pairing-fields'),duration=el('select'),project=el('span','pairing-project'),make=ReaderUI.decorate(el('button','icon-btn'),'plug','为当前项目生成配对说明');duration.setAttribute('aria-label','连接有效期');for(const [value,title] of [[1,'1小时'],[8,'8小时'],[24,'24小时'],[0,'永久有效，可随时撤销']]){const option=el('option',null,title);option.value=value;duration.append(option)}duration.value='8';fields.append(duration,project,make);const remember=el('input'),rememberLabel=el('label','remember-connection');remember.type='checkbox';rememberLabel.append(remember,el('span',null,'在这台电脑的系统凭据库记住连接'));textarea.before(fields,rememberLabel);const connections=el('div','pairing-connections');dialog.append(connections);
+ const permissionNames={create:'新增文件',write:'修改文件',delete:'删除文件'};
+ function permissions(value={},changed){
+  const group=el('div','pairing-permissions'),inputs={};
+  const read=el('input');read.type='checkbox';read.checked=true;read.disabled=true;
+  const readLabel=el('label');readLabel.append(read,document.createTextNode('读取项目文件'));group.append(readLabel);
+  for(const [key,name] of Object.entries(permissionNames)){
+   const input=el('input'),label=el('label');input.type='checkbox';input.checked=!!value[key];
+   inputs[key]=input;label.append(input,document.createTextNode(name));group.append(label);
+   input.onchange=async()=>{const next=Object.fromEntries(Object.entries(inputs).map(([k,v])=>[k,v.checked]));
+    for(const box of Object.values(inputs))box.disabled=true;
+    try{await changed?.(next)}catch(error){input.checked=!input.checked;message.textContent=error.message}
+    finally{for(const box of Object.values(inputs))box.disabled=false}};
+  }
+  group.value=()=>Object.fromEntries(Object.entries(inputs).map(([k,v])=>[k,v.checked]));
+  return group;
+ }
+ const newPermissions=permissions();fields.after(newPermissions);
+ const rememberHint=el('p','muted','勾选后，Codex 客户端会把此项目的令牌保存到这台电脑的系统凭据库，下次可恢复连接；撤销连接仍立即生效');
+ rememberLabel.after(rememberHint);
  const expiry=row=>row.permanent||row.expires===0?'永久有效，可撤销':new Date(row.expires*1000).toLocaleString();
  function prompt(value,guide){
   if(typeof guide.connection_template!=='string')throw Error('未能读取当前连接说明，请刷新后重试');
@@ -10,7 +29,7 @@ window.ReaderRemoteUI={init(session,{post,api,current}){
   const fields={网站地址:session.api_base,项目名:p.title,项目编号:value.material_id,材料名称与编号:(p.files||[]).map(f=>f.name+' ['+f.id+']').join('；')||'尚未导入',当前章节与编号:chapter?chapter.number+' '+chapter.title+' ['+chapter.id+']':'尚未建立学习目录',授权有效期:expiry(value),配对交换地址:value.exchange_url,配对码:value.pairing_code};
   return guide.connection_template.replace(/<([^>\n]+)>/g,(match,key)=>Object.hasOwn(fields,key)?String(fields[key]):match);
  }
- const draw=async()=>{const result=await api('/api/pairings');connections.replaceChildren();for(const row of result.connections.filter(r=>!r.revoked&&r.material_id===current())){const line=el('div','pairing-row'),text=el('span',null,'当前项目 · '+expiry(row)),revoke=ReaderUI.decorate(el('button','icon-btn'),'close','撤销这次连接');revoke.onclick=async()=>{await post('/api/pairings/'+row.id+'/revoke',{});await draw();message.textContent='连接已撤销'};line.append(text,revoke);connections.append(line)}};
- make.onclick=async()=>{make.disabled=true;const identity=current(),hours=Number(duration.value),connection=remember.checked?'remember':'temporary';try{const guide=await api('/api/guide?view=bootstrap&connection='+connection,{headers:{'X-Reader-Material':identity}});if(typeof guide.connection_template!=='string')throw Error('未能读取当前连接说明，请刷新后重试');if(identity!==current())throw Error('项目已切换，请重新生成配对说明');const value=await post('/api/pairings',{material_id:identity,hours});if(identity!==current())throw Error('项目已切换，请重新生成配对说明');textarea.value=prompt(value,guide);copy.disabled=false;message.textContent='当前项目的配对说明已生成';await draw()}catch(e){message.textContent=e.message}finally{make.disabled=false}};
+ const draw=async()=>{const result=await api('/api/pairings');connections.replaceChildren();for(const row of result.connections.filter(r=>!r.revoked&&r.material_id===current())){const line=el('div','pairing-row'),text=el('span',null,'当前项目 · '+expiry(row)),revoke=ReaderUI.decorate(el('button','icon-btn'),'close','撤销这次连接');revoke.onclick=async()=>{await post('/api/pairings/'+row.id+'/revoke',{});await draw();message.textContent='连接已撤销'};line.append(text,revoke);const controls=permissions(row.file_permissions,async values=>{await post('/api/pairings/'+row.id+'/permissions',{file_permissions:values});message.textContent='文件权限已更新，下一次请求立即生效'});connections.append(line,controls)}};
+ make.onclick=async()=>{make.disabled=true;const identity=current(),hours=Number(duration.value),connection=remember.checked?'remember':'temporary';try{const guide=await api('/api/guide?view=bootstrap&connection='+connection,{headers:{'X-Reader-Material':identity}});if(typeof guide.connection_template!=='string')throw Error('未能读取当前连接说明，请刷新后重试');if(identity!==current())throw Error('项目已切换，请重新生成配对说明');const value=await post('/api/pairings',{material_id:identity,hours,file_permissions:newPermissions.value()});if(identity!==current())throw Error('项目已切换，请重新生成配对说明');textarea.value=prompt(value,guide);copy.disabled=false;message.textContent='当前项目的配对说明已生成';await draw()}catch(e){message.textContent=e.message}finally{make.disabled=false}};
  document.getElementById('connect').onclick=()=>{textarea.value='';copy.disabled=true;message.textContent='';project.textContent=document.getElementById('doc-title').textContent;dialog.showModal();draw().catch(e=>message.textContent=e.message)};dialog.addEventListener('close',()=>{textarea.value='';message.textContent=''})
 }};

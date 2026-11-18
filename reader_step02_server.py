@@ -44,7 +44,7 @@ def approved_styles(folder, questions, chapter):
 
 def source_position(p, document):
     loc = p.get('source_location') or {}
-    from reader_v21 import position
+    from reader_chapter_sources import position
     located = position(p, document, 0)
     pos = located if located['type'] != 'source_unit_index' else None
     if loc.get('line_start') is not None:
@@ -89,7 +89,7 @@ def question_context(material, q, questions):
 
 def build_context(mode, workspace, material, state, manifest, root, request):
     from reader_learning import learning_payload
-    from reader_v21 import previous_content
+    from reader_chapter_sources import previous_content
     from reader_teaching import recent_reader_questions
 
     if mode not in MODES:

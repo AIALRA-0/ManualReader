@@ -60,8 +60,8 @@ class ProjectFiles(FileActions):
                     continue
                 try:label=relative(label)
                 except ValueError:label=source.name
-                target=root/'sources'/label
-                if target.exists():target=root/'sources'/fid/label
+                target=root/'source'/label
+                if target.exists():target=root/'source'/fid/label
                 target.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,target)
                 if tree and tree.is_dir() and source.suffix=='.zip':
                     destination=target.with_name(target.stem+'-files');shutil.copytree(tree,destination,dirs_exist_ok=True,symlinks=True)

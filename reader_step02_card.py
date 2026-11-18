@@ -222,7 +222,7 @@ def render(card, value):
     rules(value)
     answer = 'question' in card
     if not answer:
-        from reader_v21 import task_markdown
+        from reader_chapter_sources import task_markdown
         return task_markdown(card, value, policy_names=RULE_TITLES)
     lines = ['# 问答写作任务卡', '', '## 用户原始问题', '', card['question']['text'],
              '', '## 上次提问的宏观风格', '']

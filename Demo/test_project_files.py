@@ -29,7 +29,7 @@ class ProjectFileTests(unittest.TestCase):
   with self.assertRaises(ValueError):self.write('notes.txt',b'next')
   self.store.put({'path':'notes.txt','content_base64':'bmV4dA==','expected_modified':row['modified']});self.assertEqual(self.store.target('notes.txt').read_text(),'next')
  def test_source_registration_preserves_ids_and_original(self):
-  source=self.project/'original.txt';source.write_text('source');store=ProjectFiles('project-one',self.project,self.settings,{'original_file':'original.txt','original_name':'source.txt'});config=store.ensure();self.assertEqual(config['sources']['primary'],'sources/source.txt');self.assertEqual(source.read_text(),'source')
+  source=self.project/'original.txt';source.write_text('source');store=ProjectFiles('project-one',self.project,self.settings,{'original_file':'original.txt','original_name':'source.txt'});config=store.ensure();self.assertEqual(config['sources']['primary'],'source/source.txt');self.assertEqual(source.read_text(),'source')
   with self.assertRaises(ValueError):store.put({'path':config['sources']['primary'],'expected_modified':store.target(config['sources']['primary']).stat().st_mtime_ns,'content_base64':'bmV4dA=='})
  def test_parser_data_is_not_copied_into_file_root(self):
   (self.project/'state.sqlite3').write_bytes(b'private-notes');self.assertEqual(self.store.listing()['entries'],[])
