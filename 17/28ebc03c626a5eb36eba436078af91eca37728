@@ -1,0 +1,21 @@
+reader/static/reader-media-pins.js
+  s_1c46d58ed67333::t_633e5a0eedf4fc 184-188,190,199
+reader/static/app.css
+  s_1c46d58ed67333::t_93bc99271783ca 680-682
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "1728ebc03c626a5eb36eba436078af91eca37728",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
