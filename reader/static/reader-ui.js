@@ -5,7 +5,7 @@ window.ReaderUI=(()=>{
  paths.stack='M3 3h18v18H3zM3 12h18';paths.layers='M3 3h18v18H3zM3 9h18M3 15h18';
  paths.fullscreen='M8 3H3v5m13-5h5v5M3 16v5h5m13-5v5h-5';paths.download='M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4';paths.refresh='M20 7v6h-6M4 17v-6h6M6 7a7 7 0 0 1 12-1l2 2M4 16l2 2a7 7 0 0 0 12-1';
  paths.tag='M3 3h8l10 10-8 8L3 11V3zM7 7h.01';
- paths.question='M8 8a4 4 0 1 1 6.3 3.3c-1.5 1-2.3 1.7-2.3 3.7m0 4h.01';
+ paths['message-plus']='M21 15a2 2 0 0 1-2 2H8l-5 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2zM8 10h8m-4-4v8';
  paths.pagefit='M5 2h14v20H5zM2 12h20M8 9l-3 3 3 3m8-6 3 3-3 3';
  paths.stop='M6 6h12v12H6z';
  paths.mic='M9 5a3 3 0 0 1 6 0v7a3 3 0 0 1-6 0V5m-4 5v2a7 7 0 0 0 14 0v-2M12 19v3M8 22h8';
@@ -16,7 +16,7 @@ window.ReaderUI=(()=>{
  paths.lock='M6 11h12v10H6zM8 11V7a4 4 0 0 1 8 0v4';paths.unlock='M6 11h12v10H6zM8 11V7a4 4 0 0 1 7-2';
  function icon(name){const svg=document.createElementNS(ns,'svg');svg.setAttribute('viewBox','0 0 24 24');svg.setAttribute('fill','none');svg.setAttribute('stroke','currentColor');svg.setAttribute('stroke-width','1.7');svg.setAttribute('stroke-linecap','round');svg.setAttribute('stroke-linejoin','round');svg.setAttribute('aria-hidden','true');const path=document.createElementNS(ns,'path');path.setAttribute('d',paths[name]||paths.all);svg.append(path);return svg}
  function decorate(button,name,label){button.replaceChildren(icon(name));button.title=label;button.setAttribute('aria-label',label);button.dataset.tooltip=label;return button}
- function followupSummary(accessibleName,name,notice,graphic='question'){
+ function followupSummary(accessibleName,name,notice,graphic='message-plus'){
   const label=make('summary');
   label.title=accessibleName;
   label.setAttribute('aria-label',accessibleName);
