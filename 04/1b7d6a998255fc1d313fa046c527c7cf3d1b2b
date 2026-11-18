@@ -1,0 +1,41 @@
+next/src/manualreader/stages/finish/preview.py
+  s_1c46d58ed67333::t_41ef411d96b9e5 397,401,404,406-419,422-423,431-433,437-440,573
+  s_1c46d58ed67333::t_9726e36da45673 426,447-448,455-457
+  s_1c46d58ed67333::t_02a617ea7d1873 420-421,434
+  s_1c46d58ed67333::t_6589e0501e23b3 435-436
+reader/static/app.css
+  s_1c46d58ed67333::t_db0660965489ab 355-356,359,361-365
+  s_1c46d58ed67333::t_4443d9b5af966a 360
+reader/reader_term_quality.py
+  s_1c46d58ed67333::t_cd83a33f65c6c4 144
+  s_1c46d58ed67333::t_84caf5fdaf6256 87-88,97-98,103-105,115-118,122-123,134,136-140,142-143,145-146,156-157,163-164,167-168,170-171
+  s_1c46d58ed67333::t_6706dd66cb24ae 89-96,99-102,124-125,141
+reader/reader_workspace.py
+  s_1c46d58ed67333::t_588e93013ca21b 231-233
+next/tests/test_native_reuse_ui_contracts.py
+  s_1c46d58ed67333::t_6589e0501e23b3 24-25
+  s_1c46d58ed67333::t_5a531634900534 1-23,26-50
+reader/static/reader-source-flow.js
+  s_1c46d58ed67333::t_4443d9b5af966a 204-209,213,217-219
+  s_1c46d58ed67333::t_28264ded443eaf 210-212,214-216
+reader/static/reader-source-flow.css
+  s_1c46d58ed67333::t_28264ded443eaf 20
+reader/static/reader-ui.js
+  s_1c46d58ed67333::t_25f4e8fde6404f 10
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "041b7d6a998255fc1d313fa046c527c7cf3d1b2b",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
