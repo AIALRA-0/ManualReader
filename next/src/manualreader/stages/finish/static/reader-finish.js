@@ -125,7 +125,9 @@
       const close=el('button','reader-resource-collapse');
       close.type='button';
       close.setAttribute('aria-label','收起资源解读');
-      close.append(ReaderUI.icon('chevron'),el('span',null,'收起'),el('span','inline-question-line'));
+      close.title='收起资源解读';
+      close.dataset.tooltip='收起资源解读';
+      close.append(ReaderUI.icon('chevron'),el('span','inline-question-line'));
       close.onclick=event=>{
         event.stopPropagation();
         fold.open=false;
