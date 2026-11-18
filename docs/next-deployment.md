@@ -25,6 +25,10 @@ PYTHONPATH=next/src python next/tools/run_isolated_material.py \
 
 可使用 `--resume-attachments` 在核对完原件和已有首稿后继续处理本轮附件。翻译仍优先走 DS。允许使用 Sol High 补译时，设置 `MANUAL_READER_DS_FALLBACK=sol`。它只处理 DS 返回 524 超时或连续两次成功响应没有正文的批次，回执会记录两条线路的实际结果。
 
+原文和图中文字翻译在同一台机器上使用同一 KFS 凭据时，共享最多 20 个在途请求。KFS 返回 `429` 或短时间连续返回暂时错误时，客户端会放慢发请求的速度，收到稳定响应后逐步恢复。已收到的有效译文会逐批保存到本轮运行目录。继续运行时，原文版本和文本哈希都相符的已有结果可以直接使用。
+
+文字翻译按原文件版本组批，默认每批最多 16 个来源单元，组批时按 8,200 个序列化字符估算。遇到原样保留的内容可继续收集下一个待译单元。返回内容被截断时，客户端会拆小批次，补译仍缺少结果的来源。
+
 ```sh
 PYTHONPATH=next/src python -m manualreader.production --reader reader project \
   --run <新的私有运行目录> --sample <本轮样本编号>

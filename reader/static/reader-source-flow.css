@@ -17,7 +17,7 @@
 .reader-group-figure{padding:0!important;border:0!important;border-radius:0}
 .reader-figure-name{margin:6px 0 10px;text-align:center;font-size:12px;color:var(--muted)}
 .reader-figure-fragments[hidden]{display:none!important}
-.reader-source-crop{display:block;width:65%;height:auto;max-height:420px;object-fit:contain;margin:0 auto 10px;cursor:zoom-in}
+.reader-source-crop{display:block;width:min(88%,1200px);height:auto;max-height:420px;object-fit:contain;margin:0 auto 8px;cursor:zoom-in}
 .reader-group-figure>article .chinese,.reader-group-figure>article .english{font-size:inherit}
 .reader-figure-labels{display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 16px;font-size:14px;line-height:1.8}
 .translation .reader-figure-labels>article.passage{display:inline-flex!important;gap:8px;padding:0!important;margin:0!important;border:0!important;min-height:0!important}
@@ -54,12 +54,13 @@
 .reader-range-summary{font-size:12px;color:var(--muted,#777);padding:0 0 12px}
 .reader-explanation-pages{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
 .reader-page-link{border:0;background:transparent;color:inherit;font:inherit;font-size:12px;text-decoration:underline;text-underline-offset:3px;cursor:pointer;padding:2px 0}
-[data-pane] .markdown-body img,[data-pane] .source-media img,[data-pane] .original-reading img{display:block;width:auto;max-width:65%!important;height:auto;object-fit:contain;margin:12px auto;cursor:zoom-in}
+[data-pane] :is(.markdown-body,.source-media,.original-reading) img:not(.reader-page-preview){display:block;width:var(--reader-inline-image-width,auto);max-width:min(88%,1200px)!important;height:auto;object-fit:contain;margin:8px auto;cursor:zoom-in}
+[data-pane] .reader-media-inline>img:not(.reader-page-preview){margin-block:6px}
 .reader-media-dialog .media-view-stage{display:flex;align-items:flex-start;justify-content:center;min-width:0;min-height:0;transform-origin:0 0}
 .reader-media-dialog .media-view-stage>img{display:block;max-width:none!important;max-height:none!important;object-fit:contain;margin:auto;flex:none;aspect-ratio:auto}
 .media-view-viewport:has(img),.media-view-viewport:has(svg){cursor:grab;touch-action:none}
 .media-view-viewport.is-dragging{cursor:grabbing;user-select:none}
-@media(max-width:760px){.reader-source-crop{width:70%;max-height:320px}[data-pane] .markdown-body img,[data-pane] .source-media img,[data-pane] .original-reading img{max-width:70%!important}.reader-reflow-table{font-size:14px}.reader-page-stack{gap:12px}.reader-explanation-pages{gap:12px}}
+@media(max-width:760px){.reader-source-crop{width:94%;max-height:320px}[data-pane] :is(.markdown-body,.source-media,.original-reading) img:not(.reader-page-preview){max-width:94%!important}.reader-reflow-table{font-size:14px}.reader-page-stack{gap:12px}.reader-explanation-pages{gap:12px}}
 
 /* 只有具备可用坐标的标注才提供定位操作，不能精确对应的标签仍可正常阅读。 */
 .reader-figure-labels .reader-source-static{cursor:text!important;background:transparent!important;outline:0!important}

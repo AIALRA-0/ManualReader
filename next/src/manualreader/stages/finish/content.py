@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from PIL import Image
+from manualreader.artifacts import write_json
 
 
 def _hash(*values: Any) -> str:
@@ -62,7 +63,7 @@ async def _request(ask, stage: str, payload: dict, images: dict | None = None) -
             return {}, "invalid_response"
         return value, ""
     except Exception as error:
-        return {}, type(error).__name__
+        return {}, getattr(error, "failure_kind", None) or type(error).__name__
 
 
 def source_identity(source: dict, unit: dict) -> tuple[str, str, str, str]:
@@ -179,8 +180,12 @@ class TranslationCatalog:
     glossary: tuple
 
 
+B1_BATCH_LIMITS = (16, 8200)
+
+
 def build_translation_catalog(sources: Iterable[dict], historical: dict | None = None,
-                              glossary: Iterable[dict] = ()) -> TranslationCatalog:
+                              glossary: Iterable[dict] = (), *,
+                              batch_limits=B1_BATCH_LIMITS) -> TranslationCatalog:
     historical = historical or {}
     file_units = defaultdict(dict)
     lexicon = tuple(glossary)
@@ -190,17 +195,21 @@ def build_translation_catalog(sources: Iterable[dict], historical: dict | None =
     lookup = {}
     for (file_id, version), known in sorted(file_units.items()):
         units = sorted(known.values(), key=_position)
-        seq = []
+        positions = {_key(unit): index for index, unit in enumerate(units)}
+        pending = []
         seen = set()
 
-        def register(consecutive: list[dict]):
-            if not consecutive:
-                return
-            for group in _chunks(consecutive, 16, 8200):
-                ids = {(u["source_id"], u["original_sha256"]) for u in group}
-                first = min(k for k, u in enumerate(units) if (u["source_id"], u["original_sha256"]) in ids)
-                last = max(k for k, u in enumerate(units) if (u["source_id"], u["original_sha256"]) in ids)
-                neighbors = (units[first-1:first] if first else []) + units[last+1:last+2]
+        def register():
+            for group in _chunks(pending, *batch_limits):
+                indices = [positions[_key(unit)] for unit in group]
+                selected = set(indices)
+                neighbors = [index for index in (indices[0]-1, indices[-1]+1) if 0 <= index < len(units)]
+                for left, right in zip(indices, indices[1:]):
+                    if right > left+1:
+                        neighbors.extend((left+1, right-1))
+                context = sorted(dict.fromkeys(
+                    index for index in neighbors if index not in selected and _str(units[index].get("text")).strip()
+                ))[:8]
                 payload = {
                     "file_id": file_id, "source_version": version,
                     "units": [
@@ -211,8 +220,10 @@ def build_translation_catalog(sources: Iterable[dict], historical: dict | None =
                         for u in group
                     ],
                     "surrounding_read_only": [
-                        {"source_id": u["source_id"], "original": _str(u.get("text"))[:700]}
-                        for u in neighbors
+                        {"source_id": units[index]["source_id"],
+                         "original": _str(units[index].get("text"))[:400],
+                         "position": units[index].get("position")}
+                        for index in context
                     ],
                     "known_terms": list(lexicon),
                 }
@@ -221,18 +232,15 @@ def build_translation_catalog(sources: Iterable[dict], historical: dict | None =
 
         for unit in units:
             identity = _key(unit)
-            candidate = (unit["relation"] == "translated" and unit["source_id"] not in seen
-                         and not (historical.get(identity, {}).get("status") == "complete"
-                                  and _str(historical[identity].get("text")).strip()))
-            if not candidate:
-                register(seq)
-                seq.clear()
+            if unit["relation"] != "translated" or identity in historical:
+                continue
+            if unit["source_id"] in seen:
+                register()
+                pending.clear()
                 seen.clear()
-                if unit["relation"] != "translated" or identity in historical:
-                    continue
-            seq.append(unit)
+            pending.append(unit)
             seen.add(unit["source_id"])
-        register(seq)
+        register()
     return TranslationCatalog(lookup, historical, lexicon)
 
 
@@ -265,11 +273,7 @@ def _translation_reply(raw: dict, batch: dict) -> dict[str, dict]:
     return {sid: row for sid, row in accepted.items() if sid not in ambiguous}
 
 
-async def translate(root: Path, sample: str, source: dict, ask,
-                    catalog: TranslationCatalog | None = None, on_partial=None, *, existing=None) -> dict:
-    units = source_units(source)
-    catalog = catalog or build_translation_catalog([source])
-    needed = {_key(u) for u in units if u["relation"] == "translated"}
+def prior_translations(units, existing):
     found = {}
     by_id={u['source_id']:u for u in units}
     for group in _objects((existing or {}).get('groups')):
@@ -282,12 +286,20 @@ async def translate(root: Path, sample: str, source: dict, ask,
     for row in _objects((existing or {}).get('links')):
         unit=by_id.get(row.get('source_id'))
         if (unit and row.get('source_version')==unit['source_version'] and
+                row.get('original_sha256')==unit['original_sha256'] and
                 row.get('status') in ('complete','uncertain') and row.get('translation_id') and
                 row.get('relation') in ('identity','preserved_math','preserved_code')):
             found[_key(unit)]={**row,'text':unit['text']}
-    for key,row in found.items():
-        if row['status']=='complete':
-            catalog.historical.setdefault(key,row)
+    return found
+
+
+async def translate(root: Path, sample: str, source: dict, ask,
+                    catalog: TranslationCatalog | None = None, on_partial=None, *, existing=None) -> dict:
+    units = source_units(source)
+    needed = {_key(u) for u in units if u["relation"] == "translated"}
+    needed_ids = {key[1] for key in needed}
+    found = prior_translations(units, existing)
+    catalog = catalog or build_translation_catalog([source], dict(found))
     tasks = {}
     for key in sorted(needed):
         payload = catalog.by_source.get(key)
@@ -322,18 +334,72 @@ async def translate(root: Path, sample: str, source: dict, ask,
         return translated, missing, detail
 
     issues = []
-    for done in asyncio.as_completed(lookup(d) for d in tasks.values()):
-        translated,missing,failure=await done
+    async def save_found(translated):
         found.update(translated)
+        if on_partial and translated:
+            await on_partial(translation_output(sample,units,needed,catalog,found,issues),list(translated))
+
+    async def recover(payload):
+        translated, missing, failure = await lookup(payload)
+        missing = [sid for sid in missing if sid in needed_ids]
+        if not missing or not (isinstance(failure, dict) or failure in {"ds_truncated", "ds_temporary"}):
+            return translated, missing, failure
+        await save_found(translated)
+        if failure == "ds_temporary":
+            await asyncio.sleep(2)
+        remaining = [unit for unit in payload["units"] if unit["source_id"] in missing]
+        retry_groups = [remaining]
+        if failure == "ds_truncated" and len(remaining) > 1:
+            split = len(remaining)//2
+            retry_groups = [remaining[:split], remaining[split:]]
+        fixed, unresolved, reasons = {}, [], {}
+        for done in asyncio.as_completed(lookup({
+                **payload, "units": group, "recovery_source_ids": [unit["source_id"] for unit in group]
+        }) for group in retry_groups):
+            rows, lost, reason = await done
+            fixed.update(rows)
+            unresolved.extend(lost)
+            reasons.update({sid: reason.get(sid, "invalid_response") if isinstance(reason, dict) else reason for sid in lost})
+        return fixed, unresolved, reasons
+
+    for done in asyncio.as_completed(recover(d) for d in tasks.values()):
+        translated,missing,failure=await done
+        await save_found(translated)
         if failure:
-            used = sorted(sid for sid in missing if any(sid == key[1] for key in needed))
+            used = sorted(set(missing) & needed_ids)
             if used:
                 issues.append({"stage":"B1","source_ids":used,
                                "reason":failure if isinstance(failure,str) else "响应中部分来源缺少可用译文",
                                "per_source_reason":{sid:failure[sid] for sid in used} if isinstance(failure,dict) else {}})
-        if on_partial and translated:
-            await on_partial(translation_output(sample,units,needed,catalog,found,issues),list(translated))
     return translation_output(sample,units,needed,catalog,found,issues)
+
+
+async def translate_to_file(path, sample, source, ask, catalog=None, *, glossary=()):
+    existing = _read(path) if path.is_file() else None
+    units = source_units(source)
+    if catalog is None:
+        catalog = build_translation_catalog([source], prior_translations(units, existing), glossary)
+
+    async def checkpoint(value, _keys):
+        write_json(path, value)
+
+    result = await translate(path.parent, sample, source, ask, catalog, checkpoint, existing=existing)
+    write_json(path, result)
+    if result["unresolved_source_ids"] and not any(
+            issue["reason"] in {"KfsUnavailable", "ds_authorization"} for issue in result["issues"]):
+        result = await recover_translation(path, sample, source, ask, catalog.glossary, result, checkpoint)
+        write_json(path, result)
+    return result
+
+
+async def recover_translation(path, sample, source, ask, glossary, previous, checkpoint=None):
+    catalog = build_translation_catalog([source], prior_translations(source_units(source), previous),
+                                        glossary, batch_limits=(8, 4200))
+
+    async def ask_remaining(stage, payload):
+        return await ask(stage, {**payload, "remaining_source_ids": [unit["source_id"] for unit in payload["units"]]})
+
+    return await translate(path.parent, sample, source, ask_remaining, catalog, checkpoint, existing=previous)
 
 
 def translation_output(sample,units,needed,catalog,found,issues):
@@ -357,7 +423,7 @@ def translation_output(sample,units,needed,catalog,found,issues):
             continue
         old = catalog.historical.get(key)
         row = found.get(key)
-        reused = bool(old and old.get("status") == "complete" and _str(old.get("text")).strip())
+        reused = bool(old and old.get("status") in {"complete", "uncertain"} and _str(old.get("text")).strip())
         if reused:
             row = old
         if not row:

@@ -526,7 +526,7 @@ class Whiteboard:
                 if r['mode']=='NORMAL' and (self.root/'jobs'/n/'isolated-save.json').is_file():
                     normal_ready[r['project_id']].set_result(True)
         source_ready={n:loop.create_future() for n in records}
-        providers=Provider(self.root,sol=self.concurrency,vision=12,ds=12)
+        providers=Provider(self.root,sol=self.concurrency)
         timing=Timings()
         write(self.root/'model-schemas.json',SCHEMAS)
         planned={}

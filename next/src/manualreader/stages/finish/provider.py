@@ -18,6 +18,7 @@ from ..step04.writer_transport import MarkdownTransport
 from ..step05.contracts import digest
 from manualreader.artifacts import read_json as read, write_json as write
 from .contracts import SCHEMAS
+from .kfs_slots import DEFAULT_DS_CONCURRENCY, KfsSlots, OVERLOAD_STATUSES
 
 
 SOL=dict(BASE_PROFILE)
@@ -54,7 +55,9 @@ def frozen_prompts():
 
 
 class ModelFailure(RuntimeError):
-    pass
+    def __init__(self, message, *, failure_kind=None):
+        super().__init__(message)
+        self.failure_kind = failure_kind
 
 
 class Lane:
@@ -195,20 +198,23 @@ def invoke_sol(folder,stage,prompt,payload,images,cli):
             'response':response,'error':None if good else error or '响应不完整、型号不一致或返回结构不合法'}
 
 
-def invoke_ds(folder,stage,prompt,payload):
+def invoke_ds(folder,stage,prompt,payload,*,stream=False):
     key=os.environ.get(DS_CREDENTIAL)
     if not key:
         return {'result':None,'attempts':[],'response':{},'error':'本机 DS 夸父社凭据未就绪'}
     params={'model':DS['model'],'messages':[{'role':'system','content':prompt.decode()},
             {'role':'user','content':serialize(payload)}],'thinking':{'type':'disabled'},
-            'response_format':{'type':'json_object'},'max_tokens':12000,'stream':True,
-            'stream_options':{'include_usage':True}}
+            'response_format':{'type':'json_object'},'max_tokens':12000,'stream':stream}
+    if stream:
+        params['stream_options']={'include_usage':True}
     write(folder/'wire-request.json',params)
     parts=[]
     usage={}
     model=None
     finished=False
     reason=None
+    frames=0
+    first_content=None
     attempt={'started_at':time()}
     began=perf_counter()
     error=None
@@ -216,13 +222,24 @@ def invoke_ds(folder,stage,prompt,payload):
         with requests.post(DS['endpoint'],headers={'Authorization':'Bearer '+key},json=params,
                            stream=True,allow_redirects=False,timeout=(25,180)) as response:
             attempt.update(status=response.status_code,retry_after=response.headers.get('Retry-After'))
+            content_type=response.headers.get('Content-Type','').partition(';')[0].strip().lower()
+            attempt['content_type']=content_type
+            request_id=response.headers.get('X-Request-ID','')
+            if re.fullmatch(r'[A-Za-z0-9_-]{1,128}',request_id):
+                attempt['provider_request_id']=request_id
             if response.status_code==200:
-                if response.headers.get('Content-Type','').split(';')[0]=='application/json':
+                if content_type=='application/json' or not stream and content_type!='text/event-stream':
                     frame=response.json()
+                    frames=1
                     choices=frame.get('choices',[])
                     if choices:
-                        parts.append(choices[0].get('message',{}).get('content',''))
+                        chunk=choices[0].get('message',{}).get('content') or ''
+                        if not isinstance(chunk,str):
+                            raise ValueError('DS response content is not text')
+                        parts.append(chunk)
                         reason=choices[0].get('finish_reason')
+                        if parts[0].strip():
+                            first_content=perf_counter()-began
                     finished=reason=='stop'
                     model=frame.get('model')
                     usage=frame.get('usage') or {}
@@ -235,10 +252,16 @@ def invoke_ds(folder,stage,prompt,payload):
                             finished=True
                             break
                         frame=json.loads(raw)
+                        frames+=1
                         model=frame.get('model') or model
                         usage=frame.get('usage') or usage
                         for choice in frame.get('choices',[]):
-                            parts.append(choice.get('delta',{}).get('content') or '')
+                            chunk=choice.get('delta',{}).get('content') or ''
+                            if not isinstance(chunk,str):
+                                raise ValueError('DS response content is not text')
+                            if first_content is None and chunk.strip():
+                                first_content=perf_counter()-began
+                            parts.append(chunk)
                             reason=choice.get('finish_reason') or reason
             else:
                 error=f'HTTP {response.status_code}'
@@ -247,27 +270,26 @@ def invoke_ds(folder,stage,prompt,payload):
                 except (ValueError,AttributeError):
                     details=None
                 code=details.get('code') if isinstance(details,dict) else None
-                if isinstance(code,str) and re.fullmatch(r'[A-Z0-9_]{1,64}',code):
+                if isinstance(code,str) and re.fullmatch(r'[A-Za-z0-9_.-]{1,64}',code):
                     attempt['provider_error_code']=code
                     error+=f' ({code})'
-                request_id=response.headers.get('X-Request-ID','')
-                if re.fullmatch(r'[A-Za-z0-9_-]{1,128}',request_id):
-                    attempt['provider_request_id']=request_id
-    except (requests.RequestException,ValueError) as exc:
+    except (requests.RequestException,ValueError,TypeError,AttributeError) as exc:
         error=type(exc).__name__
     attempt['seconds']=perf_counter()-began
     raw=''.join(parts).encode()
     atomic(folder/'raw-output.txt',raw)
     value=decode(raw,stage) if finished and reason in (None,'stop') and model==DS['model'] else None
     summary={'model':model,'usage':usage,'finish_reason':reason,'stream_complete':finished,
-             'empty_content':not bool(raw)}
+             'empty_content':not bool(raw.strip()),'response_frames':frames,
+             'first_content_seconds':first_content,'requested_stream':stream}
     attempt['response']=summary
     return {'result':value,'attempts':[attempt],'response':summary,
             'error':None if value is not None else error or '响应不完整、型号不一致或返回结构不合法'}
 
 
 class Provider:
-    def __init__(self,root,*,sol=40,vision=12,ds=12,cache_only=False):
+    def __init__(self,root,*,sol=40,vision=12,ds=DEFAULT_DS_CONCURRENCY,cache_only=False,
+                 ds_state_dir=None):
         self.root=root
         self.prompts=frozen_prompts()
         self.cli=None if cache_only else executable()
@@ -275,7 +297,10 @@ class Provider:
         self.nodes={}
         self.log=[]
         self.consumer_log=[]
-        self.lanes={'sol':Lane('sol',sol),'vision':Lane('vision',vision),'ds':Lane('ds',ds)}
+        credential=os.environ.get(DS_CREDENTIAL)
+        ds_lane=(KfsSlots(DS['endpoint'],credential,ds,directory=ds_state_dir)
+                 if credential and not cache_only else Lane('ds',ds))
+        self.lanes={'sol':Lane('sol',sol),'vision':Lane('vision',vision),'ds':ds_lane}
         self.started=time()
 
     def scope(self,sample):
@@ -324,7 +349,17 @@ class Provider:
         if response['result'] is None:
             if self.nodes.get(identity) is present:
                 self.nodes.pop(identity)
-            raise ModelFailure(response.get('error') or '请求未返回可用结果')
+            last=(response.get('attempts') or [{}])[-1]
+            kind=None
+            if ds and response['response'].get('finish_reason')=='length':
+                kind='ds_truncated'
+            elif ds and (last.get('status') in {401,403} or
+                         (response.get('error') or '').startswith('KfsUnavailable:')):
+                kind='ds_authorization'
+            elif ds and (last.get('status') in OVERLOAD_STATUSES | {429}
+                         or last.get('response',{}).get('empty_content') and last.get('status')==200):
+                kind='ds_temporary'
+            raise ModelFailure(response.get('error') or '请求未返回可用结果',failure_kind=kind)
         return response['result']
 
     async def run(self,sample,stage,payload,images,prompt,profile,ds,identity,base,ready):
@@ -351,7 +386,7 @@ class Provider:
             return bool(attempts) and (attempts[-1].get('status')==524 or
                                       len(attempts)>=2 and all(empty_success(row) for row in attempts))
 
-        async def once(index):
+        async def once(index, *, stream=False):
             nonlocal started
             async with lane.slot():
                 if started is None:
@@ -359,16 +394,18 @@ class Provider:
                 folder=base/f'attempt-{index}'
                 folder.mkdir(exist_ok=True)
                 if ds:
-                    return await asyncio.to_thread(invoke_ds,folder,stage,prompt,payload)
+                    result=await asyncio.to_thread(invoke_ds,folder,stage,prompt,payload,stream=stream)
+                    await lane.observed(result['attempts'],result['result'] is not None)
+                    return result
                 if not self.cli:
                     return {'result':None,'attempts':[],'response':{},'error':'未找到 Reader 已验证的 Codex 客户端'}
                 return await asyncio.to_thread(invoke_sol,folder,stage,prompt,payload,images,self.cli)
 
-        async def raw_attempt(index):
+        async def raw_attempt(index, *, stream=False):
             if vision:
                 async with vision.slot():
-                    return await once(index)
-            return await once(index)
+                    return await once(index,stream=stream)
+            return await once(index,stream=stream)
 
         try:
             prior=read(previous_receipt) if allow_fallback and previous_receipt.is_file() else {}
@@ -378,14 +415,19 @@ class Provider:
             else:
                 got=await raw_attempt(1)
                 hits.extend(got['attempts'])
-                await lane.observed(got['attempts'],got['result'] is not None)
-                retryable=hits and (hits[-1].get('status') in (None,429,502,503,504) or
-                          ds and hits[-1].get('status')==200 and got['response'].get('model') in (None,DS['model']))
+                if not ds:
+                    await lane.observed(got['attempts'],got['result'] is not None)
+                retryable=hits and (hits[-1].get('status') in {None,429,502,503,504} or
+                          ds and hits[-1].get('status')==200 and got['response'].get('model') in (None,DS['model'])
+                          and got['response'].get('finish_reason')!='length')
                 if got['result'] is None and retryable:
                     retries=1
-                    got=await raw_attempt(2)
+                    if ds and hits[-1].get('status') in OVERLOAD_STATUSES:
+                        await asyncio.sleep(1)
+                    got=await raw_attempt(2,stream=ds and hits[-1].get('status')==200)
                     hits.extend(got['attempts'])
-                    await lane.observed(got['attempts'],got['result'] is not None)
+                    if not ds:
+                        await lane.observed(got['attempts'],got['result'] is not None)
             if allow_fallback and got['result'] is None and waiting_for_provider(hits):
                 final_profile=SOL
                 lane=self.lanes['sol']

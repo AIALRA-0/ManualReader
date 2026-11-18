@@ -14,7 +14,7 @@ from .stages.step07.fusion import assemble
 from .stages.finish.pipeline import finish_batch
 from .stages.finish.provider import Provider
 from .stages.finish.runner import Timings, persist
-from .stages.finish.content import build_translation_catalog, translate
+from .stages.finish.content import translate_to_file
 from .transport import executable
 
 
@@ -57,11 +57,10 @@ def start_translation(root,packet,card,context):
     async def translate_early():
         providers,timing=Provider(root),Timings()
         try:
-            result=await timing.run('chapter','B1',translate(root,'chapter',source,providers.scope('chapter'),
-                build_translation_catalog([source],glossary=context.get('existing_terms',[]))))
+            result=await timing.run('chapter','B1',translate_to_file(root/'jobs/chapter/translation-initial.json',
+                'chapter',source,providers.scope('chapter'),glossary=context.get('existing_terms',[])))
             if result is None:
                 result={'groups':[],'links':[],'counts':{},'issues':[{'reason':'translation_request_failed'}]}
-            write(root/'jobs/chapter/translation-initial.json',result)
             return result
         finally:persist(root,'early-translation',providers,timing)
     pool=ThreadPoolExecutor(max_workers=1,thread_name_prefix='reader-translation')
@@ -132,14 +131,12 @@ def run(root, packet, card, context, *, early_translation=None):
                                     'started_at':began,'state':'running','source_quality_version':packet.get('source_quality_version')})
     sample, source = prepare(root, packet, card, context)
     async def finish():
-        providers, timing = Provider(root, sol=40, ds=12, vision=12), Timings()
+        providers, timing = Provider(root), Timings()
         async def translate_sources():
             if early_translation is not None:
                 return await asyncio.wrap_future(early_translation)
-            result=await translate(root,sample,source,providers.scope(sample),
-                                   build_translation_catalog([source],glossary=context.get('existing_terms',[])))
-            write(root/'jobs'/sample/'translation-initial.json',result)
-            return result
+            return await translate_to_file(root/'jobs'/sample/'translation-initial.json',
+                sample,source,providers.scope(sample),glossary=context.get('existing_terms',[]))
         translations = asyncio.create_task(translate_sources())
         try:
             await asyncio.to_thread(upstream, root, sample)

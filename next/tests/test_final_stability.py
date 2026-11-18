@@ -166,11 +166,13 @@ def test_source_translation_starts_before_writer_and_persists_its_own_receipts(t
     packet={'sources':[{'id':'s','file_id':'f','original':'An actual source paragraph.','kind':'paragraph'}],
             'file_signatures':{'f':'hash'}}
     scope={'material_plan':[{'file_id':'f','source_ids':['s']}]}
-    async def translate(*args):
+    async def translate(path,*args,**kwargs):
         entered.set()
         assert await asyncio.to_thread(release.wait,3)
-        return {'groups':[],'links':[{'source_id':'s'}],'counts':{'complete':1}}
-    with patch.object(connected,'Provider'),patch.object(connected,'translate',side_effect=translate),patch.object(connected,'persist') as persist:
+        value={'groups':[],'links':[{'source_id':'s'}],'counts':{'complete':1}}
+        write(path,value)
+        return value
+    with patch.object(connected,'Provider'),patch.object(connected,'translate_to_file',side_effect=translate),patch.object(connected,'persist') as persist:
         future=connected.start_translation(tmp_path,packet,scope,{'existing_terms':[]})
         if not entered.wait(3):
             future.result(timeout=3)
@@ -193,7 +195,7 @@ def test_connected_finish_consumes_early_translation_without_second_request(tmp_
     card={'project':{'id':'project'}}
     with patch.object(connected,'prepare',return_value=('chapter',{})),patch.object(connected,'upstream'),\
             patch.object(connected,'Provider'),patch.object(connected,'persist'),\
-            patch.object(connected,'finish_batch',side_effect=finish),patch.object(connected,'translate') as translate,\
+            patch.object(connected,'finish_batch',side_effect=finish),patch.object(connected,'translate_to_file') as translate,\
             patch('manualreader.stages.finish.review.next_calls',return_value={}),\
             patch('manualreader.stages.finish.review.next_run',return_value={}):
         connected.run(tmp_path,{},card,{'mode':'NORMAL'},early_translation=future)

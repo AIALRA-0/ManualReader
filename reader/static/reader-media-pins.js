@@ -347,6 +347,16 @@ function createReaderMediaPins(pane){
   const wrap=el('span','reader-media-inline');
   inlineTarget.before(wrap);
   wrap.append(inlineTarget,bar);
+  if(node.matches('img:not(.reader-page-preview)')){
+   const sizeWideImage=()=>{
+    const {naturalWidth,naturalHeight}=node;
+    if(naturalWidth>=480&&naturalHeight&&naturalWidth/naturalHeight>=1.6){
+     wrap.style.setProperty('--reader-inline-image-width',Math.round(naturalWidth*1.35)+'px');
+    }
+   };
+   if(node.complete)sizeWideImage();
+   else node.addEventListener('load',sizeWideImage,{once:true});
+  }
   if(node.matches('.reader-math')){
    const question=node.nextElementSibling;
    if(question?.matches('.inline-question'))wrap.after(question);

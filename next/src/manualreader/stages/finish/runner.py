@@ -8,6 +8,7 @@ from time import time
 
 from manualreader.artifacts import read_json as read, write_json as write
 from .provider import ALIASES, Provider, SCHEMAS
+from .kfs_slots import DEFAULT_DS_CONCURRENCY
 from ...steps.events import REGISTRY
 
 
@@ -62,23 +63,34 @@ class Timings:
 
 
 async def translation_batch(root,providers,timing):
-    from .content import build_translation_catalog,translate,translation_processing
+    from .content import build_translation_catalog, prior_translations, source_units, translate_to_file, translation_processing
     catalog_inputs=sources(root)
-    catalog=build_translation_catalog(catalog_inputs.values())
+    previous_runs={}
+    reusable={}
+    for name,source in catalog_inputs.items():
+        previous=root/'jobs'/name/'translation-initial.json'
+        if previous.is_file():
+            previous_runs[name]=read(previous)
+            reusable.update(prior_translations(source_units(source), previous_runs[name]))
+    catalog=build_translation_catalog(catalog_inputs.values(),reusable)
     batch_at=time()
     write(root/'translation-queue.json',{'state':'running','at':batch_at,'samples':list(catalog_inputs),
                                         'unique_foreign_sources':len(catalog.by_source)})
     async def sample(name,source):
         job=root/'jobs'/name
-        previous=read(job/'translation-initial.json') if (job/'translation-initial.json').is_file() else None
+        previous=previous_runs.get(name)
         if previous and not translation_processing(source,previous.get('links',[]))['failed_source_ids']:
             write(job/'translation-ready.json',{'batch_at':batch_at})
             return
-        translated=await timing.run(name,'B1',translate(root,name,source,providers.scope(name),catalog,existing=previous))
+        translated=await timing.run(name,'B1',translate_to_file(
+            job/'translation-initial.json',name,source,providers.scope(name),catalog))
         if translated is None:
-            translated={'groups':[],'links':[],'unresolved_source_ids':[],
-                        'counts':{},'issues':['B1 作业失败，详见阶段日志']}
-        write(job/'translation-initial.json',translated)
+            checkpoint=job/'translation-initial.json'
+            translated=read(checkpoint) if checkpoint.is_file() else {
+                'groups':[],'links':[],'unresolved_source_ids':[],
+                'counts':{},'issues':['B1 作业失败，详见阶段日志']}
+            if not checkpoint.is_file():
+                write(checkpoint,translated)
         write(job/'translation-ready.json',{'batch_at':batch_at})
         print('B1',name,translated.get('counts'),flush=True)
 
@@ -101,7 +113,7 @@ def main():
     parser.add_argument('root',type=Path)
     parser.add_argument('phase',choices=('translate','finish','all'))
     parser.add_argument('--sol',default=40,type=int)
-    parser.add_argument('--ds',default=12,type=int)
+    parser.add_argument('--ds',default=DEFAULT_DS_CONCURRENCY,type=int)
     parser.add_argument('--vision',default=12,type=int)
     args=parser.parse_args()
     async def go():

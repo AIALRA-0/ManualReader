@@ -11,12 +11,12 @@ from manualreader.artifacts import write_json as write
 
 
 async def one(root, code):
-    client=p.Provider(root/f'http-{code}',sol=4,vision=4,ds=3)
+    client=p.Provider(root/f'http-{code}',sol=4,vision=4,ds=3,ds_state_dir=root/f'state-{code}')
     codes=[]
     bodies=[]
     reply={'batch_id':f'fault-{code}','units':[]}
 
-    def injected(folder, stage, prompt, payload):
+    def injected(folder, stage, prompt, payload, **options):
         first=not codes
         codes.append(code if first else 200)
         bodies.append(payload)

@@ -107,6 +107,76 @@ def test_pdf_notation_projection_keeps_real_english_unresolved():
     assert reproject_math_glyphs(original, new) == new
 
 
+def test_translation_batches_across_preserved_media_and_resumes_by_source(tmp_path):
+    rows = _source(
+        _unit("a", "Initial English paragraph", number=1),
+        _unit("figure", "Existing caption", kind="figure", number=2),
+        _unit("equation", "x = y", kind="equation", number=3),
+        _unit("b", "Another English paragraph", number=4),
+    )
+    path = tmp_path / 'translation.json'
+    seen = []
+
+    async def ask(stage, payload):
+        ids = [row["source_id"] for row in payload["units"]]
+        seen.append(ids)
+        sid = ids[0]
+        if sid == "b":
+            written = json.loads(path.read_bytes())
+            assert "a" in {link["source_id"] for link in written["links"]}
+        return {"groups": [{"segments": [{
+            "source_id": sid, "text": "中文译文", "relation": "translated",
+            "status": "uncertain" if sid == "a" else "complete",
+        }]}]}
+
+    first = asyncio.run(content.translate_to_file(path, "example", rows, ask))
+    assert seen == [["a", "b"], ["b"]]
+    assert content.translation_processing(rows, first["links"])["failed_source_ids"] == []
+    assert content.translation_processing(rows, first["links"])["uncertain"] == 1
+    second = asyncio.run(content.translate_to_file(path, "example", rows, ask))
+    assert seen == [["a", "b"], ["b"]]
+    assert first["links"] == second["links"]
+
+
+def test_truncated_translation_retries_in_smaller_batches(tmp_path):
+    from manualreader.stages.finish.provider import ModelFailure
+
+    source = _source(*[_unit(sid, "English text " + sid, number=i)
+                       for i, sid in enumerate("abcd")])
+    seen = []
+
+    async def ask(stage, payload):
+        ids = [row["source_id"] for row in payload["units"]]
+        seen.append(ids)
+        if len(ids) == 4:
+            raise ModelFailure("truncated", failure_kind="ds_truncated")
+        return {"groups": [{"segments": [{
+            "source_id": sid, "text": "译文", "relation": "translated", "status": "complete",
+        } for sid in ids]}]}
+
+    result = asyncio.run(translate(tmp_path, "example", source, ask))
+    assert seen[0] == list("abcd")
+    assert sorted(seen[1:]) == [list("ab"), list("cd")]
+    assert len(result["links"]) == 4
+
+
+def test_translation_checkpoint_keeps_unresolved_ids_after_kfs_refuses_access(tmp_path):
+    from manualreader.stages.finish.provider import ModelFailure
+
+    source = _source(_unit("a", "English paragraph"))
+    path = tmp_path / "translation.json"
+    requested = []
+
+    async def ask(stage, payload):
+        requested.append(payload)
+        raise ModelFailure("HTTP 403", failure_kind="ds_authorization")
+
+    result = asyncio.run(content.translate_to_file(path, "example", source, ask))
+    assert len(requested) == 1
+    assert result["unresolved_source_ids"] == ["a"]
+    assert json.loads(path.read_bytes()) == result
+
+
 def test_explanation_shares_identical_formula_within_one_context(tmp_path):
     base = {"kind": "formula_display", "raw_content": r"\(x\)", "status": "ok"}
     records = [
