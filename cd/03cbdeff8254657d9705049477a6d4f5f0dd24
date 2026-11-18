@@ -1,0 +1,21 @@
+next/tests/test_finish_content.py
+  s_1c46d58ed67333::t_1fb73b46a9e17a 180-200
+next/src/manualreader/stages/finish/content.py
+  s_1c46d58ed67333::t_c0fd5fdbdc0917 297-298,353-354,399,404-405
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "cd03cbdeff8254657d9705049477a6d4f5f0dd24",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
