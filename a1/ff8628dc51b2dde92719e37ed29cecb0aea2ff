@@ -1,0 +1,147 @@
+reader_coverage.py
+  s_1c46d58ed67333::t_946cbfe71fd215 175,181-183,272-273
+reader_step02_card.py
+  s_1c46d58ed67333::t_52c6433887508e 225
+static/remote-ui.js
+  s_1c46d58ed67333::t_e2f2bf5bb6e0c9 6-24,32-33
+next/src/manualreader/stepfinal_server.py
+  s_1c46d58ed67333::t_1c9b0881b2063f 34-48,54-56,106,124,137
+  s_1c46d58ed67333::t_d5dbd311952b3a 157
+  s_1c46d58ed67333::t_e3123f9eb08529 168-171
+next/src/manualreader/stages/finish/native_ui.py
+  s_1c46d58ed67333::t_f25bd090fed19e 43,65
+  s_1c46d58ed67333::t_bf7881f923110b 72
+next/src/manualreader/stages/finish/static/reader-finish.js
+  s_1c46d58ed67333::t_f25bd090fed19e 125,152,193,234-236,240,242,245-246,248,254-255,260,312
+  s_1c46d58ed67333::t_f515284974f988 207
+reader_bridge.py
+  s_1c46d58ed67333::t_18a16f55e703f6 315
+static/workspace-ui.js
+  s_1c46d58ed67333::t_3ff9b086ec1cb1 21
+static/app.css
+  s_1c46d58ed67333::t_35e2ee57c617a9 530-532
+Demo/test_next_teach.py
+  s_1c46d58ed67333::t_82182616640213 60,79-92
+  s_1c46d58ed67333::t_e3123f9eb08529 94-110
+  s_1c46d58ed67333::t_be9ad67d4eb2c5 1-59,61-78,93,111-113
+docs/next-deployment.md
+  s_1c46d58ed67333::t_b410aea86ec5d2 33-35,42,44
+  s_1c46d58ed67333::t_74ee880215a009 9-13,36-41,43
+next/src/manualreader/stages/finish/preview.py
+  s_1c46d58ed67333::t_1e7016795fdbe8 467,477,479-481,483-484,501-516,520-521,527,555-560,691,696,703,705,714-715,744-745,750,752,781,783
+  s_1c46d58ed67333::t_5a6457efd3edbc 693-694,762-763
+  s_1c46d58ed67333::t_1c9b0881b2063f 782
+  s_1c46d58ed67333::t_b5bc8c0aa79b76 429,451,456
+  s_1c46d58ed67333::t_82182616640213 492-494
+  s_1c46d58ed67333::t_6e8fa099967e7d 799-800
+reader_step01_scan.py
+  s_1c46d58ed67333::t_35e2ee57c617a9 21,118,163
+reader_directory_coverage.py
+  s_1c46d58ed67333::t_a00ff0db67dafd 1-6,8,10-53
+  s_1c46d58ed67333::t_28702305c74ee7 7,9
+reader_chapter_sources.py
+  s_1c46d58ed67333::t_52c6433887508e 1-72,87-414
+  s_1c46d58ed67333::t_ac32048cae08c7 73-86
+static/app.js
+  s_1c46d58ed67333::t_3ff9b086ec1cb1 473,476,480
+next/src/manualreader/stages/finish/commit.py
+  s_1c46d58ed67333::t_f515284974f988 217-222
+  s_1c46d58ed67333::t_6e8fa099967e7d 56-63,191-192
+  s_1c46d58ed67333::t_2ddbb846e6b31d 161,164-166
+  s_1c46d58ed67333::t_f427accd563be8 162-163
+reader_workspace.py
+  s_1c46d58ed67333::t_07f87bbf4378df 386,388,394,396,398
+  s_1c46d58ed67333::t_5a6457efd3edbc 348
+Demo/test_project_files.py
+  s_1c46d58ed67333::t_7571e5d10caed2 32
+reader_teaching.py
+  s_1c46d58ed67333::t_eb109140f7fb86 19,22-23,25
+reader_agent_contract.py
+  s_1c46d58ed67333::t_7bfd0d7cf99073 6-9
+  s_1c46d58ed67333::t_82182616640213 13
+  s_1c46d58ed67333::t_52c6433887508e 3
+  s_1c46d58ed67333::t_967c712ab37f31 10
+next/src/manualreader/stages/step01/scan.py
+  s_1c46d58ed67333::t_74ee880215a009 21,118,163
+Demo/test_project_permissions.py
+  s_1c46d58ed67333::t_bdd68dd4a1fb2e 1-25
+reader_execute.py
+  s_1c46d58ed67333::t_7bfd0d7cf99073 653
+reader_task_prompts.py
+  s_1c46d58ed67333::t_eb109140f7fb86 9,74-75,346-347,354,356-358,366-368,375
+reader_step02_server.py
+  s_1c46d58ed67333::t_52c6433887508e 47,92
+reader_server.py
+  s_1c46d58ed67333::t_967c712ab37f31 765-771
+  s_1c46d58ed67333::t_a00ff0db67dafd 745-746,748
+  s_1c46d58ed67333::t_94d21114bbcc83 994
+  s_1c46d58ed67333::t_52c6433887508e 3,450,459-460,503,532,537,764,772-773,815,818,879,991-993,995-1014
+  s_1c46d58ed67333::t_7571e5d10caed2 469
+  s_1c46d58ed67333::t_89f3c5c413ee58 1157
+Demo/test_directory_association.py
+  s_1c46d58ed67333::t_bdd68dd4a1fb2e 1-39
+next/src/manualreader/stages/finish/review.py
+  s_1c46d58ed67333::t_d598d9224e71eb 42-43,54-55,140,142
+  s_1c46d58ed67333::t_e3123f9eb08529 141
+  s_1c46d58ed67333::t_1b9bf1ee0c2440 13-16,41,44-53,56-59,103-110,118-119,123-124
+reader_next_teach.py
+  s_1c46d58ed67333::t_82182616640213 283-295
+  s_1c46d58ed67333::t_ccdd8d6f7a46d0 356-358,409
+  s_1c46d58ed67333::t_967c712ab37f31 20-54,390,399-401,407,426,439-445,448,450-452
+  s_1c46d58ed67333::t_8fa839a2507867 110-118,126-143,146-153,156-163,201-202
+  s_1c46d58ed67333::t_b5bc8c0aa79b76 449
+  s_1c46d58ed67333::t_be9ad67d4eb2c5 154-155
+  s_1c46d58ed67333::t_94d21114bbcc83 59,67-69,89
+  s_1c46d58ed67333::t_1b9bf1ee0c2440 183,387-388,446-447
+  s_1c46d58ed67333::t_f515284974f988 235
+  s_1c46d58ed67333::t_d5dbd311952b3a 319-322
+  s_1c46d58ed67333::t_52c6433887508e 311
+  s_1c46d58ed67333::t_1c9b0881b2063f 119-125,197-199
+  s_1c46d58ed67333::t_3725fe8a19d670 402-406
+  s_1c46d58ed67333::t_ac32048cae08c7 208-225,258-260,391-398
+  s_1c46d58ed67333::t_5a6457efd3edbc 144-145,164-182,184-196,200
+  s_1c46d58ed67333::t_6b4d022bafacd9 204,242
+  s_1c46d58ed67333::t_1104ef88fc48fd 234,247,266-271
+  s_1c46d58ed67333::t_d598d9224e71eb 281-282,296-307,411,413-414
+  s_1c46d58ed67333::t_4e109e41159848 203,205-207,226-233,236-241,243-246,248-257,261-265,272-274
+  s_1c46d58ed67333::t_ce31e2906a1c11 1-19,55-58,60-66,70-88,90-109,275-280,308-310,312-318,323-355,359-386,389,408,410,412,415-425,427-438
+reader_project_files.py
+  s_1c46d58ed67333::t_7571e5d10caed2 63-64
+reader_learning.py
+  s_1c46d58ed67333::t_7bfd0d7cf99073 58-59
+next/src/manualreader/connected.py
+  s_1c46d58ed67333::t_4678d9552abd60 15-16,94,97-98,100,111-114
+  s_1c46d58ed67333::t_1b9bf1ee0c2440 105-107,124-132,136
+  s_1c46d58ed67333::t_d598d9224e71eb 133-135
+  s_1c46d58ed67333::t_6e8fa099967e7d 75-76
+  s_1c46d58ed67333::t_b2bdfcf34c3ba3 1-14,17-74,77-93,95-96,99,101-104,108-110,115-123
+Demo/test_bootstrap_api.py
+  s_1c46d58ed67333::t_b410aea86ec5d2 35-39
+static/reader-source-flow.js
+  s_1c46d58ed67333::t_07f87bbf4378df 72-84
+reader_remote.py
+  s_1c46d58ed67333::t_7bfd0d7cf99073 172
+  s_1c46d58ed67333::t_1104ef88fc48fd 133-135
+  s_1c46d58ed67333::t_4f2b68802e9606 20-24,26-27,43-46,51-52,64-68,75,84-97,132,190-191,199-200,212-223,228-230
+  s_1c46d58ed67333::t_35e2ee57c617a9 198
+static/reader-project-files.js
+  s_1c46d58ed67333::t_a00ff0db67dafd 1
+  s_1c46d58ed67333::t_bf7881f923110b 44,53
+  s_1c46d58ed67333::t_07f87bbf4378df 149-155
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "a1ff8628dc51b2dde92719e37ed29cecb0aea2ff",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
