@@ -1,0 +1,23 @@
+next/tests/test_final_stability.py
+  s_1c46d58ed67333::t_01b36e94c304f5 201-224
+reader/reader_teaching.py
+  s_1c46d58ed67333::t_01b36e94c304f5 125-128,133
+reader/reader_server.py
+  s_1c46d58ed67333::t_01b36e94c304f5 147-150,159
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "c4d0ad105381457c199e6feb3ecff400a5a89b88",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.1-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
