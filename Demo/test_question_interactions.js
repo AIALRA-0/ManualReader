@@ -21,6 +21,11 @@ for (const id of ['lesson--route', 'lesson--framework-route', 'lesson--closing']
   assert.equal(eligible({ id, progress_exempt: true }), false);
 }
 assert.equal(eligible({ id: 'body' }), true);
+for (const mode of ['INTRO', 'NORMAL', 'FINALE', 'ANSWER']) {
+  // 不计入已读统计的终稿段落也需要提问，不依赖章节编号前缀。
+  assert.equal(eligible({ id: 'final-' + mode, content_kind: 'explanation', progress_exempt: true }), true);
+  assert.equal(eligible({ id: 'legacy-' + mode, explanation_id: 'saved-chapter', progress_exempt: true }), true);
+}
 assert.equal(eligible({ id: 'body', heading: true }), false);
 assert.equal(eligible({ id: 'body', duplicate_of: 'original' }), false);
 assert.equal(eligible({ id: 'body', role: 'page_furniture' }), false);
