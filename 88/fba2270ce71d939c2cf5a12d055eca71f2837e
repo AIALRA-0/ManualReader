@@ -1,0 +1,45 @@
+reader/static/reader-question-drafts.js
+  s_1c46d58ed67333::t_0c1b596b4c8485 32,39-40
+  s_1c46d58ed67333::t_6d0022fdb6ad61 1-30,33-38,42-62,64,66-67,69-78
+  s_1c46d58ed67333::t_87ce227b42324d 31,41,63,65,68
+reader/static/reader-ui.js
+  s_1c46d58ed67333::t_94153b57e79259 179
+  s_1c46d58ed67333::t_0c1b596b4c8485 192,199-202
+reader/reader_server.py
+  s_1c46d58ed67333::t_6d0022fdb6ad61 631
+reader/static/app.js
+  s_1c46d58ed67333::t_f61ddc69a1cadc 92
+  s_1c46d58ed67333::t_114c07fc9a3a62 20-31,87,94,229-262,267-270,278,282,326,539-542,544,567
+reader/static/index.html
+  s_1c46d58ed67333::t_3fe84fc1717fd1 49
+reader/static/math-text.js
+  s_1c46d58ed67333::t_9142df3feb6f7c 55-57
+reader/static/reader-source-flow.js
+  s_1c46d58ed67333::t_36a54d6c519b13 134-135,146
+  s_1c46d58ed67333::t_9142df3feb6f7c 127-133,136-145,147-149,247
+reader/static/reader-project-tree.js
+  s_1c46d58ed67333::t_ed4955fcaa3026 38-64,66-67,70,72,80
+  s_1c46d58ed67333::t_94153b57e79259 74,76
+reader/static/reader-project-files.js
+  s_1c46d58ed67333::t_3fe84fc1717fd1 44
+next/src/manualreader/stages/finish/native_ui.py
+  s_1c46d58ed67333::t_0c1b596b4c8485 236-237
+reader/vendor/reader-code-highlight.js
+  s_1c46d58ed67333::t_27a7c6a6d34efc 14
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "88fba2270ce71d939c2cf5a12d055eca71f2837e",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
