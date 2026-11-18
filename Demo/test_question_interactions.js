@@ -31,6 +31,14 @@ assert.equal(eligible({ id: 'body', duplicate_of: 'original' }), false);
 assert.equal(eligible({ id: 'body', role: 'page_furniture' }), false);
 assert.equal(eligible(null), false);
 
+const segmentId = vm.runInNewContext(line(app, 'uniqueQuestionSegment') + ';uniqueQuestionSegment');
+function repeatedSegments() {
+  const used = new Set();
+  return ['same', 'same', 'different', 'same'].map(base => segmentId(base, used));
+}
+assert.deepEqual(repeatedSegments(), ['same', 'same-occurrence-2', 'different', 'same-occurrence-3']);
+assert.deepEqual(repeatedSegments(), repeatedSegments());
+
 const registry = vm.runInNewContext('const questionInputRefs=new Map(),questionInputKeys=new WeakMap();\n' +
   line(app, 'registerQuestionInput') + '\n' + line(app, 'questionInputs') + ';({registerQuestionInput,questionInputs})', { WeakRef });
 const first = { dataset: { blockId: 'project:a' } };
