@@ -1,0 +1,21 @@
+reader/static/app.js
+  s_1c46d58ed67333::t_46f72786de58bd 285
+next/src/manualreader/stages/finish/static/reader-finish.js
+  s_1c46d58ed67333::t_5eacc8668ce0fc 128-130
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.7.5",
+  "base_commit_sha": "e60bc64970d79b42aae27fc1f9509e243fb9e900",
+  "prompts": {},
+  "sessions": {
+    "s_1c46d58ed67333": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "01a16d6c-79c2-7bf3-9b9e-ece47e27e3ab",
+        "model": "gpt-6.2-sol"
+      },
+      "human_author": "AIALRA-0 <aialra@163.com>"
+    }
+  }
+}
